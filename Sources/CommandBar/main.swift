@@ -1026,6 +1026,10 @@ struct ContentView: View {
                     .padding(8)
                 }
                 .background(Color(nsColor: .textBackgroundColor))
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    selectedId = nil
+                }
                 .onDrop(of: [.text], isTargeted: nil) { _ in
                     draggingItem = nil
                     store.save()
@@ -1249,11 +1253,8 @@ struct HistoryOutputView: View {
                             Text("출력")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Text(output)
-                                .font(.system(.body, design: .monospaced))
-                                .textSelection(.enabled)
-                                .padding(8)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            OutputTextView(text: output)
+                                .frame(maxWidth: .infinity, minHeight: 200)
                                 .background(Color.gray.opacity(0.1))
                                 .cornerRadius(6)
                         }
@@ -1262,7 +1263,7 @@ struct HistoryOutputView: View {
                 .padding()
             }
         }
-        .frame(width: 450, height: 350)
+        .frame(minWidth: 450, minHeight: 350)
     }
 }
 
@@ -1412,7 +1413,7 @@ struct CommandRowView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .stroke(isAlerting ? Color.red : (isSelected ? Color.accentColor : Color.clear), lineWidth: isAlerting ? 2 : 1)
+                .stroke(isAlerting ? Color.red : (isSelected ? Color.accentColor : Color.primary.opacity(0.1)), lineWidth: isAlerting ? 2 : 1)
         )
         .offset(x: shakeOffset)
         .opacity(isDragging ? 0.5 : 1.0)
