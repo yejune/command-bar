@@ -84,29 +84,31 @@ struct RightClickMenu: NSViewRepresentable {
 
             let runItem = NSMenuItem(title: L.contextMenuRun, action: #selector(runAction), keyEquivalent: "")
             runItem.target = self
+            runItem.image = NSImage(systemSymbolName: "play.fill", accessibilityDescription: nil)
             menu.addItem(runItem)
 
             let favoriteTitle = cmd?.isFavorite == true ? L.favoriteRemove : L.favoriteAdd
             let favoriteIcon = cmd?.isFavorite == true ? "star.slash" : "star"
             let favoriteItem = NSMenuItem(title: favoriteTitle, action: #selector(toggleFavoriteAction), keyEquivalent: "")
             favoriteItem.target = self
-            if let iconImage = NSImage(systemSymbolName: favoriteIcon, accessibilityDescription: nil) {
-                favoriteItem.image = iconImage
-            }
+            favoriteItem.image = NSImage(systemSymbolName: favoriteIcon, accessibilityDescription: nil)
             menu.addItem(favoriteItem)
 
             let editItem = NSMenuItem(title: L.contextMenuEdit, action: #selector(editAction), keyEquivalent: "")
             editItem.target = self
+            editItem.image = NSImage(systemSymbolName: "pencil", accessibilityDescription: nil)
             menu.addItem(editItem)
 
             let copyItem = NSMenuItem(title: L.contextMenuCopy, action: #selector(copyAction), keyEquivalent: "")
             copyItem.target = self
+            copyItem.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: nil)
             menu.addItem(copyItem)
 
             menu.addItem(NSMenuItem.separator())
 
             // Move to Group submenu
             let moveToGroupItem = NSMenuItem(title: L.moveToGroup, action: nil, keyEquivalent: "")
+            moveToGroupItem.image = NSImage(systemSymbolName: "folder", accessibilityDescription: nil)
             let submenu = NSMenu()
 
             for group in groups {
@@ -143,6 +145,7 @@ struct RightClickMenu: NSViewRepresentable {
 
             let deleteItem = NSMenuItem(title: L.buttonDelete, action: #selector(deleteAction), keyEquivalent: "")
             deleteItem.target = self
+            deleteItem.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
             menu.addItem(deleteItem)
 
             NSMenu.popUpContextMenu(menu, with: event, for: self)

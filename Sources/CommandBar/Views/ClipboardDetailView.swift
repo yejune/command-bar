@@ -5,6 +5,7 @@ struct ClipboardDetailView: View {
     let store: CommandStore
     let notesFolderName: String
     let onClose: () -> Void
+    @State private var showRegisterSheet = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -32,6 +33,10 @@ struct ClipboardDetailView: View {
             Divider()
 
             HStack {
+                Button(L.registerClipboardTitle) {
+                    showRegisterSheet = true
+                }
+                .buttonStyle(HoverTextButtonStyle())
                 Button(L.clipboardSendToNotes) {
                     store.sendToNotes(item, folderName: notesFolderName)
                     onClose()
@@ -50,5 +55,8 @@ struct ClipboardDetailView: View {
             .padding()
         }
         .frame(minWidth: 300, minHeight: 200)
+        .sheet(isPresented: $showRegisterSheet) {
+            RegisterClipboardSheet(store: store, item: item, onComplete: onClose)
+        }
     }
 }

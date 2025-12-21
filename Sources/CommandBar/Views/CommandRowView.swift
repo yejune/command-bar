@@ -132,6 +132,7 @@ struct CommandRowView: View {
                         .foregroundStyle(typeColor)
                         .frame(width: 14)
                     Text(cmd.title)
+                        .lineLimit(1)
                         .fontWeight(isAlerting ? .bold : .regular)
                     ProgressView()
                         .scaleEffect(0.5)

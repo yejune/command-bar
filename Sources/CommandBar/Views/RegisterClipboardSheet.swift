@@ -4,6 +4,7 @@ struct RegisterClipboardSheet: View {
     @ObservedObject var store: CommandStore
     @Environment(\.dismiss) private var dismiss
     let item: ClipboardItem
+    var onComplete: (() -> Void)? = nil
 
     @State private var selectedGroupId: UUID
     @State private var selectedTerminalApp: TerminalApp = .iterm2
@@ -21,10 +22,10 @@ struct RegisterClipboardSheet: View {
         }
     }
 
-    init(store: CommandStore, item: ClipboardItem) {
+    init(store: CommandStore, item: ClipboardItem, onComplete: (() -> Void)? = nil) {
         self.store = store
         self.item = item
-        // 기본 그룹 선택
+        self.onComplete = onComplete
         _selectedGroupId = State(initialValue: CommandStore.defaultGroupId)
     }
 
@@ -37,6 +38,8 @@ struct RegisterClipboardSheet: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
+
+            Divider()
 
             // 위치 선택
             VStack(alignment: .leading, spacing: 4) {
@@ -81,8 +84,10 @@ struct RegisterClipboardSheet: View {
                     }
                 }
                 .labelsHidden()
-                .pickerStyle(.menu)
+                .pickerStyle(.segmented)
             }
+
+            Divider()
 
             // 버튼들
             HStack {
@@ -101,6 +106,7 @@ struct RegisterClipboardSheet: View {
                         terminalApp: selectedTerminalApp
                     )
                     dismiss()
+                    onComplete?()
                 }
                 .keyboardShortcut(.defaultAction)
             }
