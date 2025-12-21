@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
+import ServiceManagement
 
 struct HoverButtonStyle: ButtonStyle {
     @State private var isHovering = false
@@ -45,13 +46,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         for window in NSApp.windows {
-            window.standardWindowButton(.miniaturizeButton)?.isHidden = true
             window.standardWindowButton(.zoomButton)?.isHidden = true
         }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        return false
+        return true
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -221,11 +221,18 @@ class Settings: ObservableObject {
             UserDefaults.standard.set(maxHistoryCount, forKey: "maxHistoryCount")
         }
     }
+    @Published var launchAtLogin: Bool {
+        didSet {
+            UserDefaults.standard.set(launchAtLogin, forKey: "launchAtLogin")
+            applyLaunchAtLogin()
+        }
+    }
 
     init() {
         self.alwaysOnTop = UserDefaults.standard.bool(forKey: "alwaysOnTop")
         let saved = UserDefaults.standard.integer(forKey: "maxHistoryCount")
         self.maxHistoryCount = saved > 0 ? saved : 100
+        self.launchAtLogin = UserDefaults.standard.bool(forKey: "launchAtLogin")
     }
 
     func applyAlwaysOnTop() {
@@ -233,6 +240,18 @@ class Settings: ObservableObject {
             for window in NSApp.windows {
                 window.level = self.alwaysOnTop ? .floating : .normal
             }
+        }
+    }
+
+    func applyLaunchAtLogin() {
+        do {
+            if launchAtLogin {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            print("Failed to set launch at login: \(error)")
         }
     }
 }
@@ -2323,6 +2342,7 @@ struct SettingsView: View {
                 .font(.headline)
 
             Toggle("항상 위에 표시", isOn: $settings.alwaysOnTop)
+            Toggle("로그인 시 시작", isOn: $settings.launchAtLogin)
 
             HStack {
                 Text("히스토리 최대 개수")
