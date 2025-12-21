@@ -420,11 +420,36 @@ class CommandStore: ObservableObject {
         stopTimer(for: cmd.id)
         guard cmd.interval > 0 else { return }
 
-        let timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(cmd.interval), repeats: true) { [weak self] _ in
-            self?.runInBackground(cmd)
+        // 마지막 실행 시간 기준으로 남은 시간 계산
+        let now = Date()
+        var initialDelay: TimeInterval = 0
+
+        if let lastRun = cmd.lastExecutedAt {
+            let elapsed = now.timeIntervalSince(lastRun)
+            let remaining = TimeInterval(cmd.interval) - elapsed
+            if remaining > 0 {
+                initialDelay = remaining
+            }
         }
-        timers[cmd.id] = timer
-        runInBackground(cmd)  // 즉시 한 번 실행
+
+        if initialDelay > 0 {
+            // 남은 시간 후에 첫 실행
+            DispatchQueue.main.asyncAfter(deadline: .now() + initialDelay) { [weak self] in
+                guard let self = self else { return }
+                self.runInBackground(cmd)
+                let timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(cmd.interval), repeats: true) { [weak self] _ in
+                    self?.runInBackground(cmd)
+                }
+                self.timers[cmd.id] = timer
+            }
+        } else {
+            // 즉시 실행 + 타이머 시작
+            runInBackground(cmd)
+            let timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(cmd.interval), repeats: true) { [weak self] _ in
+                self?.runInBackground(cmd)
+            }
+            timers[cmd.id] = timer
+        }
     }
 
     func stopTimer(for id: UUID) {
