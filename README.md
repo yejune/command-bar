@@ -68,7 +68,18 @@ git checkout {branch:main|develop}     # branch dropdown selection
 - Send to Apple Notes
 - View full content in detail window
 
-### 7. Multi-language Support
+### 7. Groups
+- Organize commands into groups with colors
+- Filter by group in command list
+- Drag and drop to reorder groups
+- Group management page (folder icon in bottom bar)
+
+### 8. Favorites
+- Click star icon to toggle favorite
+- Filter to show favorites only
+- Works with group filter
+
+### 9. Multi-language Support
 - Korean, English, Japanese
 - Export/Import custom language packs
 
@@ -96,6 +107,7 @@ git checkout {branch:main|develop}     # branch dropdown selection
 ### Bottom Buttons
 - 📄 Command list
 - ➕ Add command
+- 📁 Group management
 - 📋 Clipboard
 - 🕐 History
 - 🗑 Trash
