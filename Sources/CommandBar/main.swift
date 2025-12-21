@@ -123,7 +123,13 @@ extension Command {
         var result = command
         for info in parameterInfos {
             if let value = values[info.name] {
-                result = result.replacingOccurrences(of: "{\(info.fullMatch)}", with: value)
+                // 쉘 특수문자 이스케이프
+                let escaped = value
+                    .replacingOccurrences(of: "\\", with: "\\\\")
+                    .replacingOccurrences(of: "\"", with: "\\\"")
+                    .replacingOccurrences(of: "$", with: "\\$")
+                    .replacingOccurrences(of: "`", with: "\\`")
+                result = result.replacingOccurrences(of: "{\(info.fullMatch)}", with: escaped)
             }
         }
         return result
@@ -702,8 +708,6 @@ struct ContentView: View {
     @State private var selectedId: UUID?
     @State private var draggingItem: Command?
     @State private var selectedHistoryItem: HistoryItem?
-    // 스크립트 실행용
-    @State private var scriptCommand: Command?
 
     var hasActiveIndicator: Bool {
         store.activeItems.contains { cmd in
@@ -1018,9 +1022,6 @@ struct ContentView: View {
         .sheet(item: $editingCommand) { cmd in
             EditCommandView(store: store, command: cmd)
         }
-        .sheet(item: $scriptCommand) { cmd in
-            ScriptExecutionView(command: cmd, store: store)
-        }
         .sheet(item: $selectedHistoryItem) { item in
             HistoryOutputView(item: item)
         }
@@ -1038,7 +1039,7 @@ struct ContentView: View {
 
     func handleRun(_ cmd: Command) {
         if cmd.executionType == .script {
-            scriptCommand = cmd
+            ScriptExecutionWindowController.show(command: cmd, store: store)
         } else {
             store.run(cmd)
         }
@@ -1652,61 +1653,91 @@ struct OutputTextView: NSViewRepresentable {
 struct ScriptExecutionView: View {
     let command: Command
     let store: CommandStore
-    @Environment(\.dismiss) private var dismiss
+    var onClose: (() -> Void)?
+    var onExecutionStarted: (() -> Void)?
 
     @State private var values: [String: String] = [:]
     @StateObject private var runner = ScriptRunner()
 
+    var isValid: Bool {
+        for info in command.parameterInfos {
+            if info.options.isEmpty {
+                // 텍스트 입력: 값이 있어야 함
+                guard let value = values[info.name], !value.isEmpty else { return false }
+            }
+            // 옵션 선택: 기본값이 있으므로 항상 valid
+        }
+        return true
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(command.title)
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 0) {
+            // 상단 헤더
+            VStack(alignment: .leading, spacing: 8) {
+                Text(command.title)
+                    .font(.headline)
 
-            Text(command.command)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
+                Text(command.command)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+            .padding([.horizontal, .top])
+            .padding(.bottom, 8)
 
+            // 파라미터 입력 영역
             if !command.parameterInfos.isEmpty && !runner.isRunning && !runner.isFinished {
                 Divider()
-                ForEach(command.parameterInfos, id: \.name) { info in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(info.name)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        if info.options.isEmpty {
-                            TextField("", text: Binding(
-                                get: { values[info.name] ?? "" },
-                                set: { values[info.name] = $0 }
-                            ))
-                            .textFieldStyle(.roundedBorder)
-                        } else {
-                            Picker("", selection: Binding(
-                                get: { values[info.name] ?? info.options.first ?? "" },
-                                set: { values[info.name] = $0 }
-                            )) {
-                                ForEach(info.options, id: \.self) { option in
-                                    Text(option).tag(option)
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(command.parameterInfos, id: \.name) { info in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(info.name)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if info.options.isEmpty {
+                                TextField("", text: Binding(
+                                    get: { values[info.name] ?? "" },
+                                    set: { values[info.name] = $0 }
+                                ))
+                                .textFieldStyle(.roundedBorder)
+                            } else {
+                                Picker("", selection: Binding(
+                                    get: { values[info.name] ?? info.options.first ?? "" },
+                                    set: { values[info.name] = $0 }
+                                )) {
+                                    ForEach(info.options, id: \.self) { option in
+                                        Text(option).tag(option)
+                                    }
                                 }
+                                .pickerStyle(.menu)
+                                .labelsHidden()
                             }
-                            .labelsHidden()
                         }
                     }
                 }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
             }
 
+            // 출력 영역 (남은 공간 채움)
             if runner.isRunning || runner.isFinished {
                 Divider()
                 OutputTextView(text: runner.output.isEmpty ? "(실행 중...)" : runner.output)
-                    .frame(height: 200)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .cornerRadius(6)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+            } else {
+                Spacer()
             }
 
+            // 하단 버튼 (항상 고정)
+            Divider()
             HStack {
                 if runner.isFinished {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                     Spacer()
-                    Button("닫기") { dismiss() }
+                    Button("닫기") { onClose?() }
                 } else if runner.isRunning {
                     ProgressView()
                         .scaleEffect(0.7)
@@ -1717,17 +1748,18 @@ struct ScriptExecutionView: View {
                     }
                     .foregroundStyle(.red)
                 } else {
-                    Button("닫기") { dismiss() }
+                    Button("닫기") { onClose?() }
                     Spacer()
                     Button("실행") {
                         executeScript()
                     }
                     .keyboardShortcut(.return)
+                    .disabled(!isValid && !command.parameterInfos.isEmpty)
                 }
             }
+            .padding()
         }
-        .padding()
-        .frame(width: 450)
+        .frame(minWidth: 400, minHeight: 250)
     }
 
     func executeScript() {
@@ -1737,7 +1769,15 @@ struct ScriptExecutionView: View {
                 finalValues[info.name] = first
             }
         }
-        let finalCommand = command.commandWith(values: finalValues)
+        var finalCommand = command.commandWith(values: finalValues)
+        // 스마트 따옴표를 일반 따옴표로 변환
+        finalCommand = finalCommand
+            .replacingOccurrences(of: "\u{201C}", with: "\"")  // "
+            .replacingOccurrences(of: "\u{201D}", with: "\"")  // "
+            .replacingOccurrences(of: "\u{2018}", with: "'")   // '
+            .replacingOccurrences(of: "\u{2019}", with: "'")
+
+        onExecutionStarted?()
 
         runner.run(command: finalCommand) { output in
             store.addHistory(HistoryItem(
@@ -1748,6 +1788,90 @@ struct ScriptExecutionView: View {
                 output: output,
                 commandId: command.id
             ))
+        }
+    }
+}
+
+// MARK: - Script Execution Window Controller
+class ScriptExecutionWindowController {
+    static var activeWindows: [UUID: NSWindow] = [:]
+
+    static func show(command: Command, store: CommandStore) {
+        // 이미 열린 창이 있으면 앞으로 가져오기
+        if let existingWindow = activeWindows[command.id] {
+            existingWindow.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        // 파라미터 개수에 따라 초기 높이 계산
+        let paramCount = command.parameterInfos.count
+        let baseHeight: CGFloat = 120  // 헤더 + 버튼
+        let paramHeight: CGFloat = CGFloat(paramCount) * 55  // 파라미터 당 높이
+        let initialHeight: CGFloat = baseHeight + paramHeight
+
+        let contentView = ScriptExecutionView(
+            command: command,
+            store: store,
+            onClose: {
+                closeWindow(for: command.id)
+            },
+            onExecutionStarted: {
+                expandWindow(for: command.id)
+            }
+        )
+
+        let hostingController = NSHostingController(rootView: contentView)
+        let panel = NSPanel(contentViewController: hostingController)
+
+        panel.title = command.title
+        panel.styleMask = [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel]
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+
+        let window = panel
+        window.setContentSize(NSSize(width: 450, height: initialHeight))
+        window.minSize = NSSize(width: 400, height: 150)
+
+        // 메인 창 기준으로 위치
+        if let mainWindow = NSApp.mainWindow ?? NSApp.windows.first {
+            let mainFrame = mainWindow.frame
+            let x = mainFrame.midX - 225
+            let y = mainFrame.midY - initialHeight / 2
+            window.setFrameOrigin(NSPoint(x: x, y: y))
+        } else {
+            window.center()
+        }
+
+        // 모달처럼 항상 앞에 고정
+        window.level = .modalPanel
+
+        // 창 닫힐 때 정리
+        window.isReleasedWhenClosed = false
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { _ in
+            activeWindows.removeValue(forKey: command.id)
+        }
+
+        activeWindows[command.id] = window
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    static func expandWindow(for commandId: UUID) {
+        guard let window = activeWindows[commandId] else { return }
+        let currentFrame = window.frame
+        let newHeight: CGFloat = 400
+        let newY = currentFrame.origin.y - (newHeight - currentFrame.height)
+        let newFrame = NSRect(x: currentFrame.origin.x, y: newY, width: currentFrame.width, height: newHeight)
+        window.animator().setFrame(newFrame, display: true)
+    }
+
+    static func closeWindow(for commandId: UUID) {
+        if let window = activeWindows[commandId] {
+            window.close()
+            activeWindows.removeValue(forKey: commandId)
         }
     }
 }
