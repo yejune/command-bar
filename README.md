@@ -88,9 +88,13 @@ git checkout {branch:main|develop}     # branch dropdown selection
   - Use in URL, headers, query parameters, and body
   - Prompts for values at execution time
   - Example: `https://api.example.com/users/{userId}`
+- Body types:
+  - JSON: Raw JSON format
+  - Form Data: Key-value pairs
+  - Multipart: File upload support
+- File upload with automatic MIME type detection
 - Save and view responses
 - Response history tracking
-- Support for JSON, form-data, and raw body formats
 
 ### 10. Multi-language Support
 - Korean, English, Japanese
@@ -128,7 +132,7 @@ git checkout {branch:main|develop}     # branch dropdown selection
    - **Body**: Configure request body (supports `{variableName}`)
      - JSON: Raw JSON format
      - Form Data: Key-value pairs
-     - Raw: Plain text
+     - Multipart: File upload with text parameters
 3. Click **Send** or run command to execute
    - If using `{variableName}` parameters, you'll be prompted to enter values
 4. View response in detail window:
@@ -215,6 +219,14 @@ git checkout {branch:main|develop}     # branch dropdown selection
   }
   ```
 - Description: Prompts for userName and userEmail values when executed
+
+**Multipart File Upload:**
+- Method: POST
+- URL: `https://api.example.com/upload`
+- Body Type: Multipart
+- Text Parameters: `description: My file`
+- File Parameters: `file: /path/to/image.png`
+- Description: Uploads file with automatic MIME type detection
 
 ## Data Storage
 
