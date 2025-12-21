@@ -3,6 +3,794 @@ import AppKit
 import UniformTypeIdentifiers
 import ServiceManagement
 
+// MARK: - 다국어 지원 시스템
+
+enum Language: String, Codable, CaseIterable {
+    case korean = "ko"
+    case english = "en"
+    case japanese = "ja"
+
+    var displayName: String {
+        switch self {
+        case .korean: return "한국어"
+        case .english: return "English"
+        case .japanese: return "日本語"
+        }
+    }
+}
+
+struct LocalizedStrings: Codable {
+    // 탭 이름
+    var tabCommands: String
+    var tabHistory: String
+    var tabClipboard: String
+    var tabTrash: String
+    var tabSettings: String
+
+    // 실행 타입
+    var executionTerminal: String
+    var executionBackground: String
+    var executionScript: String
+    var executionSchedule: String
+
+    // 알림 상태
+    var alertDayBefore: String
+    var alertHourBefore: String
+    var alertThirtyMinBefore: String
+    var alertFiveMinBefore: String
+    var alertNow: String
+    var alertPassed: String
+
+    // 반복 타입
+    var repeatNone: String
+    var repeatDaily: String
+    var repeatWeekly: String
+    var repeatMonthly: String
+
+    // 히스토리 타입
+    var historyExecuted: String
+    var historyBackground: String
+    var historyScript: String
+    var historyScheduleAlert: String
+    var historyReminder: String
+    var historyAdded: String
+    var historyDeleted: String
+    var historyRestored: String
+    var historyPermanentlyDeleted: String
+
+    // 공통 버튼
+    var buttonClose: String
+    var buttonCancel: String
+    var buttonConfirm: String
+    var buttonSave: String
+    var buttonDelete: String
+    var buttonRestore: String
+    var buttonAdd: String
+    var buttonEdit: String
+    var buttonRun: String
+    var buttonStop: String
+    var buttonCopy: String
+    var buttonClear: String
+    var buttonExport: String
+    var buttonImport: String
+
+    // 설정
+    var settingsTitle: String
+    var settingsGeneral: String
+    var settingsHistoryTab: String
+    var settingsClipboardTab: String
+    var settingsBackup: String
+    var settingsLanguage: String
+    var settingsAlwaysOnTop: String
+    var settingsLaunchAtLogin: String
+    var settingsBackgroundOpacity: String
+    var settingsMaxCount: String
+    var settingsNotesFolderName: String
+    var settingsExportFile: String
+    var settingsImportFile: String
+    var settingsBackupNote: String
+    var settingsLanguagePack: String
+    var settingsExportLanguagePack: String
+    var settingsImportLanguagePack: String
+
+    // 휴지통
+    var trashTitle: String
+    var trashEmpty: String
+    var trashEmptyMessage: String
+    var trashEmptyButton: String
+
+    // 명령
+    var commandTitle: String
+    var commandCommand: String
+    var commandType: String
+    var commandTerminalApp: String
+    var commandInterval: String
+    var commandScheduleDate: String
+    var commandRepeat: String
+    var commandReminders: String
+    var commandAddNew: String
+    var commandEditTitle: String
+    var commandNoCommands: String
+    var commandAddFirst: String
+
+    // 파라미터
+    var parameterInputTitle: String
+    var parameterHelpTitle: String
+    var parameterExample: String
+    var parameterEnterValue: String
+
+    // 히스토리
+    var historyTitle: String
+    var historyNoHistory: String
+    var historyOutput: String
+    var historyTimes: String
+
+    // 클립보드
+    var clipboardTitle: String
+    var clipboardNoItems: String
+    var clipboardSendToNotes: String
+    var clipboardMakeCommand: String
+
+    // 알림 메시지
+    var alertExportSuccess: String
+    var alertExportFailed: String
+    var alertImportSuccess: String
+    var alertImportFailed: String
+    var alertInvalidFormat: String
+    var alertClipboardEmpty: String
+    var alertCopiedToClipboard: String
+    var alertMergeComplete: String
+    var alertOverwriteComplete: String
+    var alertSaveFailed: String
+    var alertReadFailed: String
+
+    // 임포트 다이얼로그
+    var importDialogTitle: String
+    var importMerge: String
+    var importOverwrite: String
+
+    // 언어팩 관련
+    var languagePackExportSuccess: String
+    var languagePackImportSuccess: String
+    var languagePackInvalidFormat: String
+
+    // 스크립트
+    var scriptRunning: String
+    var scriptCompleted: String
+    var scriptFailed: String
+    var scriptOutput: String
+
+    // 기타
+    var secondsUnit: String
+    var minutesUnit: String
+    var hoursUnit: String
+    var daysUnit: String
+    var manual: String
+    var running: String
+    var stopped: String
+    var noOutput: String
+    var lastRun: String
+    var nextRun: String
+    var interval: String
+
+    // 추가 UI 문자열
+    var commandListTitle: String
+    var addNewItem: String
+    var dateTime: String
+    var executionMethod: String
+    var commandInput: String
+    var commandHelpText: String
+    var terminalAppLabel: String
+    var intervalLabel: String
+    var clipboardDetail: String
+    var addToTop: String
+    var addToBottom: String
+    var notification: String
+    var contextMenuRun: String
+    var contextMenuEdit: String
+    var contextMenuCopy: String
+    var helpSyntax: String
+    var parameter: String
+    var timeAfter: String
+    var timePassed: String
+    var clipboardContent: String
+}
+
+// 기본 언어팩들
+extension LocalizedStrings {
+    static let korean = LocalizedStrings(
+        tabCommands: "명령",
+        tabHistory: "히스토리",
+        tabClipboard: "클립보드",
+        tabTrash: "휴지통",
+        tabSettings: "설정",
+
+        executionTerminal: "터미널",
+        executionBackground: "백그라운드",
+        executionScript: "실행",
+        executionSchedule: "일정",
+
+        alertDayBefore: "D-1",
+        alertHourBefore: "1시간 전",
+        alertThirtyMinBefore: "30분 전",
+        alertFiveMinBefore: "5분 전",
+        alertNow: "지금!",
+        alertPassed: "지남",
+
+        repeatNone: "없음",
+        repeatDaily: "매일",
+        repeatWeekly: "매주",
+        repeatMonthly: "매월",
+
+        historyExecuted: "실행",
+        historyBackground: "백그라운드",
+        historyScript: "스크립트",
+        historyScheduleAlert: "일정 알림",
+        historyReminder: "미리 알림",
+        historyAdded: "등록",
+        historyDeleted: "삭제",
+        historyRestored: "복원",
+        historyPermanentlyDeleted: "제거",
+
+        buttonClose: "닫기",
+        buttonCancel: "취소",
+        buttonConfirm: "확인",
+        buttonSave: "저장",
+        buttonDelete: "삭제",
+        buttonRestore: "복원",
+        buttonAdd: "추가",
+        buttonEdit: "편집",
+        buttonRun: "실행",
+        buttonStop: "정지",
+        buttonCopy: "복사",
+        buttonClear: "지우기",
+        buttonExport: "내보내기",
+        buttonImport: "가져오기",
+
+        settingsTitle: "설정",
+        settingsGeneral: "기본",
+        settingsHistoryTab: "히스토리",
+        settingsClipboardTab: "클립보드",
+        settingsBackup: "백업",
+        settingsLanguage: "언어",
+        settingsAlwaysOnTop: "항상 위에 표시",
+        settingsLaunchAtLogin: "로그인 시 시작",
+        settingsBackgroundOpacity: "배경 투명도",
+        settingsMaxCount: "최대 개수",
+        settingsNotesFolderName: "메모 폴더명",
+        settingsExportFile: "파일 내보내기",
+        settingsImportFile: "파일 가져오기",
+        settingsBackupNote: "명령 목록만 백업됩니다",
+        settingsLanguagePack: "언어팩",
+        settingsExportLanguagePack: "언어팩 견본 내보내기",
+        settingsImportLanguagePack: "언어팩 가져오기",
+
+        trashTitle: "휴지통",
+        trashEmpty: "비우기",
+        trashEmptyMessage: "휴지통이 비어있습니다",
+        trashEmptyButton: "비우기",
+
+        commandTitle: "제목",
+        commandCommand: "명령",
+        commandType: "타입",
+        commandTerminalApp: "터미널 앱",
+        commandInterval: "실행 간격",
+        commandScheduleDate: "일정",
+        commandRepeat: "반복",
+        commandReminders: "미리 알림",
+        commandAddNew: "명령 추가",
+        commandEditTitle: "명령 편집",
+        commandNoCommands: "명령이 없습니다",
+        commandAddFirst: "첫 명령을 추가하세요",
+
+        parameterInputTitle: "파라미터 입력",
+        parameterHelpTitle: "파라미터 도움말",
+        parameterExample: "예시",
+        parameterEnterValue: "값 입력",
+
+        historyTitle: "히스토리",
+        historyNoHistory: "기록이 없습니다",
+        historyOutput: "출력",
+        historyTimes: "회",
+
+        clipboardTitle: "클립보드",
+        clipboardNoItems: "클립보드가 비어있습니다",
+        clipboardSendToNotes: "메모로 보내기",
+        clipboardMakeCommand: "명령으로 만들기",
+
+        alertExportSuccess: "내보내기 완료",
+        alertExportFailed: "내보내기 실패",
+        alertImportSuccess: "가져오기 완료",
+        alertImportFailed: "가져오기 실패",
+        alertInvalidFormat: "잘못된 형식",
+        alertClipboardEmpty: "클립보드가 비어있음",
+        alertCopiedToClipboard: "클립보드에 복사됨",
+        alertMergeComplete: "병합 완료",
+        alertOverwriteComplete: "덮어쓰기 완료",
+        alertSaveFailed: "저장 실패",
+        alertReadFailed: "파일 읽기 실패",
+
+        importDialogTitle: "가져오기 방식",
+        importMerge: "병합 (기존 데이터 유지)",
+        importOverwrite: "덮어쓰기 (기존 데이터 삭제)",
+
+        languagePackExportSuccess: "언어팩 견본이 저장되었습니다",
+        languagePackImportSuccess: "언어팩을 적용했습니다",
+        languagePackInvalidFormat: "잘못된 언어팩 형식입니다",
+
+        scriptRunning: "실행 중...",
+        scriptCompleted: "완료",
+        scriptFailed: "실패",
+        scriptOutput: "출력",
+
+        secondsUnit: "초",
+        minutesUnit: "분",
+        hoursUnit: "시간",
+        daysUnit: "일",
+        manual: "수동",
+        running: "실행 중",
+        stopped: "정지",
+        noOutput: "출력 없음",
+        lastRun: "마지막 실행",
+        nextRun: "다음 실행",
+        interval: "간격",
+
+        commandListTitle: "명령 목록",
+        addNewItem: "새 항목 추가",
+        dateTime: "날짜/시간",
+        executionMethod: "실행 방식",
+        commandInput: "명령어",
+        commandHelpText: "예: echo {name} → 실행 시 name 입력",
+        terminalAppLabel: "터미널 앱",
+        intervalLabel: "주기 (초, 0이면 수동)",
+        clipboardDetail: "클립보드 상세",
+        addToTop: "맨 위에 등록",
+        addToBottom: "맨 아래에 등록",
+        notification: "알림",
+        contextMenuRun: "실행",
+        contextMenuEdit: "수정",
+        contextMenuCopy: "복사",
+        helpSyntax: "기본 문법",
+        parameter: "파라미터",
+        timeAfter: "후",
+        timePassed: "지남",
+        clipboardContent: "클립보드 내용"
+    )
+
+    static let english = LocalizedStrings(
+        tabCommands: "Commands",
+        tabHistory: "History",
+        tabClipboard: "Clipboard",
+        tabTrash: "Trash",
+        tabSettings: "Settings",
+
+        executionTerminal: "Terminal",
+        executionBackground: "Background",
+        executionScript: "Script",
+        executionSchedule: "Schedule",
+
+        alertDayBefore: "D-1",
+        alertHourBefore: "1 hour",
+        alertThirtyMinBefore: "30 min",
+        alertFiveMinBefore: "5 min",
+        alertNow: "Now!",
+        alertPassed: "Passed",
+
+        repeatNone: "None",
+        repeatDaily: "Daily",
+        repeatWeekly: "Weekly",
+        repeatMonthly: "Monthly",
+
+        historyExecuted: "Executed",
+        historyBackground: "Background",
+        historyScript: "Script",
+        historyScheduleAlert: "Schedule Alert",
+        historyReminder: "Reminder",
+        historyAdded: "Added",
+        historyDeleted: "Deleted",
+        historyRestored: "Restored",
+        historyPermanentlyDeleted: "Removed",
+
+        buttonClose: "Close",
+        buttonCancel: "Cancel",
+        buttonConfirm: "OK",
+        buttonSave: "Save",
+        buttonDelete: "Delete",
+        buttonRestore: "Restore",
+        buttonAdd: "Add",
+        buttonEdit: "Edit",
+        buttonRun: "Run",
+        buttonStop: "Stop",
+        buttonCopy: "Copy",
+        buttonClear: "Clear",
+        buttonExport: "Export",
+        buttonImport: "Import",
+
+        settingsTitle: "Settings",
+        settingsGeneral: "General",
+        settingsHistoryTab: "History",
+        settingsClipboardTab: "Clipboard",
+        settingsBackup: "Backup",
+        settingsLanguage: "Language",
+        settingsAlwaysOnTop: "Always on Top",
+        settingsLaunchAtLogin: "Launch at Login",
+        settingsBackgroundOpacity: "Background Opacity",
+        settingsMaxCount: "Max Count",
+        settingsNotesFolderName: "Notes Folder",
+        settingsExportFile: "Export File",
+        settingsImportFile: "Import File",
+        settingsBackupNote: "Only commands are backed up",
+        settingsLanguagePack: "Language Pack",
+        settingsExportLanguagePack: "Export Template",
+        settingsImportLanguagePack: "Import Pack",
+
+        trashTitle: "Trash",
+        trashEmpty: "Empty",
+        trashEmptyMessage: "Trash is empty",
+        trashEmptyButton: "Empty",
+
+        commandTitle: "Title",
+        commandCommand: "Command",
+        commandType: "Type",
+        commandTerminalApp: "Terminal App",
+        commandInterval: "Interval",
+        commandScheduleDate: "Schedule",
+        commandRepeat: "Repeat",
+        commandReminders: "Reminders",
+        commandAddNew: "Add Command",
+        commandEditTitle: "Edit Command",
+        commandNoCommands: "No commands",
+        commandAddFirst: "Add your first command",
+
+        parameterInputTitle: "Enter Parameters",
+        parameterHelpTitle: "Parameter Help",
+        parameterExample: "Example",
+        parameterEnterValue: "Enter value",
+
+        historyTitle: "History",
+        historyNoHistory: "No history",
+        historyOutput: "Output",
+        historyTimes: "times",
+
+        clipboardTitle: "Clipboard",
+        clipboardNoItems: "Clipboard is empty",
+        clipboardSendToNotes: "Send to Notes",
+        clipboardMakeCommand: "Make Command",
+
+        alertExportSuccess: "Export complete",
+        alertExportFailed: "Export failed",
+        alertImportSuccess: "Import complete",
+        alertImportFailed: "Import failed",
+        alertInvalidFormat: "Invalid format",
+        alertClipboardEmpty: "Clipboard is empty",
+        alertCopiedToClipboard: "Copied to clipboard",
+        alertMergeComplete: "Merge complete",
+        alertOverwriteComplete: "Overwrite complete",
+        alertSaveFailed: "Save failed",
+        alertReadFailed: "Failed to read file",
+
+        importDialogTitle: "Import Method",
+        importMerge: "Merge (keep existing)",
+        importOverwrite: "Overwrite (delete existing)",
+
+        languagePackExportSuccess: "Language pack template saved",
+        languagePackImportSuccess: "Language pack applied",
+        languagePackInvalidFormat: "Invalid language pack format",
+
+        scriptRunning: "Running...",
+        scriptCompleted: "Completed",
+        scriptFailed: "Failed",
+        scriptOutput: "Output",
+
+        secondsUnit: "sec",
+        minutesUnit: "min",
+        hoursUnit: "hour",
+        daysUnit: "day",
+        manual: "Manual",
+        running: "Running",
+        stopped: "Stopped",
+        noOutput: "No output",
+        lastRun: "Last run",
+        nextRun: "Next run",
+        interval: "Interval",
+
+        commandListTitle: "Command List",
+        addNewItem: "Add New Item",
+        dateTime: "Date/Time",
+        executionMethod: "Execution Method",
+        commandInput: "Command",
+        commandHelpText: "Ex: echo {name} → enter name at runtime",
+        terminalAppLabel: "Terminal App",
+        intervalLabel: "Interval (sec, 0 for manual)",
+        clipboardDetail: "Clipboard Detail",
+        addToTop: "Add to Top",
+        addToBottom: "Add to Bottom",
+        notification: "Notification",
+        contextMenuRun: "Run",
+        contextMenuEdit: "Edit",
+        contextMenuCopy: "Copy",
+        helpSyntax: "Basic Syntax",
+        parameter: "Parameter",
+        timeAfter: "later",
+        timePassed: "ago",
+        clipboardContent: "Clipboard Content"
+    )
+
+    static let japanese = LocalizedStrings(
+        tabCommands: "コマンド",
+        tabHistory: "履歴",
+        tabClipboard: "クリップボード",
+        tabTrash: "ゴミ箱",
+        tabSettings: "設定",
+
+        executionTerminal: "ターミナル",
+        executionBackground: "バックグラウンド",
+        executionScript: "実行",
+        executionSchedule: "スケジュール",
+
+        alertDayBefore: "1日前",
+        alertHourBefore: "1時間前",
+        alertThirtyMinBefore: "30分前",
+        alertFiveMinBefore: "5分前",
+        alertNow: "今!",
+        alertPassed: "経過",
+
+        repeatNone: "なし",
+        repeatDaily: "毎日",
+        repeatWeekly: "毎週",
+        repeatMonthly: "毎月",
+
+        historyExecuted: "実行",
+        historyBackground: "バックグラウンド",
+        historyScript: "スクリプト",
+        historyScheduleAlert: "スケジュール通知",
+        historyReminder: "リマインダー",
+        historyAdded: "追加",
+        historyDeleted: "削除",
+        historyRestored: "復元",
+        historyPermanentlyDeleted: "完全削除",
+
+        buttonClose: "閉じる",
+        buttonCancel: "キャンセル",
+        buttonConfirm: "確認",
+        buttonSave: "保存",
+        buttonDelete: "削除",
+        buttonRestore: "復元",
+        buttonAdd: "追加",
+        buttonEdit: "編集",
+        buttonRun: "実行",
+        buttonStop: "停止",
+        buttonCopy: "コピー",
+        buttonClear: "クリア",
+        buttonExport: "エクスポート",
+        buttonImport: "インポート",
+
+        settingsTitle: "設定",
+        settingsGeneral: "一般",
+        settingsHistoryTab: "履歴",
+        settingsClipboardTab: "クリップボード",
+        settingsBackup: "バックアップ",
+        settingsLanguage: "言語",
+        settingsAlwaysOnTop: "常に最前面",
+        settingsLaunchAtLogin: "ログイン時に起動",
+        settingsBackgroundOpacity: "背景の透明度",
+        settingsMaxCount: "最大件数",
+        settingsNotesFolderName: "メモフォルダ名",
+        settingsExportFile: "ファイル出力",
+        settingsImportFile: "ファイル読込",
+        settingsBackupNote: "コマンドのみバックアップされます",
+        settingsLanguagePack: "言語パック",
+        settingsExportLanguagePack: "テンプレート出力",
+        settingsImportLanguagePack: "パック読込",
+
+        trashTitle: "ゴミ箱",
+        trashEmpty: "空にする",
+        trashEmptyMessage: "ゴミ箱は空です",
+        trashEmptyButton: "空にする",
+
+        commandTitle: "タイトル",
+        commandCommand: "コマンド",
+        commandType: "タイプ",
+        commandTerminalApp: "ターミナルアプリ",
+        commandInterval: "実行間隔",
+        commandScheduleDate: "スケジュール",
+        commandRepeat: "繰り返し",
+        commandReminders: "リマインダー",
+        commandAddNew: "コマンド追加",
+        commandEditTitle: "コマンド編集",
+        commandNoCommands: "コマンドがありません",
+        commandAddFirst: "最初のコマンドを追加してください",
+
+        parameterInputTitle: "パラメータ入力",
+        parameterHelpTitle: "パラメータヘルプ",
+        parameterExample: "例",
+        parameterEnterValue: "値を入力",
+
+        historyTitle: "履歴",
+        historyNoHistory: "履歴がありません",
+        historyOutput: "出力",
+        historyTimes: "回",
+
+        clipboardTitle: "クリップボード",
+        clipboardNoItems: "クリップボードは空です",
+        clipboardSendToNotes: "メモに送信",
+        clipboardMakeCommand: "コマンドにする",
+
+        alertExportSuccess: "エクスポート完了",
+        alertExportFailed: "エクスポート失敗",
+        alertImportSuccess: "インポート完了",
+        alertImportFailed: "インポート失敗",
+        alertInvalidFormat: "無効な形式",
+        alertClipboardEmpty: "クリップボードが空です",
+        alertCopiedToClipboard: "クリップボードにコピー",
+        alertMergeComplete: "マージ完了",
+        alertOverwriteComplete: "上書き完了",
+        alertSaveFailed: "保存失敗",
+        alertReadFailed: "ファイル読み込み失敗",
+
+        importDialogTitle: "インポート方法",
+        importMerge: "マージ（既存を維持）",
+        importOverwrite: "上書き（既存を削除）",
+
+        languagePackExportSuccess: "言語パックテンプレートを保存しました",
+        languagePackImportSuccess: "言語パックを適用しました",
+        languagePackInvalidFormat: "無効な言語パック形式です",
+
+        scriptRunning: "実行中...",
+        scriptCompleted: "完了",
+        scriptFailed: "失敗",
+        scriptOutput: "出力",
+
+        secondsUnit: "秒",
+        minutesUnit: "分",
+        hoursUnit: "時間",
+        daysUnit: "日",
+        manual: "手動",
+        running: "実行中",
+        stopped: "停止",
+        noOutput: "出力なし",
+        lastRun: "最終実行",
+        nextRun: "次回実行",
+        interval: "間隔",
+
+        commandListTitle: "コマンド一覧",
+        addNewItem: "新規追加",
+        dateTime: "日時",
+        executionMethod: "実行方法",
+        commandInput: "コマンド",
+        commandHelpText: "例: echo {name} → 実行時にname入力",
+        terminalAppLabel: "ターミナルアプリ",
+        intervalLabel: "間隔（秒、0は手動）",
+        clipboardDetail: "クリップボード詳細",
+        addToTop: "先頭に追加",
+        addToBottom: "末尾に追加",
+        notification: "通知",
+        contextMenuRun: "実行",
+        contextMenuEdit: "編集",
+        contextMenuCopy: "コピー",
+        helpSyntax: "基本文法",
+        parameter: "パラメータ",
+        timeAfter: "後",
+        timePassed: "経過",
+        clipboardContent: "クリップボード内容"
+    )
+
+    static func forLanguage(_ language: Language) -> LocalizedStrings {
+        switch language {
+        case .korean: return .korean
+        case .english: return .english
+        case .japanese: return .japanese
+        }
+    }
+}
+
+// 언어팩 내보내기/가져오기용 구조체
+struct LanguagePackExport: Codable {
+    let version: Int
+    let languageCode: String
+    let languageName: String
+    let strings: LocalizedStrings
+
+    init(languageCode: String, languageName: String, strings: LocalizedStrings) {
+        self.version = 1
+        self.languageCode = languageCode
+        self.languageName = languageName
+        self.strings = strings
+    }
+}
+
+// 전역 언어 매니저
+class LanguageManager: ObservableObject {
+    static let shared = LanguageManager()
+
+    @Published var currentLanguage: Language {
+        didSet {
+            UserDefaults.standard.set(currentLanguage.rawValue, forKey: "appLanguage")
+            loadStrings()
+        }
+    }
+
+    @Published var strings: LocalizedStrings
+
+    private let customStringsKey = "customLanguageStrings"
+
+    private init() {
+        let savedLanguage = UserDefaults.standard.string(forKey: "appLanguage") ?? "ko"
+        self.currentLanguage = Language(rawValue: savedLanguage) ?? .korean
+        self.strings = .korean
+        loadStrings()
+    }
+
+    private func loadStrings() {
+        // 먼저 커스텀 언어팩이 있는지 확인
+        if let customData = UserDefaults.standard.data(forKey: customStringsKey),
+           let customStrings = try? JSONDecoder().decode(LocalizedStrings.self, from: customData) {
+            strings = customStrings
+        } else {
+            strings = LocalizedStrings.forLanguage(currentLanguage)
+        }
+    }
+
+    func importLanguagePack(from data: Data) -> Bool {
+        guard let pack = try? JSONDecoder().decode(LanguagePackExport.self, from: data) else {
+            return false
+        }
+
+        // 커스텀 언어팩 저장
+        if let encoded = try? JSONEncoder().encode(pack.strings) {
+            UserDefaults.standard.set(encoded, forKey: customStringsKey)
+            strings = pack.strings
+            return true
+        }
+        return false
+    }
+
+    func exportLanguagePackTemplate() -> Data? {
+        let pack = LanguagePackExport(
+            languageCode: "custom",
+            languageName: "Custom Language",
+            strings: strings
+        )
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try? encoder.encode(pack)
+    }
+
+    func resetToBuiltIn() {
+        UserDefaults.standard.removeObject(forKey: customStringsKey)
+        strings = LocalizedStrings.forLanguage(currentLanguage)
+    }
+
+    var hasCustomPack: Bool {
+        UserDefaults.standard.data(forKey: customStringsKey) != nil
+    }
+}
+
+// 편의를 위한 전역 접근자
+var L: LocalizedStrings { LanguageManager.shared.strings }
+
+// 클립보드 아이템
+struct ClipboardItem: Identifiable, Codable {
+    let id: UUID
+    let content: String
+    let timestamp: Date
+
+    init(content: String) {
+        self.id = UUID()
+        self.content = content
+        self.timestamp = Date()
+    }
+
+    var preview: String {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count > 100 {
+            return String(trimmed.prefix(100)) + "..."
+        }
+        return trimmed
+    }
+}
+
 struct HoverButtonStyle: ButtonStyle {
     @State private var isHovering = false
 
@@ -11,6 +799,23 @@ struct HoverButtonStyle: ButtonStyle {
             .padding(6)
             .background(
                 RoundedRectangle(cornerRadius: 6)
+                    .fill(isHovering ? Color.primary.opacity(0.1) : Color.clear)
+            )
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .onHover { hovering in
+                isHovering = hovering
+            }
+    }
+}
+
+struct SmallHoverButtonStyle: ButtonStyle {
+    @State private var isHovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(3)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
                     .fill(isHovering ? Color.primary.opacity(0.1) : Color.clear)
             )
             .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
@@ -65,10 +870,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 enum ExecutionType: String, Codable, CaseIterable {
-    case terminal = "터미널"
-    case background = "백그라운드"
-    case script = "실행"
-    case schedule = "일정"
+    case terminal = "terminal"
+    case background = "background"
+    case script = "script"
+    case schedule = "schedule"
+
+    var displayName: String {
+        switch self {
+        case .terminal: return L.executionTerminal
+        case .background: return L.executionBackground
+        case .script: return L.executionScript
+        case .schedule: return L.executionSchedule
+        }
+    }
 }
 
 enum TerminalApp: String, Codable, CaseIterable {
@@ -78,19 +892,40 @@ enum TerminalApp: String, Codable, CaseIterable {
 
 enum AlertState: String, Codable {
     case none = ""
-    case dayBefore = "D-1"
-    case hourBefore = "1시간 전"
-    case thirtyMinBefore = "30분 전"
-    case fiveMinBefore = "5분 전"
-    case now = "지금!"
-    case passed = "지남"
+    case dayBefore = "dayBefore"
+    case hourBefore = "hourBefore"
+    case thirtyMinBefore = "thirtyMinBefore"
+    case fiveMinBefore = "fiveMinBefore"
+    case now = "now"
+    case passed = "passed"
+
+    var displayName: String {
+        switch self {
+        case .none: return ""
+        case .dayBefore: return L.alertDayBefore
+        case .hourBefore: return L.alertHourBefore
+        case .thirtyMinBefore: return L.alertThirtyMinBefore
+        case .fiveMinBefore: return L.alertFiveMinBefore
+        case .now: return L.alertNow
+        case .passed: return L.alertPassed
+        }
+    }
 }
 
 enum RepeatType: String, Codable, CaseIterable {
-    case none = "없음"
-    case daily = "매일"
-    case weekly = "매주"
-    case monthly = "매월"
+    case none = "none"
+    case daily = "daily"
+    case weekly = "weekly"
+    case monthly = "monthly"
+
+    var displayName: String {
+        switch self {
+        case .none: return L.repeatNone
+        case .daily: return L.repeatDaily
+        case .weekly: return L.repeatWeekly
+        case .monthly: return L.repeatMonthly
+        }
+    }
 }
 
 struct Command: Identifiable, Codable {
@@ -174,15 +1009,29 @@ extension Command {
 
 // 히스토리 아이템
 enum HistoryType: String, Codable {
-    case executed = "실행"
-    case background = "백그라운드"
-    case script = "스크립트"
-    case scheduleAlert = "일정 알림"
-    case reminder = "미리 알림"
-    case added = "등록"
-    case deleted = "삭제"
-    case restored = "복원"
-    case permanentlyDeleted = "제거"
+    case executed = "executed"
+    case background = "background"
+    case script = "script"
+    case scheduleAlert = "scheduleAlert"
+    case reminder = "reminder"
+    case added = "added"
+    case deleted = "deleted"
+    case restored = "restored"
+    case permanentlyDeleted = "permanentlyDeleted"
+
+    var displayName: String {
+        switch self {
+        case .executed: return L.historyExecuted
+        case .background: return L.historyBackground
+        case .script: return L.historyScript
+        case .scheduleAlert: return L.historyScheduleAlert
+        case .reminder: return L.historyReminder
+        case .added: return L.historyAdded
+        case .deleted: return L.historyDeleted
+        case .restored: return L.historyRestored
+        case .permanentlyDeleted: return L.historyPermanentlyDeleted
+        }
+    }
 }
 
 struct HistoryItem: Identifiable, Codable {
@@ -233,6 +1082,16 @@ class Settings: ObservableObject {
             applyBackgroundOpacity()
         }
     }
+    @Published var notesFolderName: String {
+        didSet {
+            UserDefaults.standard.set(notesFolderName, forKey: "notesFolderName")
+        }
+    }
+    @Published var maxClipboardCount: Int {
+        didSet {
+            UserDefaults.standard.set(maxClipboardCount, forKey: "maxClipboardCount")
+        }
+    }
 
     init() {
         self.alwaysOnTop = UserDefaults.standard.bool(forKey: "alwaysOnTop")
@@ -241,6 +1100,9 @@ class Settings: ObservableObject {
         self.launchAtLogin = UserDefaults.standard.bool(forKey: "launchAtLogin")
         let savedOpacity = UserDefaults.standard.double(forKey: "backgroundOpacity")
         self.backgroundOpacity = savedOpacity > 0 ? savedOpacity : 1.0
+        self.notesFolderName = UserDefaults.standard.string(forKey: "notesFolderName") ?? "클립보드 메모"
+        let savedClipboardCount = UserDefaults.standard.integer(forKey: "maxClipboardCount")
+        self.maxClipboardCount = savedClipboardCount > 0 ? savedClipboardCount : 10000
     }
 
     func applyAlwaysOnTop() {
@@ -277,21 +1139,27 @@ class CommandStore: ObservableObject {
     @Published var commands: [Command] = []
     @Published var alertingCommandId: UUID?  // 현재 알림 중인 명령
     @Published var history: [HistoryItem] = []
+    @Published var clipboardItems: [ClipboardItem] = []
     private var timers: [UUID: Timer] = [:]
     private var scheduleCheckTimer: Timer?
+    private var clipboardTimer: Timer?
+    private var lastClipboardChangeCount: Int = 0
 
     private let configDir = URL(fileURLWithPath: NSHomeDirectory())
         .appendingPathComponent(".command_bar")
     private var url: URL { configDir.appendingPathComponent("app.json") }
     private var historyUrl: URL { configDir.appendingPathComponent("history.json") }
+    private var clipboardUrl: URL { configDir.appendingPathComponent("clipboard.json") }
 
     init() {
         ensureConfigDir()
         migrateOldFiles()
         load()
         loadHistory()
+        loadClipboard()
         startTimers()
         startScheduleChecker()
+        startClipboardMonitor()
     }
 
     private func ensureConfigDir() {
@@ -346,6 +1214,99 @@ class CommandStore: ObservableObject {
     func clearHistory() {
         history.removeAll()
         saveHistory()
+    }
+
+    // 클립보드 관련
+    func loadClipboard() {
+        guard let data = try? Data(contentsOf: clipboardUrl),
+              let decoded = try? JSONDecoder().decode([ClipboardItem].self, from: data) else { return }
+        clipboardItems = decoded
+    }
+
+    func saveClipboard() {
+        guard let data = try? JSONEncoder().encode(clipboardItems) else { return }
+        try? data.write(to: clipboardUrl)
+    }
+
+    func startClipboardMonitor() {
+        lastClipboardChangeCount = NSPasteboard.general.changeCount
+        clipboardTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.checkClipboard()
+        }
+    }
+
+    private func checkClipboard() {
+        let pasteboard = NSPasteboard.general
+        let currentCount = pasteboard.changeCount
+        guard currentCount != lastClipboardChangeCount else { return }
+        lastClipboardChangeCount = currentCount
+
+        guard let content = pasteboard.string(forType: .string),
+              !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        // 중복 체크 (마지막 아이템과 같으면 무시)
+        if let last = clipboardItems.first, last.content == content { return }
+
+        clipboardItems.insert(ClipboardItem(content: content), at: 0)
+
+        // 최대 개수 제한
+        let maxCount = UserDefaults.standard.integer(forKey: "maxClipboardCount")
+        let limit = maxCount > 0 ? maxCount : 10000
+        if clipboardItems.count > limit {
+            clipboardItems = Array(clipboardItems.prefix(limit))
+        }
+
+        saveClipboard()
+    }
+
+    func removeClipboardItem(_ item: ClipboardItem) {
+        clipboardItems.removeAll { $0.id == item.id }
+        saveClipboard()
+    }
+
+    func clearClipboard() {
+        clipboardItems.removeAll()
+        saveClipboard()
+    }
+
+    func registerClipboardAsCommand(_ item: ClipboardItem, asLast: Bool = true) {
+        let firstLine = item.content.components(separatedBy: .newlines).first ?? item.content
+        let title = String(firstLine.prefix(50))
+        let cmd = Command(
+            title: title,
+            command: item.content,
+            executionType: .terminal,
+            terminalApp: .iterm2
+        )
+        if asLast {
+            commands.append(cmd)
+        } else {
+            commands.insert(cmd, at: 0)
+        }
+        removeClipboardItem(item)
+        save()
+    }
+
+    func sendToNotes(_ item: ClipboardItem, folderName: String) {
+        let escaped = item.content
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let script = """
+        tell application "Notes"
+            activate
+            set folderName to "\(folderName)"
+            set theAccount to first account
+            if not (exists folder folderName of theAccount) then
+                make new folder at theAccount with properties {name:folderName}
+            end if
+            set targetFolder to folder folderName of theAccount
+            set newNote to make new note at targetFolder with properties {body:"\(escaped)"}
+            show newNote
+        end tell
+        """
+        var error: NSDictionary?
+        NSAppleScript(source: script)?.executeAndReturnError(&error)
+        removeClipboardItem(item)
     }
 
     func startScheduleChecker() {
@@ -864,10 +1825,12 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var showingTrash = false
     @State private var showingHistory = false
+    @State private var showingClipboard = false
     @State private var editingCommand: Command?
     @State private var selectedId: UUID?
     @State private var draggingItem: Command?
     @State private var selectedHistoryItem: HistoryItem?
+    @State private var selectedClipboardItem: ClipboardItem?
 
     var hasActiveIndicator: Bool {
         store.activeItems.contains { cmd in
@@ -881,12 +1844,12 @@ struct ContentView: View {
             if showingHistory {
                 // 히스토리 보기
                 HStack {
-                    Text("히스토리")
+                    Text(L.tabHistory)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
                     if !store.history.isEmpty {
-                        Button("지우기") {
+                        Button(L.buttonClear) {
                             store.clearHistory()
                         }
                         .font(.caption)
@@ -926,11 +1889,11 @@ struct ContentView: View {
                                 Spacer()
                                 if item.output != nil {
                                     Button(action: {
-                                        selectedHistoryItem = item
+                                        HistoryDetailWindowController.show(item: item)
                                     }) {
                                         Image(systemName: "doc.text.magnifyingglass")
                                     }
-                                    .buttonStyle(HoverButtonStyle())
+                                    .buttonStyle(SmallHoverButtonStyle())
                                 }
                             }
                             .padding(.horizontal, 10)
@@ -950,7 +1913,95 @@ struct ContentView: View {
                             Image(systemName: "clock")
                                 .font(.title2)
                                 .foregroundStyle(.secondary)
-                            Text("히스토리가 없습니다")
+                            Text(L.historyNoHistory)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            } else if showingClipboard {
+                // 클립보드 보기
+                HStack {
+                    Text(L.tabClipboard)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if !store.clipboardItems.isEmpty {
+                        Button(L.buttonClear) {
+                            store.clearClipboard()
+                        }
+                        .font(.caption)
+                        .buttonStyle(HoverButtonStyle())
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                Divider()
+                ScrollView {
+                    LazyVStack(spacing: 4) {
+                        ForEach(store.clipboardItems) { item in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.preview)
+                                        .lineLimit(2)
+                                    Text(item.timestamp, format: .dateTime.month().day().hour().minute().second())
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button(action: {
+                                    ClipboardDetailWindowController.show(item: item, store: store, notesFolderName: settings.notesFolderName)
+                                }) {
+                                    Image(systemName: "doc.text.magnifyingglass")
+                                }
+                                .buttonStyle(SmallHoverButtonStyle())
+                                Button(action: {
+                                    store.registerClipboardAsCommand(item, asLast: false)
+                                }) {
+                                    Image(systemName: "arrow.up.doc")
+                                }
+                                .buttonStyle(SmallHoverButtonStyle())
+                                .help(L.addToTop)
+                                Button(action: {
+                                    store.registerClipboardAsCommand(item, asLast: true)
+                                }) {
+                                    Image(systemName: "arrow.down.doc")
+                                }
+                                .buttonStyle(SmallHoverButtonStyle())
+                                .help(L.addToBottom)
+                                Button(action: {
+                                    store.sendToNotes(item, folderName: settings.notesFolderName)
+                                }) {
+                                    Image(systemName: "note.text")
+                                }
+                                .buttonStyle(SmallHoverButtonStyle())
+                                .help(L.clipboardSendToNotes)
+                                Button(action: {
+                                    store.removeClipboardItem(item)
+                                }) {
+                                    Image(systemName: "trash")
+                                        .foregroundStyle(.red)
+                                }
+                                .buttonStyle(SmallHoverButtonStyle())
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.gray.opacity(0.1))
+                            )
+                        }
+                    }
+                    .padding(8)
+                }
+                .background(Color.clear)
+                .overlay {
+                    if store.clipboardItems.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "doc.on.clipboard")
+                                .font(.title2)
+                                .foregroundStyle(.secondary)
+                            Text(L.clipboardNoItems)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
@@ -959,12 +2010,12 @@ struct ContentView: View {
             } else if showingTrash {
                 // 휴지통 보기
                 HStack {
-                    Text("휴지통")
+                    Text(L.tabTrash)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
                     if !store.trashItems.isEmpty {
-                        Button("비우기") {
+                        Button(L.trashEmpty) {
                             store.emptyTrash()
                         }
                         .font(.caption)
@@ -1002,21 +2053,21 @@ struct ContentView: View {
                                 }) {
                                     Image(systemName: "pencil")
                                 }
-                                .buttonStyle(HoverButtonStyle())
+                                .buttonStyle(SmallHoverButtonStyle())
                                 Button(action: {
                                     store.restoreFromTrash(cmd)
                                 }) {
                                     Image(systemName: "arrow.uturn.backward")
                                         .foregroundStyle(.blue)
                                 }
-                                .buttonStyle(HoverButtonStyle())
+                                .buttonStyle(SmallHoverButtonStyle())
                                 Button(action: {
                                     store.deletePermanently(cmd)
                                 }) {
                                     Image(systemName: "xmark")
                                         .foregroundStyle(.red)
                                 }
-                                .buttonStyle(HoverButtonStyle())
+                                .buttonStyle(SmallHoverButtonStyle())
                             }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
@@ -1035,7 +2086,7 @@ struct ContentView: View {
                             Image(systemName: "trash")
                                 .font(.title2)
                                 .foregroundStyle(.secondary)
-                            Text("휴지통이 비어있습니다")
+                            Text(L.trashEmptyMessage)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
@@ -1044,11 +2095,11 @@ struct ContentView: View {
             } else {
                 // 일반 리스트
                 HStack {
-                    Text("명령 목록")
+                    Text(L.commandListTitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text("\(store.activeItems.count)개")
+                    Text("\(store.activeItems.count)")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
@@ -1119,10 +2170,10 @@ struct ContentView: View {
                             Image(systemName: "terminal")
                                 .font(.title2)
                                 .foregroundStyle(.secondary)
-                            Text("명령이 없습니다")
+                            Text(L.commandNoCommands)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-                            Text("+ 버튼을 눌러 추가하세요")
+                            Text(L.commandAddFirst)
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
                         }
@@ -1133,11 +2184,11 @@ struct ContentView: View {
             Divider()
 
             HStack {
-                Button(action: { showingTrash = false; showingHistory = false }) {
+                Button(action: { showingTrash = false; showingHistory = false; showingClipboard = false }) {
                     ZStack {
                         Image(systemName: "doc.text")
-                            .foregroundStyle(!showingTrash && !showingHistory ? .primary : .secondary)
-                        if (showingTrash || showingHistory) && hasActiveIndicator {
+                            .foregroundStyle(!showingTrash && !showingHistory && !showingClipboard ? .primary : .secondary)
+                        if (showingTrash || showingHistory || showingClipboard) && hasActiveIndicator {
                             Circle()
                                 .fill(Color.red)
                                 .frame(width: 6, height: 6)
@@ -1147,22 +2198,28 @@ struct ContentView: View {
                 }
                 .buttonStyle(HoverButtonStyle())
 
-                Button(action: { showAddSheet = true }) {
-                    Image(systemName: "plus")
-                        .foregroundStyle(!showingTrash && !showingHistory ? .primary : .secondary)
+                if !showingTrash && !showingHistory && !showingClipboard {
+                    Button(action: { showAddSheet = true }) {
+                        Image(systemName: "plus")
+                    }
+                    .buttonStyle(HoverButtonStyle())
                 }
-                .buttonStyle(HoverButtonStyle())
-                .disabled(showingTrash || showingHistory)
 
                 Spacer()
 
-                Button(action: { showingHistory = true; showingTrash = false }) {
+                Button(action: { showingClipboard = true; showingHistory = false; showingTrash = false }) {
+                    Image(systemName: store.clipboardItems.isEmpty ? "doc.on.clipboard" : "doc.on.clipboard.fill")
+                        .foregroundStyle(showingClipboard ? .primary : .secondary)
+                }
+                .buttonStyle(HoverButtonStyle())
+
+                Button(action: { showingHistory = true; showingTrash = false; showingClipboard = false }) {
                     Image(systemName: store.history.isEmpty ? "clock" : "clock.fill")
                         .foregroundStyle(showingHistory ? .primary : .secondary)
                 }
                 .buttonStyle(HoverButtonStyle())
 
-                Button(action: { showingTrash = true; showingHistory = false }) {
+                Button(action: { showingTrash = true; showingHistory = false; showingClipboard = false }) {
                     Image(systemName: store.trashItems.isEmpty ? "trash" : "trash.fill")
                         .foregroundStyle(showingTrash ? .primary : .secondary)
                 }
@@ -1193,9 +2250,6 @@ struct ContentView: View {
         }
         .sheet(item: $editingCommand) { cmd in
             EditCommandView(store: store, command: cmd)
-        }
-        .sheet(item: $selectedHistoryItem) { item in
-            HistoryOutputView(item: item)
         }
         .onAppear {
             settings.applyAlwaysOnTop()
@@ -1278,62 +2332,124 @@ struct ContentView: View {
     }
 }
 
+// MARK: - History Detail Window Controller
+class HistoryDetailWindowController {
+    static var activeWindows: [UUID: NSWindow] = [:]
+
+    static func show(item: HistoryItem) {
+        if let existingWindow = activeWindows[item.id] {
+            existingWindow.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let contentView = HistoryOutputView(
+            item: item,
+            onClose: { closeWindow(for: item.id) }
+        )
+
+        let hostingController = NSHostingController(rootView: contentView)
+        let panel = NSPanel(contentViewController: hostingController)
+
+        panel.title = item.title
+        panel.styleMask = [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel]
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+
+        let window = panel
+        window.setContentSize(NSSize(width: 500, height: 400))
+        window.minSize = NSSize(width: 400, height: 300)
+
+        if let mainWindow = NSApp.mainWindow ?? NSApp.windows.first {
+            let mainFrame = mainWindow.frame
+            let x = mainFrame.midX - 250
+            let y = mainFrame.midY - 200
+            window.setFrameOrigin(NSPoint(x: x, y: y))
+        } else {
+            window.center()
+        }
+
+        window.level = .modalPanel
+        window.isReleasedWhenClosed = false
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { _ in
+            activeWindows.removeValue(forKey: item.id)
+        }
+
+        activeWindows[item.id] = window
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    static func closeWindow(for itemId: UUID) {
+        if let window = activeWindows[itemId] {
+            window.close()
+            activeWindows.removeValue(forKey: itemId)
+        }
+    }
+}
+
 // 히스토리 출력 보기 뷰
 struct HistoryOutputView: View {
     let item: HistoryItem
-    @Environment(\.dismiss) private var dismiss
+    let onClose: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.title)
-                        .font(.headline)
-                    Text(item.timestamp, format: .dateTime)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("닫기") {
-                    dismiss()
-                }
-                .buttonStyle(HoverTextButtonStyle())
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.title)
+                    .font(.headline)
+                Text(item.timestamp, format: .dateTime)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             .padding()
 
             Divider()
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    // 실행 명령어
+            VStack(alignment: .leading, spacing: 12) {
+                // 실행 명령어
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L.commandInput)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(item.command)
+                        .font(.system(.body, design: .monospaced))
+                        .textSelection(.enabled)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(6)
+                }
+
+                // 출력
+                if let output = item.output, !output.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("명령어")
+                        Text(L.historyOutput)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text(item.command)
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
+                        OutputTextView(text: output)
                             .padding(8)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(Color.gray.opacity(0.1))
                             .cornerRadius(6)
                     }
-
-                    // 출력
-                    if let output = item.output, !output.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("출력")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            OutputTextView(text: output)
-                                .frame(maxWidth: .infinity, minHeight: 200)
-                                .background(Color.gray.opacity(0.1))
-                                .cornerRadius(6)
-                        }
-                    }
+                    .frame(maxHeight: .infinity)
                 }
-                .padding()
             }
+            .padding()
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button(L.buttonClose) {
+                    onClose()
+                }
+                .buttonStyle(HoverTextButtonStyle())
+            }
+            .padding()
         }
         .frame(minWidth: 450, minHeight: 350)
     }
@@ -1376,16 +2492,16 @@ struct CommandRowView: View {
         case .terminal:
             return cmd.terminalApp.rawValue
         case .background:
-            if cmd.interval == 0 { return "수동" }
-            guard let lastRun = cmd.lastExecutedAt else { return formatRemaining(cmd.interval) + " 후" }
+            if cmd.interval == 0 { return L.manual }
+            guard let lastRun = cmd.lastExecutedAt else { return formatRemaining(cmd.interval) + " " + L.timeAfter }
             let nextRun = lastRun.addingTimeInterval(Double(cmd.interval))
             let remaining = Int(nextRun.timeIntervalSinceNow)
-            if remaining <= 0 { return "실행 중..." }
-            return formatRemaining(remaining) + " 후"
+            if remaining <= 0 { return L.scriptRunning }
+            return formatRemaining(remaining) + " " + L.timeAfter
         case .script:
-            return cmd.hasParameters ? "파라미터" : "실행"
+            return cmd.hasParameters ? L.parameter : L.buttonRun
         case .schedule:
-            guard let date = cmd.scheduleDate else { return "일정" }
+            guard let date = cmd.scheduleDate else { return L.executionSchedule }
             let diff = date.timeIntervalSinceNow
 
             // 확인했으면 체크 표시
@@ -1395,11 +2511,11 @@ struct CommandRowView: View {
 
             // 지난 시간 표시
             if diff < 0 {
-                return formatRemaining(Int(-diff)) + " 지남"
+                return formatRemaining(Int(-diff)) + " " + L.timePassed
             }
             // 남은 시간 표시
             else {
-                return formatRemaining(Int(diff)) + " 후"
+                return formatRemaining(Int(diff)) + " " + L.timeAfter
             }
         }
     }
@@ -1519,13 +2635,13 @@ struct CommandRowView: View {
 
     func formatRemaining(_ seconds: Int) -> String {
         if seconds >= 86400 {
-            return "\(seconds / 86400)일"
+            return "\(seconds / 86400)" + L.daysUnit
         } else if seconds >= 3600 {
-            return "\(seconds / 3600)시간"
+            return "\(seconds / 3600)" + L.hoursUnit
         } else if seconds >= 60 {
-            return "\(seconds / 60)분"
+            return "\(seconds / 60)" + L.minutesUnit
         } else {
-            return "\(seconds)초"
+            return "\(seconds)" + L.secondsUnit
         }
     }
 }
@@ -1591,21 +2707,21 @@ struct RightClickMenu: NSViewRepresentable {
 
             let menu = NSMenu()
 
-            let runItem = NSMenuItem(title: "실행", action: #selector(runAction), keyEquivalent: "")
+            let runItem = NSMenuItem(title: L.contextMenuRun, action: #selector(runAction), keyEquivalent: "")
             runItem.target = self
             menu.addItem(runItem)
 
-            let editItem = NSMenuItem(title: "수정", action: #selector(editAction), keyEquivalent: "")
+            let editItem = NSMenuItem(title: L.contextMenuEdit, action: #selector(editAction), keyEquivalent: "")
             editItem.target = self
             menu.addItem(editItem)
 
-            let copyItem = NSMenuItem(title: "복사", action: #selector(copyAction), keyEquivalent: "")
+            let copyItem = NSMenuItem(title: L.contextMenuCopy, action: #selector(copyAction), keyEquivalent: "")
             copyItem.target = self
             menu.addItem(copyItem)
 
             menu.addItem(NSMenuItem.separator())
 
-            let deleteItem = NSMenuItem(title: "삭제", action: #selector(deleteAction), keyEquivalent: "")
+            let deleteItem = NSMenuItem(title: L.buttonDelete, action: #selector(deleteAction), keyEquivalent: "")
             deleteItem.target = self
             menu.addItem(deleteItem)
 
@@ -1704,10 +2820,10 @@ struct ParameterInputView: View {
             }
 
             HStack {
-                Button("취소") { dismiss() }
+                Button(L.buttonCancel) { dismiss() }
                     .buttonStyle(HoverTextButtonStyle())
                 Spacer()
-                Button("실행") {
+                Button(L.buttonRun) {
                     // 옵션이 있는 파라미터는 기본값 설정
                     var finalValues = values
                     for info in command.parameterInfos {
@@ -1843,11 +2959,14 @@ struct OutputTextView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
+        scrollView.drawsBackground = false
+        scrollView.backgroundColor = .clear
         let textView = scrollView.documentView as! NSTextView
         textView.isEditable = false
         textView.isSelectable = true
         textView.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
-        textView.backgroundColor = NSColor.textBackgroundColor
+        textView.backgroundColor = .clear
+        textView.drawsBackground = false
         textView.textColor = NSColor.labelColor
         return scrollView
     }
@@ -1939,10 +3058,11 @@ struct ScriptExecutionView: View {
             if runner.isRunning || runner.isFinished {
                 Divider()
                 OutputTextView(text: runner.output.isEmpty ? "(실행 중...)" : runner.output)
+                    .padding(8)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.gray.opacity(0.1))
                     .cornerRadius(6)
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
+                    .padding()
             } else {
                 Spacer()
             }
@@ -1954,23 +3074,23 @@ struct ScriptExecutionView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                     Spacer()
-                    Button("닫기") { onClose?() }
+                    Button(L.buttonClose) { onClose?() }
                         .buttonStyle(HoverTextButtonStyle())
                 } else if runner.isRunning {
                     ProgressView()
                         .scaleEffect(0.7)
                         .frame(width: 16, height: 16)
                     Spacer()
-                    Button("중단") {
+                    Button(L.buttonStop) {
                         runner.stop()
                     }
                     .buttonStyle(HoverTextButtonStyle())
                     .foregroundStyle(.red)
                 } else {
-                    Button("닫기") { onClose?() }
+                    Button(L.buttonClose) { onClose?() }
                         .buttonStyle(HoverTextButtonStyle())
                     Spacer()
-                    Button("실행") {
+                    Button(L.buttonRun) {
                         executeScript()
                     }
                     .buttonStyle(HoverTextButtonStyle())
@@ -2098,6 +3218,129 @@ class ScriptExecutionWindowController {
     }
 }
 
+// MARK: - Clipboard Detail Window Controller
+class ClipboardDetailWindowController {
+    static var activeWindows: [UUID: NSWindow] = [:]
+
+    static func show(item: ClipboardItem, store: CommandStore, notesFolderName: String) {
+        if let existingWindow = activeWindows[item.id] {
+            existingWindow.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let contentView = ClipboardDetailView(
+            item: item,
+            store: store,
+            notesFolderName: notesFolderName,
+            onClose: { closeWindow(for: item.id) }
+        )
+
+        let hostingController = NSHostingController(rootView: contentView)
+        let panel = NSPanel(contentViewController: hostingController)
+
+        panel.title = L.clipboardDetail
+        panel.styleMask = [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel]
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+
+        let window = panel
+        window.setContentSize(NSSize(width: 500, height: 400))
+        window.minSize = NSSize(width: 300, height: 200)
+
+        if let mainWindow = NSApp.mainWindow ?? NSApp.windows.first {
+            let mainFrame = mainWindow.frame
+            let x = mainFrame.midX - 250
+            let y = mainFrame.midY - 200
+            window.setFrameOrigin(NSPoint(x: x, y: y))
+        } else {
+            window.center()
+        }
+
+        window.level = .modalPanel
+        window.isReleasedWhenClosed = false
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { _ in
+            activeWindows.removeValue(forKey: item.id)
+        }
+
+        activeWindows[item.id] = window
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    static func closeWindow(for itemId: UUID) {
+        if let window = activeWindows[itemId] {
+            window.close()
+            activeWindows.removeValue(forKey: itemId)
+        }
+    }
+}
+
+struct ClipboardDetailView: View {
+    let item: ClipboardItem
+    let store: CommandStore
+    let notesFolderName: String
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L.clipboardContent)
+                    .font(.headline)
+                Text(item.timestamp, format: .dateTime)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("\(item.content.count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding()
+
+            Divider()
+
+            OutputTextView(text: item.content)
+                .padding(8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(6)
+                .padding()
+
+            Divider()
+
+            HStack {
+                Button(L.addToTop) {
+                    store.registerClipboardAsCommand(item, asLast: false)
+                    onClose()
+                }
+                .buttonStyle(HoverTextButtonStyle())
+                Button(L.addToBottom) {
+                    store.registerClipboardAsCommand(item, asLast: true)
+                    onClose()
+                }
+                .buttonStyle(HoverTextButtonStyle())
+                Button(L.clipboardSendToNotes) {
+                    store.sendToNotes(item, folderName: notesFolderName)
+                    onClose()
+                }
+                .buttonStyle(HoverTextButtonStyle())
+                Spacer()
+                Button(L.buttonDelete) {
+                    store.removeClipboardItem(item)
+                    onClose()
+                }
+                .buttonStyle(HoverTextButtonStyle())
+                .foregroundStyle(.red)
+                Button(L.buttonClose) { onClose() }
+                    .buttonStyle(HoverTextButtonStyle())
+            }
+            .padding()
+        }
+        .frame(minWidth: 300, minHeight: 200)
+    }
+}
+
 struct AddCommandView: View {
     @ObservedObject var store: CommandStore
     @Environment(\.dismiss) private var dismiss
@@ -2141,12 +3384,17 @@ struct AddCommandView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("새 항목 추가")
+        VStack(alignment: .leading, spacing: 0) {
+            Text(L.addNewItem)
                 .font(.headline)
+                .padding()
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("제목")
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L.commandTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 TextField("", text: $title)
@@ -2154,12 +3402,12 @@ struct AddCommandView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("실행 방식")
+                Text(L.executionMethod)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Picker("", selection: $executionType) {
                     ForEach(ExecutionType.allCases, id: \.self) {
-                        Text($0.rawValue)
+                        Text($0.displayName)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -2168,7 +3416,7 @@ struct AddCommandView: View {
 
             if executionType == .schedule {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("날짜/시간")
+                    Text(L.dateTime)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     DatePicker("", selection: $scheduleDate, displayedComponents: [.date, .hourAndMinute])
@@ -2176,12 +3424,12 @@ struct AddCommandView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("반복")
+                    Text(L.commandRepeat)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Picker("", selection: $repeatType) {
                         ForEach(RepeatType.allCases, id: \.self) {
-                            Text($0.rawValue)
+                            Text($0.displayName)
                         }
                     }
                     .pickerStyle(.segmented)
@@ -2189,29 +3437,27 @@ struct AddCommandView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("미리 알림")
+                    Text(L.commandReminders)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     HStack(spacing: 12) {
-                        Toggle("5분 전", isOn: $remind5min)
+                        Toggle("5" + L.minutesUnit, isOn: $remind5min)
                             .toggleStyle(.checkbox)
                             .disabled(!canRemind(seconds: 300))
-                        Toggle("30분 전", isOn: $remind30min)
+                        Toggle("30" + L.minutesUnit, isOn: $remind30min)
                             .toggleStyle(.checkbox)
                             .disabled(!canRemind(seconds: 1800))
-                    }
-                    HStack(spacing: 12) {
-                        Toggle("1시간 전", isOn: $remind1hour)
+                        Toggle("1" + L.hoursUnit, isOn: $remind1hour)
                             .toggleStyle(.checkbox)
                             .disabled(!canRemind(seconds: 3600))
-                        Toggle("1일 전", isOn: $remind1day)
+                        Toggle("1" + L.daysUnit, isOn: $remind1day)
                             .toggleStyle(.checkbox)
                             .disabled(!canRemind(seconds: 86400))
                     }
                 }
             } else {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("명령어")
+                    Text(L.commandInput)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     TextEditor(text: $command)
@@ -2221,7 +3467,7 @@ struct AddCommandView: View {
                         .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.gray.opacity(0.3)))
                     if executionType == .script {
                         Button(action: { showParamHelp = true }) {
-                            Text("예: echo {name} → 실행 시 name 입력")
+                            Text(L.commandHelpText)
                                 .font(.caption)
                                 .foregroundStyle(.blue)
                         }
@@ -2231,7 +3477,7 @@ struct AddCommandView: View {
 
                 if executionType == .terminal {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("터미널 앱")
+                        Text(L.terminalAppLabel)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Picker("", selection: $terminalApp) {
@@ -2244,7 +3490,7 @@ struct AddCommandView: View {
                     }
                 } else if executionType == .background {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("주기 (초, 0이면 수동)")
+                        Text(L.intervalLabel)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         TextField("", text: $interval)
@@ -2260,16 +3506,21 @@ struct AddCommandView: View {
                         }
                     }
                 }
-                // script는 명령어만 입력
+                    // script는 명령어만 입력
+                }
+                }
+                .padding()
             }
 
+            Divider()
+
             HStack {
-                Button("취소") {
+                Button(L.buttonCancel) {
                     dismiss()
                 }
                 .buttonStyle(HoverTextButtonStyle())
                 Spacer()
-                Button("추가") {
+                Button(L.buttonAdd) {
                     store.add(Command(
                         title: title,
                         command: command,
@@ -2285,8 +3536,8 @@ struct AddCommandView: View {
                 .buttonStyle(HoverTextButtonStyle())
                 .disabled(!isValid)
             }
+            .padding()
         }
-        .padding()
         .frame(width: 350)
         .sheet(isPresented: $showParamHelp) {
             ParameterHelpView()
@@ -2299,12 +3550,12 @@ struct ParameterHelpView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("파라미터 사용법")
+            Text(L.parameterHelpTitle)
                 .font(.headline)
 
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("기본 문법")
+                    Text(L.helpSyntax)
                         .font(.subheadline.bold())
                     Text("{파라미터명}")
                         .font(.body.monospaced())
@@ -2316,7 +3567,7 @@ struct ParameterHelpView: View {
                 Divider()
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("예시")
+                    Text(L.parameterExample)
                         .font(.subheadline.bold())
 
                     Group {
@@ -2344,7 +3595,7 @@ struct ParameterHelpView: View {
 
             HStack {
                 Spacer()
-                Button("닫기") { dismiss() }
+                Button(L.buttonClose) { dismiss() }
                     .buttonStyle(HoverTextButtonStyle())
             }
         }
@@ -2357,106 +3608,158 @@ struct ParameterHelpView: View {
 struct SettingsView: View {
     @ObservedObject var settings: Settings
     @ObservedObject var store: CommandStore
+    @ObservedObject var languageManager = LanguageManager.shared
     @Environment(\.dismiss) private var dismiss
-    @State private var isExportMode = true
+    @State private var selectedTab = 0
     @State private var showAlert = false
     @State private var alertMessage = ""
     @State private var showImportChoice = false
     @State private var pendingImportData: Data?
 
+    private var tabTitles: [String] {
+        [L.settingsGeneral, L.settingsHistoryTab, L.settingsClipboardTab, L.settingsBackup, L.settingsLanguage]
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("설정")
+        VStack(alignment: .leading, spacing: 0) {
+            Text(L.settingsTitle)
                 .font(.headline)
-
-            Toggle("항상 위에 표시", isOn: $settings.alwaysOnTop)
-            Toggle("로그인 시 시작", isOn: $settings.launchAtLogin)
-
-            HStack {
-                Text("히스토리 최대 개수")
-                Spacer()
-                TextField("", value: $settings.maxHistoryCount, format: .number)
-                    .frame(width: 60)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            HStack {
-                Text("배경 투명도")
-                Slider(value: $settings.backgroundOpacity, in: 0.3...1.0, step: 0.1)
-                Text("\(Int(settings.backgroundOpacity * 100))%")
-                    .frame(width: 40)
-            }
+                .padding(.horizontal)
+                .padding(.top)
+                .padding(.bottom, 12)
 
             Divider()
 
             // 탭 UI
-            HStack(spacing: 0) {
-                Button(action: { isExportMode = true }) {
-                    VStack(spacing: 4) {
-                        Text("내보내기")
-                            .foregroundColor(isExportMode ? .primary : .secondary)
-                        Rectangle()
-                            .fill(isExportMode ? Color.accentColor : Color.clear)
-                            .frame(height: 2)
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    ForEach(Array(tabTitles.enumerated()), id: \.offset) { index, title in
+                        Button(action: { selectedTab = index }) {
+                            VStack(spacing: 0) {
+                                Text(title)
+                                    .foregroundColor(selectedTab == index ? .primary : .secondary)
+                                    .padding(.bottom, 6)
+                                Rectangle()
+                                    .fill(selectedTab == index ? Color.accentColor : Color.clear)
+                                    .frame(height: 2)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity)
                     }
                 }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 12)
+                Divider()
+            }
+            .padding(.top, 8)
 
-                Button(action: { isExportMode = false }) {
-                    VStack(spacing: 4) {
-                        Text("가져오기")
-                            .foregroundColor(!isExportMode ? .primary : .secondary)
-                        Rectangle()
-                            .fill(!isExportMode ? Color.accentColor : Color.clear)
-                            .frame(height: 2)
+            // 탭 콘텐츠 (고정 높이)
+            VStack(alignment: .leading, spacing: 0) {
+                if selectedTab == 0 {
+                    // 기본 설정
+                    Toggle(L.settingsAlwaysOnTop, isOn: $settings.alwaysOnTop)
+                        .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                    Toggle(L.settingsLaunchAtLogin, isOn: $settings.launchAtLogin)
+                        .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                    HStack {
+                        Text(L.settingsBackgroundOpacity)
+                        Slider(value: $settings.backgroundOpacity, in: 0.3...1.0, step: 0.1)
+                        Text("\(Int(settings.backgroundOpacity * 100))%")
+                            .frame(width: 40)
                     }
+                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                } else if selectedTab == 1 {
+                    // 히스토리 설정
+                    HStack {
+                        Text(L.settingsMaxCount)
+                        Spacer()
+                        TextField("", value: $settings.maxHistoryCount, format: .number)
+                            .frame(width: 80)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                } else if selectedTab == 2 {
+                    // 클립보드 설정
+                    HStack {
+                        Text(L.settingsMaxCount)
+                        Spacer()
+                        TextField("", value: $settings.maxClipboardCount, format: .number)
+                            .frame(width: 80)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                    HStack {
+                        Text(L.settingsNotesFolderName)
+                        Spacer()
+                        TextField("", text: $settings.notesFolderName)
+                            .frame(width: 120)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                } else if selectedTab == 3 {
+                    // 백업 (가져오기/내보내기)
+                    Text(L.settingsBackupNote)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                    HStack(spacing: 8) {
+                        Button(L.settingsExportFile) { exportToFile() }
+                        Button(L.settingsImportFile) { loadFromFile() }
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                } else {
+                    // 언어 설정
+                    HStack {
+                        Text(L.settingsLanguage)
+                        Spacer()
+                        Picker("", selection: $languageManager.currentLanguage) {
+                            ForEach(Language.allCases, id: \.self) { lang in
+                                Text(lang.displayName).tag(lang)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 100)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                    HStack(spacing: 8) {
+                        Button(L.settingsExportLanguagePack) { exportLanguagePack() }
+                        Button(L.settingsImportLanguagePack) { importLanguagePack() }
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
                 }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity)
+                Spacer()
             }
+            .frame(height: 90)
+            .padding(12)
 
-            if isExportMode {
-                HStack(spacing: 8) {
-                    Spacer()
-                    Button("파일 다운로드") { exportToFile() }
-                    Button("클립보드 복사하기") { exportToClipboard() }
-                    Spacer()
-                }
-            } else {
-                HStack(spacing: 8) {
-                    Spacer()
-                    Button("파일 업로드") { loadFromFile() }
-                    Button("클립보드 붙여넣기") { loadFromClipboard() }
-                    Spacer()
-                }
-            }
-
-            Spacer().frame(height: 8)
+            Divider()
 
             HStack {
                 Spacer()
-                Button("닫기") {
+                Button(L.buttonClose) {
                     dismiss()
                 }
                 .buttonStyle(HoverTextButtonStyle())
             }
+            .padding(.horizontal)
+            .padding(.vertical, 12)
         }
-        .padding()
-        .frame(width: 300)
-        .alert("알림", isPresented: $showAlert) {
-            Button("확인") {}
+        .frame(width: 320)
+        .alert(L.notification, isPresented: $showAlert) {
+            Button(L.buttonConfirm) {}
         } message: {
             Text(alertMessage)
         }
-        .confirmationDialog("가져오기 방식", isPresented: $showImportChoice, titleVisibility: .visible) {
-            Button("병합 (기존 데이터 유지)") {
+        .confirmationDialog(L.importDialogTitle, isPresented: $showImportChoice, titleVisibility: .visible) {
+            Button(L.importMerge) {
                 performImport(merge: true)
             }
-            Button("덮어쓰기 (기존 데이터 삭제)") {
+            Button(L.importOverwrite) {
                 performImport(merge: false)
             }
-            Button("취소", role: .cancel) {
+            Button(L.buttonCancel, role: .cancel) {
                 pendingImportData = nil
             }
         }
@@ -2465,7 +3768,7 @@ struct SettingsView: View {
     func exportToFile() {
         guard let data = store.exportData(settings: settings),
               let json = String(data: data, encoding: .utf8) else {
-            alertMessage = "내보내기 실패"
+            alertMessage = L.alertExportFailed
             showAlert = true
             return
         }
@@ -2481,10 +3784,10 @@ struct SettingsView: View {
         if panel.runModal() == .OK, let url = panel.url {
             do {
                 try json.write(to: url, atomically: true, encoding: .utf8)
-                alertMessage = "내보내기 완료"
+                alertMessage = L.alertExportSuccess
                 showAlert = true
             } catch {
-                alertMessage = "저장 실패: \(error.localizedDescription)"
+                alertMessage = L.alertSaveFailed + ": \(error.localizedDescription)"
                 showAlert = true
             }
         }
@@ -2493,14 +3796,14 @@ struct SettingsView: View {
     func exportToClipboard() {
         guard let data = store.exportData(settings: settings),
               let json = String(data: data, encoding: .utf8) else {
-            alertMessage = "내보내기 실패"
+            alertMessage = L.alertExportFailed
             showAlert = true
             return
         }
 
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(json, forType: .string)
-        alertMessage = "클립보드에 복사됨"
+        alertMessage = L.alertCopiedToClipboard
         showAlert = true
     }
 
@@ -2518,11 +3821,11 @@ struct SettingsView: View {
                 if (try? decoder.decode(ExportData.self, from: data)) != nil {
                     tryImport(data)
                 } else {
-                    alertMessage = "잘못된 형식"
+                    alertMessage = L.alertInvalidFormat
                     showAlert = true
                 }
             } catch {
-                alertMessage = "파일 읽기 실패"
+                alertMessage = L.alertReadFailed
                 showAlert = true
             }
         }
@@ -2531,7 +3834,7 @@ struct SettingsView: View {
     func loadFromClipboard() {
         guard let string = NSPasteboard.general.string(forType: .string),
               let data = string.data(using: .utf8) else {
-            alertMessage = "클립보드가 비어있음"
+            alertMessage = L.alertClipboardEmpty
             showAlert = true
             return
         }
@@ -2542,7 +3845,7 @@ struct SettingsView: View {
         if (try? decoder.decode(ExportData.self, from: data)) != nil {
             tryImport(data)
         } else {
-            alertMessage = "잘못된 형식"
+            alertMessage = L.alertInvalidFormat
             showAlert = true
         }
     }
@@ -2560,12 +3863,57 @@ struct SettingsView: View {
     func performImport(merge: Bool) {
         guard let data = pendingImportData else { return }
         if store.importData(data, settings: settings, merge: merge) {
-            alertMessage = merge ? "병합 완료" : "덮어쓰기 완료"
+            alertMessage = merge ? L.alertMergeComplete : L.alertOverwriteComplete
         } else {
-            alertMessage = "가져오기 실패"
+            alertMessage = L.alertImportFailed
         }
         pendingImportData = nil
         showAlert = true
+    }
+
+    func exportLanguagePack() {
+        guard let data = languageManager.exportLanguagePackTemplate(),
+              let json = String(data: data, encoding: .utf8) else {
+            alertMessage = L.alertExportFailed
+            showAlert = true
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "language_pack_template.json"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                try json.write(to: url, atomically: true, encoding: .utf8)
+                alertMessage = L.languagePackExportSuccess
+                showAlert = true
+            } catch {
+                alertMessage = L.alertSaveFailed + ": \(error.localizedDescription)"
+                showAlert = true
+            }
+        }
+    }
+
+    func importLanguagePack() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                let data = try Data(contentsOf: url)
+                if languageManager.importLanguagePack(from: data) {
+                    alertMessage = L.languagePackImportSuccess
+                } else {
+                    alertMessage = L.languagePackInvalidFormat
+                }
+                showAlert = true
+            } catch {
+                alertMessage = L.alertReadFailed
+                showAlert = true
+            }
+        }
     }
 }
 
@@ -2576,11 +3924,11 @@ struct TrashView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("휴지통")
+                Text(L.trashTitle)
                     .font(.headline)
                 Spacer()
                 if !store.trashItems.isEmpty {
-                    Button("비우기") {
+                    Button(L.trashEmpty) {
                         store.emptyTrash()
                     }
                     .foregroundStyle(.red)
@@ -2592,7 +3940,7 @@ struct TrashView: View {
                     Image(systemName: "trash")
                         .font(.title2)
                         .foregroundStyle(.secondary)
-                    Text("휴지통이 비어있습니다")
+                    Text(L.trashEmptyMessage)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -2618,7 +3966,7 @@ struct TrashView: View {
                                     }
                                 }
                                 Spacer()
-                                Button("복원") {
+                                Button(L.buttonRestore) {
                                     store.restoreFromTrash(cmd)
                                 }
                                 .buttonStyle(HoverButtonStyle())
@@ -2644,7 +3992,7 @@ struct TrashView: View {
 
             HStack {
                 Spacer()
-                Button("닫기") {
+                Button(L.buttonClose) {
                     dismiss()
                 }
                 .buttonStyle(HoverTextButtonStyle())
@@ -2716,11 +4064,11 @@ struct EditCommandView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("항목 수정")
+            Text(L.commandEditTitle)
                 .font(.headline)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("제목")
+                Text(L.commandTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 TextField("", text: $title)
@@ -2728,12 +4076,12 @@ struct EditCommandView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("실행 방식")
+                Text(L.executionMethod)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Picker("", selection: $executionType) {
                     ForEach(ExecutionType.allCases, id: \.self) {
-                        Text($0.rawValue)
+                        Text($0.displayName)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -2742,7 +4090,7 @@ struct EditCommandView: View {
 
             if executionType == .schedule {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("날짜/시간")
+                    Text(L.dateTime)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     DatePicker("", selection: $scheduleDate, displayedComponents: [.date, .hourAndMinute])
@@ -2750,12 +4098,12 @@ struct EditCommandView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("반복")
+                    Text(L.commandRepeat)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Picker("", selection: $repeatType) {
                         ForEach(RepeatType.allCases, id: \.self) {
-                            Text($0.rawValue)
+                            Text($0.displayName)
                         }
                     }
                     .pickerStyle(.segmented)
@@ -2763,29 +4111,27 @@ struct EditCommandView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("미리 알림")
+                    Text(L.commandReminders)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     HStack(spacing: 12) {
-                        Toggle("5분 전", isOn: $remind5min)
+                        Toggle("5" + L.minutesUnit, isOn: $remind5min)
                             .toggleStyle(.checkbox)
                             .disabled(!canRemind(seconds: 300))
-                        Toggle("30분 전", isOn: $remind30min)
+                        Toggle("30" + L.minutesUnit, isOn: $remind30min)
                             .toggleStyle(.checkbox)
                             .disabled(!canRemind(seconds: 1800))
-                    }
-                    HStack(spacing: 12) {
-                        Toggle("1시간 전", isOn: $remind1hour)
+                        Toggle("1" + L.hoursUnit, isOn: $remind1hour)
                             .toggleStyle(.checkbox)
                             .disabled(!canRemind(seconds: 3600))
-                        Toggle("1일 전", isOn: $remind1day)
+                        Toggle("1" + L.daysUnit, isOn: $remind1day)
                             .toggleStyle(.checkbox)
                             .disabled(!canRemind(seconds: 86400))
                     }
                 }
             } else {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("명령어")
+                    Text(L.commandInput)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     TextEditor(text: $commandText)
@@ -2795,7 +4141,7 @@ struct EditCommandView: View {
                         .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.gray.opacity(0.3)))
                     if executionType == .script {
                         Button(action: { showParamHelp = true }) {
-                            Text("예: echo {name} → 실행 시 name 입력")
+                            Text(L.commandHelpText)
                                 .font(.caption)
                                 .foregroundStyle(.blue)
                         }
@@ -2805,7 +4151,7 @@ struct EditCommandView: View {
 
                 if executionType == .terminal {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("터미널 앱")
+                        Text(L.terminalAppLabel)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Picker("", selection: $terminalApp) {
@@ -2818,7 +4164,7 @@ struct EditCommandView: View {
                     }
                 } else if executionType == .background {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("주기 (초, 0이면 수동)")
+                        Text(L.intervalLabel)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         TextField("", text: $interval)
@@ -2838,12 +4184,12 @@ struct EditCommandView: View {
             }
 
             HStack {
-                Button("취소") {
+                Button(L.buttonCancel) {
                     dismiss()
                 }
                 .buttonStyle(HoverTextButtonStyle())
                 Spacer()
-                Button("저장") {
+                Button(L.buttonSave) {
                     var updated = command
                     updated.title = title
                     updated.command = commandText
