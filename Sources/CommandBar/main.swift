@@ -523,8 +523,30 @@ class CommandStore: ObservableObject {
 
     func acknowledge(_ cmd: Command) {
         if let i = commands.firstIndex(where: { $0.id == cmd.id }) {
-            commands[i].acknowledged = true
             alertingCommandId = nil
+
+            if commands[i].repeatType != .none, let currentDate = commands[i].scheduleDate {
+                // 반복 일정: 다음 알림 시간으로 리셋
+                let nextDate: Date
+                switch commands[i].repeatType {
+                case .daily:
+                    nextDate = Calendar.current.date(byAdding: .day, value: 1, to: currentDate) ?? currentDate
+                case .weekly:
+                    nextDate = Calendar.current.date(byAdding: .weekOfYear, value: 1, to: currentDate) ?? currentDate
+                case .monthly:
+                    nextDate = Calendar.current.date(byAdding: .month, value: 1, to: currentDate) ?? currentDate
+                case .none:
+                    nextDate = currentDate
+                }
+                commands[i].scheduleDate = nextDate
+                commands[i].alertState = .none
+                commands[i].acknowledged = false
+                commands[i].alertedTimes = []
+                commands[i].historyLoggedTimes = []
+            } else {
+                // 일회성: 확인 상태로
+                commands[i].acknowledged = true
+            }
             save()
         }
     }
@@ -711,7 +733,7 @@ struct ContentView: View {
 
     var hasActiveIndicator: Bool {
         store.activeItems.contains { cmd in
-            cmd.isRunning || cmd.alertState == .now || store.alertingCommandId == cmd.id
+            cmd.isRunning || store.alertingCommandId == cmd.id
         }
     }
 
