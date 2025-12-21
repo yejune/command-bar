@@ -20,5 +20,7 @@
     <true/>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>터미널 앱에서 명령을 실행하기 위해 권한이 필요합니다.</string>
 </dict>
 </plist>

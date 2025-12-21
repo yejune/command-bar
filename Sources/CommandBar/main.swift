@@ -712,21 +712,31 @@ class CommandStore: ObservableObject {
             script = """
             tell application "Terminal"
                 activate
-                do script "\(escaped)"
+                if (count of windows) = 0 then
+                    do script "\(escaped)"
+                else
+                    do script "\(escaped)" in front window
+                end if
             end tell
             """
         }
 
         var error: NSDictionary?
-        NSAppleScript(source: script)?.executeAndReturnError(&error)
+        let result = NSAppleScript(source: script)?.executeAndReturnError(&error)
 
         // 히스토리 기록
+        let output: String?
+        if let error = error {
+            output = error[NSAppleScript.errorMessage] as? String ?? "Error"
+        } else {
+            output = result?.stringValue ?? "OK"
+        }
         addHistory(HistoryItem(
             timestamp: Date(),
             title: cmd.title,
             command: cmd.command,
             type: .executed,
-            output: nil
+            output: output
         ))
     }
 
