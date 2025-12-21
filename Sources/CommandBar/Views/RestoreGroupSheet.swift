@@ -41,16 +41,33 @@ struct RestoreGroupSheet: View {
                 Text(L.groupTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Picker("", selection: $selectedGroupId) {
+                Menu {
                     ForEach(store.groups) { group in
-                        HStack {
-                            Circle().fill(colorFor(group.color)).frame(width: 8, height: 8)
-                            Text(group.name)
-                        }.tag(group.id)
+                        Button(action: { selectedGroupId = group.id }) {
+                            HStack {
+                                Circle().fill(colorFor(group.color)).frame(width: 8, height: 8)
+                                Text(group.name)
+                                if selectedGroupId == group.id {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
                     }
+                } label: {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(colorFor(store.groups.first { $0.id == selectedGroupId }?.color ?? "gray"))
+                            .frame(width: 8, height: 8)
+                        Text(store.groups.first { $0.id == selectedGroupId }?.name ?? "")
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(6)
+                    .background(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.3)))
                 }
-                .pickerStyle(.menu)
-                .labelsHidden()
+                .menuStyle(.borderlessButton)
             }
 
             HStack {

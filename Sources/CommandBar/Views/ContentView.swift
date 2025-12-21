@@ -300,17 +300,19 @@ struct ContentView: View {
                 HStack(spacing: 4) {
                     // 그룹 선택 Picker
                     Picker("", selection: $selectedGroupId) {
-                        HStack {
-                            Circle().fill(Color.primary).frame(width: 8, height: 8)
-                            Text(L.groupAll)
+                        Label {
+                            Text(" \(L.groupAll)")
+                        } icon: {
+                            colorCircleImage("gray", size: 8)
                         }.tag(nil as UUID?)
 
                         Divider()
 
                         ForEach(store.groups) { group in
-                            HStack {
-                                Circle().fill(colorFor(group.color)).frame(width: 8, height: 8)
-                                Text(group.name)
+                            Label {
+                                Text(" \(group.name)")
+                            } icon: {
+                                colorCircleImage(group.color, size: 8)
                             }.tag(group.id as UUID?)
                         }
                     }
@@ -599,6 +601,18 @@ struct ContentView: View {
         case "purple": return .purple
         case "gray": return .gray
         default: return .gray
+        }
+    }
+
+    func colorEmoji(_ name: String) -> String {
+        switch name {
+        case "blue": return "🔵"
+        case "red": return "🔴"
+        case "green": return "🟢"
+        case "orange": return "🟠"
+        case "purple": return "🟣"
+        case "gray": return "⚫"
+        default: return "⚫"
         }
     }
 }

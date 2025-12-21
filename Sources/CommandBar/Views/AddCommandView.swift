@@ -77,15 +77,33 @@ struct AddCommandView: View {
                 Text(L.groupTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Picker("", selection: $groupId) {
+                Menu {
                     ForEach(store.groups) { group in
-                        HStack {
-                            Circle().fill(colorFor(group.color)).frame(width: 8, height: 8)
-                            Text(group.name)
-                        }.tag(group.id)
+                        Button(action: { groupId = group.id }) {
+                            HStack {
+                                Circle().fill(colorFor(group.color)).frame(width: 8, height: 8)
+                                Text(group.name)
+                                if groupId == group.id {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
                     }
+                } label: {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(colorFor(store.groups.first { $0.id == groupId }?.color ?? "gray"))
+                            .frame(width: 8, height: 8)
+                        Text(store.groups.first { $0.id == groupId }?.name ?? "")
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(6)
+                    .background(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.3)))
                 }
-                .pickerStyle(.menu)
+                .menuStyle(.borderlessButton)
             }
 
             VStack(alignment: .leading, spacing: 4) {
