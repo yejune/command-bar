@@ -1,107 +1,108 @@
 # CommandBar
 
-macOS용 명령어 런처 및 일정 알림 앱
+Command launcher and schedule reminder app for macOS
 
-## 설치
+[한국어](README.ko.md)
+
+## Installation
 
 ```bash
-# 빌드
-swiftc -parse-as-library -framework Cocoa -framework SwiftUI -framework UserNotifications \
-  -o CommandBar.app/Contents/MacOS/CommandBar Sources/CommandBar/main.swift
+# Build
+swift build
 
-# Applications 폴더에 설치
+# Copy to Applications
 cp -r CommandBar.app /Applications/
 ```
 
-## 기능
+## Features
 
-### 1. 터미널 명령 실행
-- iTerm2 또는 Terminal에서 명령 실행
-- 더블클릭 또는 우클릭 메뉴로 실행
+### 1. Terminal Command Execution
+- Execute commands in iTerm2 or Terminal
+- Double-click or right-click menu to run
 
-### 2. 백그라운드 명령 실행
-- 터미널 없이 백그라운드에서 명령 실행
-- 결과가 리스트에 표시됨
-- 주기 설정으로 자동 반복 실행 (예: 5초마다 `date` 실행)
+### 2. Background Command Execution
+- Run commands in background without terminal
+- Results displayed in list
+- Auto-repeat with interval setting (e.g., run `date` every 5 seconds)
 
-### 3. 스크립트 실행
-- 파라미터 지원: `{파라미터명}` 형식으로 입력
-- 옵션 선택 지원: `{파라미터명:옵션1|옵션2|옵션3}` 형식
-- 실행 시 파라미터 값 입력 받음 (필수)
-- 결과를 리사이즈 가능한 창으로 표시
-- 쉘 특수문자 자동 이스케이프 (`"`, `$`, `` ` ``, `\`)
-- 스마트 따옴표 자동 변환
+### 3. Script Execution
+- Parameter support: `{paramName}` format
+- Option selection: `{paramName:option1|option2|option3}` format
+- Parameter values required at execution
+- Results shown in resizable window
+- Auto-escape shell special characters (`"`, `$`, `` ` ``, `\`)
+- Smart quotes auto-conversion
 
 ```bash
-# 예시
-echo "Hello {name}"                    # name 텍스트 입력
-curl -X {method:GET|POST|PUT} {url}    # method 드롭다운 선택, url 텍스트 입력
-git checkout {branch:main|develop}     # branch 드롭다운 선택
+# Examples
+echo "Hello {name}"                    # name text input
+curl -X {method:GET|POST|PUT} {url}    # method dropdown, url text input
+git checkout {branch:main|develop}     # branch dropdown selection
 ```
 
-### 4. 일정 알림
-- 날짜/시간 설정으로 알림 예약
-- 반복 설정: 매일, 매주, 매월
-- 남은 시간 실시간 표시 (1일, 2시간, 30초...)
-- 미리 알림: 1시간 전, 30분 전, 10분 전, 5분 전, 1분 전
-- 시간이 되면 부르르 효과로 알림
-- 클릭하면 확인:
-  - 일회성: 체크 표시
-  - 반복: 다음 알림 시간으로 자동 리셋
+### 4. Schedule Reminders
+- Set date/time for reminders
+- Repeat options: daily, weekly, monthly
+- Real-time countdown display (1 day, 2 hours, 30 seconds...)
+- Pre-alerts: 1 hour, 30 min, 10 min, 5 min, 1 min before
+- Shake effect when time comes
+- Click to acknowledge:
+  - One-time: shows checkmark
+  - Repeating: auto-resets to next occurrence
 
-### 5. 히스토리
-- 모든 실행 기록 저장 (최대 100개)
-- 기록 유형: 실행, 백그라운드, 스크립트, 일정 알림, 미리 알림, 등록, 삭제, 복원, 제거
-- 상세보기: 실행 명령어 + 출력 결과 확인 가능
+### 5. History
+- Saves all execution records (max 100)
+- Record types: executed, background, script, schedule alert, pre-alert, added, deleted, restored, removed
+- Detail view: shows executed command + output
 
-## 사용법
+## Usage
 
-### 명령 추가
-1. `+` 버튼 클릭
-2. 제목 입력
-3. 실행 방식 선택:
-   - **터미널**: iTerm2 / Terminal 선택
-   - **백그라운드**: 주기 입력 (0이면 수동)
-   - **스크립트**: 파라미터 `{name}` 형식 지원
-   - **일정**: 날짜/시간, 미리 알림 선택
+### Add Command
+1. Click `+` button
+2. Enter title
+3. Select execution type:
+   - **Terminal**: choose iTerm2 / Terminal
+   - **Background**: set interval (0 for manual)
+   - **Script**: supports `{name}` parameters
+   - **Schedule**: set date/time, pre-alerts
 
-### 명령 실행
-- 더블클릭
-- 우클릭 → 실행
+### Run Command
+- Double-click
+- Right-click → Run
 
-### 명령 수정/삭제
-- 우클릭 → 수정/삭제
+### Edit/Delete Command
+- Right-click → Edit/Delete
 
-### 순서 변경
-- 드래그 앤 드롭
+### Reorder
+- Drag and drop
 
-### 하단 버튼
-- 📄 명령 목록
-- ➕ 명령 추가
-- 🕐 히스토리
-- 🗑 휴지통
-- ⚙️ 설정
+### Bottom Buttons
+- 📄 Command list
+- ➕ Add command
+- 🕐 History
+- 🗑 Trash
+- ⚙️ Settings
 
-### 설정
-- 항상 위에 표시
-- 설정 내보내기/가져오기 (JSON)
+### Settings
+- Always on top
+- Export/Import settings (JSON)
 
-## 단축키
+## Keyboard Shortcuts
 
-- `↑/↓`: 항목 선택
-- `Enter`: 선택한 항목 실행
-- `Delete`: 선택한 항목 삭제
+- `↑/↓`: Select item
+- `Enter`: Run selected item
+- `Delete`: Delete selected item
 
-## 백그라운드 명령 예시
+## Background Command Examples
 
-| 명령 | 설명 | 주기 |
-|------|------|------|
-| `date +%H:%M:%S` | 현재 시간 | 1초 |
-| `uptime` | 시스템 가동 시간 | 60초 |
-| `df -h \| head -2` | 디스크 사용량 | 300초 |
-| `curl -s wttr.in/Seoul?format=3` | 서울 날씨 | 3600초 |
+| Command | Description | Interval |
+|---------|-------------|----------|
+| `date +%H:%M:%S` | Current time | 1s |
+| `uptime` | System uptime | 60s |
+| `df -h \| head -2` | Disk usage | 300s |
+| `curl -s wttr.in/Seoul?format=3` | Seoul weather | 3600s |
 
-## 요구사항
+## Requirements
 
 - macOS 14.0+
 - Swift 5.9+
