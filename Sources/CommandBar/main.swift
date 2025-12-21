@@ -227,12 +227,20 @@ class Settings: ObservableObject {
             applyLaunchAtLogin()
         }
     }
+    @Published var backgroundOpacity: Double {
+        didSet {
+            UserDefaults.standard.set(backgroundOpacity, forKey: "backgroundOpacity")
+            applyBackgroundOpacity()
+        }
+    }
 
     init() {
         self.alwaysOnTop = UserDefaults.standard.bool(forKey: "alwaysOnTop")
         let saved = UserDefaults.standard.integer(forKey: "maxHistoryCount")
         self.maxHistoryCount = saved > 0 ? saved : 100
         self.launchAtLogin = UserDefaults.standard.bool(forKey: "launchAtLogin")
+        let savedOpacity = UserDefaults.standard.double(forKey: "backgroundOpacity")
+        self.backgroundOpacity = savedOpacity > 0 ? savedOpacity : 1.0
     }
 
     func applyAlwaysOnTop() {
@@ -252,6 +260,15 @@ class Settings: ObservableObject {
             }
         } catch {
             print("Failed to set launch at login: \(error)")
+        }
+    }
+
+    func applyBackgroundOpacity() {
+        DispatchQueue.main.async {
+            for window in NSApp.windows where window.canBecomeMain {
+                window.isOpaque = self.backgroundOpacity >= 1.0
+                window.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(self.backgroundOpacity)
+            }
         }
     }
 }
@@ -916,7 +933,7 @@ struct ContentView: View {
                     }
                     .padding(8)
                 }
-                .background(Color(nsColor: .textBackgroundColor))
+                .background(Color.clear)
                 .overlay {
                     if store.history.isEmpty {
                         VStack(spacing: 8) {
@@ -1001,7 +1018,7 @@ struct ContentView: View {
                     }
                     .padding(8)
                 }
-                .background(Color(nsColor: .textBackgroundColor))
+                .background(Color.clear)
                 .overlay {
                     if store.trashItems.isEmpty {
                         VStack(spacing: 8) {
@@ -1069,7 +1086,7 @@ struct ContentView: View {
                     }
                     .padding(8)
                 }
-                .background(Color(nsColor: .textBackgroundColor))
+                .background(Color.clear)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     selectedId = nil
@@ -1172,6 +1189,7 @@ struct ContentView: View {
         }
         .onAppear {
             settings.applyAlwaysOnTop()
+            settings.applyBackgroundOpacity()
         }
         .onDrop(of: [.text], isTargeted: nil) { _ in
             if draggingItem != nil {
@@ -2350,6 +2368,13 @@ struct SettingsView: View {
                 TextField("", value: $settings.maxHistoryCount, format: .number)
                     .frame(width: 60)
                     .textFieldStyle(.roundedBorder)
+            }
+
+            HStack {
+                Text("배경 투명도")
+                Slider(value: $settings.backgroundOpacity, in: 0.3...1.0, step: 0.1)
+                Text("\(Int(settings.backgroundOpacity * 100))%")
+                    .frame(width: 40)
             }
 
             Divider()
