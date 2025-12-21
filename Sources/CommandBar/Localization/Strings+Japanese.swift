@@ -187,7 +187,28 @@ extension LocalizedStrings {
         registerClipboardPosition: "位置",
         registerClipboardPositionTop: "一番上",
         registerClipboardPositionBottom: "一番下",
-        registerClipboardRegister: "登録"
+        registerClipboardRegister: "登録",
+
+        apiRequestTitle: "APIリクエスト",
+        apiEndpoint: "エンドポイント",
+        apiMethod: "メソッド",
+        apiHeaders: "ヘッダー",
+        apiQueryParams: "クエリパラメータ",
+        apiBodyType: "ボディタイプ",
+        apiBodyData: "ボディデータ",
+        apiResponse: "レスポンス",
+        apiStatusCode: "ステータスコード",
+        apiAddHeader: "ヘッダー追加",
+        apiAddParam: "パラメータ追加",
+        apiExecute: "実行",
+        apiLastExecuted: "最終実行",
+        apiNoResponse: "レスポンスなし",
+        apiAddNew: "新規APIリクエスト",
+        apiResponseHeaders: "レスポンスヘッダー",
+        apiResponseBody: "レスポンスボディ",
+        apiExecutionTime: "実行時間",
+        apiRequestInfo: "リクエスト情報",
+        apiCopyResponse: "レスポンスをコピー"
     )
 
     static func forLanguage(_ language: Language) -> LocalizedStrings {

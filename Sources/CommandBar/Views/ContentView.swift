@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var editingGroup: Group? = nil
     @State private var restoringCommand: Command? = nil
     @State private var registeringClipboardItem: ClipboardItem? = nil
+    @State private var apiCommandWithParameters: Command? = nil
 
     var hasActiveIndicator: Bool {
         store.activeItems.contains { cmd in
@@ -235,6 +236,11 @@ struct ContentView: View {
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
                                         }
+                                    } else if cmd.executionType == .api {
+                                        Text(cmd.url)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
                                     } else {
                                         Text(cmd.command)
                                             .font(.caption)
@@ -427,7 +433,7 @@ struct ContentView: View {
                 Button(action: { showingTrash = false; showingHistory = false; showingClipboard = false; showingGroups = false }) {
                     ZStack {
                         Image(systemName: "doc.text")
-                            .foregroundStyle(!showingTrash && !showingHistory && !showingClipboard ? .primary : .secondary)
+                            .foregroundStyle(!showingTrash && !showingHistory && !showingClipboard && !showingGroups ? .primary : .secondary)
                         if (showingTrash || showingHistory || showingClipboard || showingGroups) && hasActiveIndicator {
                             Circle()
                                 .fill(Color.red)
@@ -509,6 +515,11 @@ struct ContentView: View {
         .sheet(item: $registeringClipboardItem) { item in
             RegisterClipboardSheet(store: store, item: item)
         }
+        .sheet(item: $apiCommandWithParameters) { cmd in
+            APIParameterInputView(command: cmd, store: store) { values in
+                executeAPIWithParameters(cmd, values: values)
+            }
+        }
         .onAppear {
             settings.applyAlwaysOnTop()
             settings.applyBackgroundOpacity()
@@ -538,8 +549,62 @@ struct ContentView: View {
     func handleRun(_ cmd: Command) {
         if cmd.executionType == .script {
             ScriptExecutionWindowController.show(command: cmd, store: store)
+        } else if cmd.executionType == .api {
+            // API 명령어에 파라미터가 있는지 확인
+            if cmd.hasAPIParameters {
+                apiCommandWithParameters = cmd
+            } else {
+                executeAPICommand(cmd)
+            }
         } else {
             store.run(cmd)
+        }
+    }
+
+    func executeAPIWithParameters(_ cmd: Command, values: [String: String]) {
+        // 파라미터 치환된 명령어로 실행
+        let replacedCommand = cmd.apiCommandWith(values: values)
+        executeAPICommand(replacedCommand)
+    }
+
+    func executeAPICommand(_ cmd: Command) {
+        Task {
+            let startTime = Date()
+            let result = await store.executeAPICommand(cmd)
+            let executionTime = Date().timeIntervalSince(startTime)
+
+            var statusCode = 0
+            var headers: [String: String] = [:]
+            var responseBody = ""
+
+            if let httpResponse = result.response as? HTTPURLResponse {
+                statusCode = httpResponse.statusCode
+                for (key, value) in httpResponse.allHeaderFields {
+                    if let keyString = key as? String, let valueString = value as? String {
+                        headers[keyString] = valueString
+                    }
+                }
+            }
+
+            if let data = result.data {
+                responseBody = String(data: data, encoding: .utf8) ?? "Unable to decode response"
+            } else if let error = result.error {
+                responseBody = "Error: \(error.localizedDescription)"
+            }
+
+            // Show response window
+            await MainActor.run {
+                APIResponseWindowController.show(
+                    requestId: cmd.id,
+                    method: cmd.httpMethod.rawValue,
+                    url: cmd.url,
+                    statusCode: statusCode,
+                    headers: headers,
+                    responseBody: responseBody,
+                    executionTime: executionTime,
+                    title: cmd.title
+                )
+            }
         }
     }
 
@@ -577,6 +642,7 @@ struct ContentView: View {
         case .background: return "arrow.clockwise"
         case .script: return "play.fill"
         case .schedule: return "calendar"
+        case .api: return "network"
         }
     }
 
@@ -586,6 +652,7 @@ struct ContentView: View {
         case .background: return .orange
         case .script: return .green
         case .schedule: return .purple
+        case .api: return .cyan
         }
     }
 

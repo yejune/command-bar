@@ -187,6 +187,27 @@ extension LocalizedStrings {
         registerClipboardPosition: "위치",
         registerClipboardPositionTop: "맨 위로",
         registerClipboardPositionBottom: "맨 아래로",
-        registerClipboardRegister: "등록"
+        registerClipboardRegister: "등록",
+
+        apiRequestTitle: "API 요청",
+        apiEndpoint: "엔드포인트",
+        apiMethod: "메서드",
+        apiHeaders: "헤더",
+        apiQueryParams: "쿼리 파라미터",
+        apiBodyType: "바디 타입",
+        apiBodyData: "바디 데이터",
+        apiResponse: "응답",
+        apiStatusCode: "상태 코드",
+        apiAddHeader: "헤더 추가",
+        apiAddParam: "파라미터 추가",
+        apiExecute: "실행",
+        apiLastExecuted: "마지막 실행",
+        apiNoResponse: "응답 없음",
+        apiAddNew: "새 API 요청",
+        apiResponseHeaders: "응답 헤더",
+        apiResponseBody: "응답 바디",
+        apiExecutionTime: "실행 시간",
+        apiRequestInfo: "요청 정보",
+        apiCopyResponse: "응답 복사"
     )
 }

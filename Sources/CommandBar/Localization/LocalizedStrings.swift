@@ -222,4 +222,26 @@ struct LocalizedStrings: Codable {
     var registerClipboardPositionTop: String
     var registerClipboardPositionBottom: String
     var registerClipboardRegister: String
+
+    // API 요청
+    var apiRequestTitle: String
+    var apiEndpoint: String
+    var apiMethod: String
+    var apiHeaders: String
+    var apiQueryParams: String
+    var apiBodyType: String
+    var apiBodyData: String
+    var apiResponse: String
+    var apiStatusCode: String
+    var apiAddHeader: String
+    var apiAddParam: String
+    var apiExecute: String
+    var apiLastExecuted: String
+    var apiNoResponse: String
+    var apiAddNew: String
+    var apiResponseHeaders: String
+    var apiResponseBody: String
+    var apiExecutionTime: String
+    var apiRequestInfo: String
+    var apiCopyResponse: String
 }

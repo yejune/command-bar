@@ -5,6 +5,7 @@ enum ExecutionType: String, Codable, CaseIterable {
     case background = "백그라운드"
     case script = "실행"
     case schedule = "일정"
+    case api = "API"
 
     var displayName: String {
         switch self {
@@ -12,6 +13,7 @@ enum ExecutionType: String, Codable, CaseIterable {
         case .background: return L.executionBackground
         case .script: return L.executionScript
         case .schedule: return L.executionSchedule
+        case .api: return "API"
         }
     }
 }
@@ -83,4 +85,34 @@ enum HistoryType: String, Codable {
         case .permanentlyDeleted: return L.historyPermanentlyDeleted
         }
     }
+}
+
+enum HTTPMethod: String, Codable, CaseIterable {
+    case get = "GET"
+    case post = "POST"
+    case put = "PUT"
+    case delete = "DELETE"
+    case patch = "PATCH"
+}
+
+enum BodyType: String, Codable, CaseIterable {
+    case none = "none"
+    case json = "json"
+    case formData = "formData"
+    case multipart = "multipart"
+
+    var displayName: String {
+        switch self {
+        case .none: return "None"
+        case .json: return "JSON"
+        case .formData: return "Form Data"
+        case .multipart: return "Multipart (파일)"
+        }
+    }
+}
+
+struct KeyValuePair: Identifiable {
+    let id = UUID()
+    var key: String
+    var value: String
 }

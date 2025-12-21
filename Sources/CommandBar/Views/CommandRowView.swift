@@ -23,6 +23,7 @@ struct CommandRowView: View {
         case .background: return .orange
         case .script: return .green
         case .schedule: return .purple
+        case .api: return .cyan
         }
     }
 
@@ -32,6 +33,7 @@ struct CommandRowView: View {
         case .background: return "arrow.clockwise"
         case .script: return "play.fill"
         case .schedule: return "calendar"
+        case .api: return "network"
         }
     }
 
@@ -65,6 +67,13 @@ struct CommandRowView: View {
             else {
                 return formatRemaining(Int(diff)) + " " + L.timeAfter
             }
+        case .api:
+            // 상태 코드가 있으면 표시
+            if let statusCode = cmd.lastStatusCode {
+                return "\(statusCode)"
+            }
+            // 없으면 HTTP 메서드 표시
+            return cmd.httpMethod.rawValue
         }
     }
 
@@ -150,6 +159,11 @@ struct CommandRowView: View {
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                } else if cmd.executionType == .api {
+                    Text(cmd.url)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 } else {
                     Text(cmd.command)
                         .font(.caption.monospaced())

@@ -180,6 +180,128 @@ class CommandStore: ObservableObject {
         removeClipboardItem(item)
     }
 
+    func executeAPICommand(_ command: Command) async -> (data: Data?, response: URLResponse?, error: Error?) {
+        // URL 생성 (queryParams 적용)
+        var urlComponents = URLComponents(string: command.url)
+        if !command.queryParams.isEmpty {
+            urlComponents?.queryItems = command.queryParams.map { URLQueryItem(name: $0.key, value: $0.value) }
+        }
+
+        guard let finalURL = urlComponents?.url else {
+            let error = NSError(domain: "CommandStore", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
+            return (nil, nil, error)
+        }
+
+        // URLRequest 생성
+        var urlRequest = URLRequest(url: finalURL)
+
+        // httpMethod 설정
+        urlRequest.httpMethod = command.httpMethod.rawValue
+
+        // headers 적용
+        for (key, value) in command.headers {
+            urlRequest.setValue(value, forHTTPHeaderField: key)
+        }
+
+        // body 설정 (bodyType에 따라)
+        switch command.bodyType {
+        case .none:
+            break
+        case .json:
+            if !command.bodyData.isEmpty {
+                urlRequest.httpBody = command.bodyData.data(using: .utf8)
+                if command.headers["Content-Type"] == nil {
+                    urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                }
+            }
+        case .formData:
+            if !command.bodyData.isEmpty {
+                urlRequest.httpBody = command.bodyData.data(using: .utf8)
+                if command.headers["Content-Type"] == nil {
+                    urlRequest.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+                }
+            }
+        case .multipart:
+            do {
+                let boundary = UUID().uuidString
+                urlRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+                var body = Data()
+
+                // 텍스트 파라미터 추가 (bodyData를 JSON으로 파싱)
+                if !command.bodyData.isEmpty {
+                    if let jsonData = command.bodyData.data(using: .utf8),
+                       let textParams = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                        for (key, value) in textParams {
+                            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+                            body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
+                            body.append("\(value)\r\n".data(using: .utf8)!)
+                        }
+                    }
+                }
+
+                // 파일 파라미터 추가
+                for (key, filePath) in command.fileParams {
+                    let fileURL = URL(fileURLWithPath: filePath)
+                    let fileName = fileURL.lastPathComponent
+                    let mimeType = getMimeType(for: fileURL)
+
+                    guard let fileData = try? Data(contentsOf: fileURL) else {
+                        let error = NSError(domain: "CommandStore", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to read file: \(filePath)"])
+                        return (nil, nil, error)
+                    }
+
+                    body.append("--\(boundary)\r\n".data(using: .utf8)!)
+                    body.append("Content-Disposition: form-data; name=\"\(key)\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+                    body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+                    body.append(fileData)
+                    body.append("\r\n".data(using: .utf8)!)
+                }
+
+                body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+                urlRequest.httpBody = body
+            } catch {
+                return (nil, nil, error)
+            }
+        }
+
+        // URLSession으로 실행
+        do {
+            let (data, response) = try await URLSession.shared.data(for: urlRequest)
+
+            // 결과 반환 및 command 업데이트 (lastResponse, lastStatusCode, lastExecutedAt)
+            await MainActor.run {
+                if let i = commands.firstIndex(where: { $0.id == command.id }) {
+                    commands[i].lastExecutedAt = Date()
+
+                    if let httpResponse = response as? HTTPURLResponse {
+                        commands[i].lastStatusCode = httpResponse.statusCode
+                    }
+
+                    if let responseString = String(data: data, encoding: .utf8) {
+                        commands[i].lastResponse = responseString
+                    }
+
+                    save()
+                }
+            }
+
+            return (data, response, nil)
+        } catch {
+            // 에러 업데이트
+            await MainActor.run {
+                if let i = commands.firstIndex(where: { $0.id == command.id }) {
+                    commands[i].lastExecutedAt = Date()
+                    commands[i].lastResponse = "Error: \(error.localizedDescription)"
+                    commands[i].lastStatusCode = nil
+                    save()
+                }
+            }
+
+            return (nil, nil, error)
+        }
+    }
+
     func startScheduleChecker() {
         scheduleCheckTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             self?.checkSchedules()
@@ -561,6 +683,10 @@ class CommandStore: ObservableObject {
             break  // 스크립트는 ContentView에서 처리
         case .schedule:
             break  // 일정은 수동 실행 없음
+        case .api:
+            Task {
+                await executeAPICommand(cmd)
+            }
         }
     }
 
@@ -747,6 +873,21 @@ class CommandStore: ObservableObject {
             )
             groups.insert(defaultGroup, at: 0)
             save()
+        }
+    }
+
+    // MARK: - Multipart Helper
+
+    private func getMimeType(for url: URL) -> String {
+        let ext = url.pathExtension.lowercased()
+        switch ext {
+        case "jpg", "jpeg": return "image/jpeg"
+        case "png": return "image/png"
+        case "gif": return "image/gif"
+        case "pdf": return "application/pdf"
+        case "json": return "application/json"
+        case "txt": return "text/plain"
+        default: return "application/octet-stream"
         }
     }
 

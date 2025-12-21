@@ -79,7 +79,20 @@ git checkout {branch:main|develop}     # branch dropdown selection
 - Filter to show favorites only
 - Works with group filter
 
-### 9. Multi-language Support
+### 9. API Requests
+- One of five execution types (Terminal/Background/Script/Schedule/API)
+- REST API testing functionality
+- HTTP methods: GET, POST, PUT, DELETE, PATCH
+- Configure headers, query parameters, and body data
+- Parameter support: `{variableName}` format
+  - Use in URL, headers, query parameters, and body
+  - Prompts for values at execution time
+  - Example: `https://api.example.com/users/{userId}`
+- Save and view responses
+- Response history tracking
+- Support for JSON, form-data, and raw body formats
+
+### 10. Multi-language Support
 - Korean, English, Japanese
 - Export/Import custom language packs
 
@@ -93,6 +106,7 @@ git checkout {branch:main|develop}     # branch dropdown selection
    - **Background**: set interval (0 for manual)
    - **Script**: supports `{name}` parameters
    - **Schedule**: set date/time, pre-alerts
+   - **API**: configure HTTP request
 
 ### Run Command
 - Double-click
@@ -103,6 +117,25 @@ git checkout {branch:main|develop}     # branch dropdown selection
 
 ### Reorder
 - Drag and drop
+
+### API Request Usage
+1. Select **API** type when adding command
+2. Configure request:
+   - **Method**: GET, POST, PUT, DELETE, PATCH
+   - **URL**: Enter endpoint URL (supports `{variableName}` parameters)
+   - **Headers**: Add custom headers (key-value pairs, supports `{variableName}`)
+   - **Query Parameters**: Add URL parameters (key-value pairs, supports `{variableName}`)
+   - **Body**: Configure request body (supports `{variableName}`)
+     - JSON: Raw JSON format
+     - Form Data: Key-value pairs
+     - Raw: Plain text
+3. Click **Send** or run command to execute
+   - If using `{variableName}` parameters, you'll be prompted to enter values
+4. View response in detail window:
+   - Status code and response time
+   - Response headers
+   - Response body (formatted JSON or raw text)
+5. Response saved to history for reference
 
 ### Bottom Buttons
 - 📄 Command list
@@ -134,6 +167,54 @@ git checkout {branch:main|develop}     # branch dropdown selection
 | `uptime` | System uptime | 60s |
 | `df -h \| head -2` | Disk usage | 300s |
 | `curl -s "wttr.in/Seoul?format=3"` | Seoul weather | 3600s |
+
+## API Request Examples
+
+| Name | Method | URL | Description |
+|------|--------|-----|-------------|
+| Get Users | GET | `https://api.example.com/users` | Fetch user list |
+| Get User by ID | GET | `https://api.example.com/users/{userId}` | Fetch specific user (prompts for userId) |
+| Create User | POST | `https://api.example.com/users` | Create new user (JSON body) |
+| Update User | PUT | `https://api.example.com/users/{userId}` | Update user data (prompts for userId) |
+| Delete User | DELETE | `https://api.example.com/users/{userId}` | Delete user (prompts for userId) |
+| Weather API | GET | `https://api.openweathermap.org/data/2.5/weather` | Get weather (query params: q, appid) |
+
+### Example API Configuration
+
+**GET Request with Query Parameters:**
+- Method: GET
+- URL: `https://api.github.com/users/octocat`
+- Headers: `Accept: application/vnd.github.v3+json`
+
+**GET Request with Variable Parameter:**
+- Method: GET
+- URL: `https://api.example.com/users/{userId}`
+- Description: Prompts for userId value when executed
+
+**POST Request with JSON Body:**
+- Method: POST
+- URL: `https://api.example.com/users`
+- Headers: `Content-Type: application/json`
+- Body (JSON):
+  ```json
+  {
+    "name": "John Doe",
+    "email": "john@example.com"
+  }
+  ```
+
+**POST Request with Variable in Body:**
+- Method: POST
+- URL: `https://api.example.com/users`
+- Headers: `Content-Type: application/json`
+- Body (JSON):
+  ```json
+  {
+    "name": "{userName}",
+    "email": "{userEmail}"
+  }
+  ```
+- Description: Prompts for userName and userEmail values when executed
 
 ## Data Storage
 

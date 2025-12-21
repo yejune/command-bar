@@ -1,7 +1,8 @@
 import SwiftUI
 
-struct ParameterInputView: View {
+struct APIParameterInputView: View {
     let command: Command
+    let store: CommandStore
     let onExecute: ([String: String]) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -12,13 +13,13 @@ struct ParameterInputView: View {
             Text(command.title)
                 .font(.headline)
 
-            Text(command.command)
+            Text(command.url)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
 
             Divider()
 
-            ForEach(command.parameterInfos, id: \.name) { info in
+            ForEach(command.apiParameterInfos, id: \.name) { info in
                 VStack(alignment: .leading, spacing: 4) {
                     Text(info.name)
                         .font(.caption)
@@ -50,7 +51,7 @@ struct ParameterInputView: View {
                 Button(L.buttonRun) {
                     // 옵션이 있는 파라미터는 기본값 설정
                     var finalValues = values
-                    for info in command.parameterInfos {
+                    for info in command.apiParameterInfos {
                         if finalValues[info.name] == nil, let first = info.options.first {
                             finalValues[info.name] = first
                         }

@@ -187,6 +187,27 @@ extension LocalizedStrings {
         registerClipboardPosition: "Position",
         registerClipboardPositionTop: "Top",
         registerClipboardPositionBottom: "Bottom",
-        registerClipboardRegister: "Register"
+        registerClipboardRegister: "Register",
+
+        apiRequestTitle: "API Request",
+        apiEndpoint: "Endpoint",
+        apiMethod: "Method",
+        apiHeaders: "Headers",
+        apiQueryParams: "Query Parameters",
+        apiBodyType: "Body Type",
+        apiBodyData: "Body Data",
+        apiResponse: "Response",
+        apiStatusCode: "Status Code",
+        apiAddHeader: "Add Header",
+        apiAddParam: "Add Parameter",
+        apiExecute: "Execute",
+        apiLastExecuted: "Last Executed",
+        apiNoResponse: "No Response",
+        apiAddNew: "New API Request",
+        apiResponseHeaders: "Response Headers",
+        apiResponseBody: "Response Body",
+        apiExecutionTime: "Execution Time",
+        apiRequestInfo: "Request Info",
+        apiCopyResponse: "Copy Response"
     )
 }
