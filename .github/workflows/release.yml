@@ -1,0 +1,49 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          swift build -c release
+
+      - name: Create App Bundle
+        run: |
+          cp .build/release/CommandBar CommandBar.app/Contents/MacOS/CommandBar
+
+      - name: Create DMG
+        run: |
+          # DMG 생성을 위한 임시 디렉토리
+          mkdir -p dmg_contents
+          cp -r CommandBar.app dmg_contents/
+          ln -s /Applications dmg_contents/Applications
+
+          # DMG 생성
+          hdiutil create -volname "CommandBar" \
+            -srcfolder dmg_contents \
+            -ov -format UDZO \
+            CommandBar-${{ github.ref_name }}.dmg
+
+      - name: Create ZIP
+        run: |
+          zip -r CommandBar-${{ github.ref_name }}.zip CommandBar.app
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            CommandBar-${{ github.ref_name }}.dmg
+            CommandBar-${{ github.ref_name }}.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

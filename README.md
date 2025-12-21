@@ -6,11 +6,15 @@ Command launcher and schedule reminder app for macOS
 
 ## Installation
 
-```bash
-# Build
-swift build
+### Download (Recommended)
+1. Download DMG from [Releases](https://github.com/yejune/command-bar/releases)
+2. Open DMG and drag CommandBar to Applications
+3. First run: Right-click → Open (bypass Gatekeeper)
 
-# Copy to Applications
+### Build from Source
+```bash
+swift build -c release
+cp .build/release/CommandBar CommandBar.app/Contents/MacOS/CommandBar
 cp -r CommandBar.app /Applications/
 ```
 

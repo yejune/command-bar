@@ -6,11 +6,15 @@ macOS용 명령어 런처 및 일정 알림 앱
 
 ## 설치
 
-```bash
-# 빌드
-swift build
+### 다운로드 (권장)
+1. [Releases](https://github.com/yejune/command-bar/releases)에서 DMG 다운로드
+2. DMG 열고 CommandBar를 Applications로 드래그
+3. 첫 실행: 우클릭 → 열기 (Gatekeeper 우회)
 
-# Applications 폴더에 설치
+### 소스에서 빌드
+```bash
+swift build -c release
+cp .build/release/CommandBar CommandBar.app/Contents/MacOS/CommandBar
 cp -r CommandBar.app /Applications/
 ```
 
