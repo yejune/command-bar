@@ -439,9 +439,16 @@ class CommandStore: ObservableObject {
         }
     }
 
-    func restoreFromTrash(_ cmd: Command) {
+    func restoreFromTrash(_ cmd: Command, toGroupId: UUID? = nil) {
         if let i = commands.firstIndex(where: { $0.id == cmd.id }) {
             commands[i].isInTrash = false
+            // 그룹 ID 지정 시 변경, 아니면 기존 그룹이 유효한지 확인
+            if let groupId = toGroupId {
+                commands[i].groupId = groupId
+            } else if !groups.contains(where: { $0.id == commands[i].groupId }) {
+                // 기존 그룹이 삭제된 경우 기본 그룹으로
+                commands[i].groupId = CommandStore.defaultGroupId
+            }
             save()
             if commands[i].executionType == .background && commands[i].interval > 0 {
                 startTimer(for: commands[i])

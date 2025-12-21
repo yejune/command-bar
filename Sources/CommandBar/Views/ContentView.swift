@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var showFavoritesOnly = false
     @State private var showAddGroupSheet = false
     @State private var editingGroup: Group? = nil
+    @State private var restoringCommand: Command? = nil
 
     var hasActiveIndicator: Bool {
         store.activeItems.contains { cmd in
@@ -256,7 +257,7 @@ struct ContentView: View {
                                     }
                                     .buttonStyle(SmallHoverButtonStyle())
                                     Button(action: {
-                                        store.restoreFromTrash(cmd)
+                                        restoringCommand = cmd
                                     }) {
                                         Image(systemName: "arrow.uturn.backward")
                                             .foregroundStyle(.blue)
@@ -505,6 +506,9 @@ struct ContentView: View {
         }
         .sheet(item: $editingGroup) { group in
             GroupEditSheet(store: store, existingGroup: group)
+        }
+        .sheet(item: $restoringCommand) { cmd in
+            RestoreGroupSheet(store: store, command: cmd)
         }
         .onAppear {
             settings.applyAlwaysOnTop()

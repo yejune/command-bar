@@ -74,6 +74,7 @@ extension LocalizedStrings {
         trashEmpty: "비우기",
         trashEmptyMessage: "휴지통이 비어있습니다",
         trashEmptyButton: "비우기",
+        trashRestore: "복구",
 
         commandTitle: "제목",
         commandCommand: "명령",

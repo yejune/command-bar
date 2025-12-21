@@ -74,6 +74,7 @@ extension LocalizedStrings {
         trashEmpty: "空にする",
         trashEmptyMessage: "ゴミ箱は空です",
         trashEmptyButton: "空にする",
+        trashRestore: "復元",
 
         commandTitle: "タイトル",
         commandCommand: "コマンド",

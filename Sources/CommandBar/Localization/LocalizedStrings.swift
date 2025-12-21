@@ -95,6 +95,7 @@ struct LocalizedStrings: Codable {
     var trashEmpty: String
     var trashEmptyMessage: String
     var trashEmptyButton: String
+    var trashRestore: String
 
     // 명령
     var commandTitle: String

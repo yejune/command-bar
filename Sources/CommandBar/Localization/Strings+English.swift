@@ -74,6 +74,7 @@ extension LocalizedStrings {
         trashEmpty: "Empty",
         trashEmptyMessage: "Trash is empty",
         trashEmptyButton: "Empty",
+        trashRestore: "Restore",
 
         commandTitle: "Title",
         commandCommand: "Command",

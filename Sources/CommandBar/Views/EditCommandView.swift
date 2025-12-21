@@ -86,19 +86,22 @@ struct EditCommandView: View {
                     .textFieldStyle(.roundedBorder)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(L.groupTitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Picker("", selection: $groupId) {
-                    ForEach(store.groups) { group in
-                        HStack {
-                            Circle().fill(colorFor(group.color)).frame(width: 8, height: 8)
-                            Text(group.name)
-                        }.tag(group.id)
+            // 휴지통 아이템이 아닐 때만 그룹 선택 표시
+            if !command.isInTrash {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L.groupTitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Picker("", selection: $groupId) {
+                        ForEach(store.groups) { group in
+                            HStack {
+                                Circle().fill(colorFor(group.color)).frame(width: 8, height: 8)
+                                Text(group.name)
+                            }.tag(group.id)
+                        }
                     }
+                    .pickerStyle(.menu)
                 }
-                .pickerStyle(.menu)
             }
 
             VStack(alignment: .leading, spacing: 4) {
