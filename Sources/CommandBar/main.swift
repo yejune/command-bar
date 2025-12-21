@@ -1117,14 +1117,41 @@ struct HistoryOutputView: View {
             Divider()
 
             ScrollView {
-                Text(item.output ?? "출력 없음")
-                    .font(.system(.body, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-                    .padding()
+                VStack(alignment: .leading, spacing: 12) {
+                    // 실행 명령어
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("명령어")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(item.command)
+                            .font(.system(.body, design: .monospaced))
+                            .textSelection(.enabled)
+                            .padding(8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(6)
+                    }
+
+                    // 출력
+                    if let output = item.output, !output.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("출력")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(output)
+                                .font(.system(.body, design: .monospaced))
+                                .textSelection(.enabled)
+                                .padding(8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(6)
+                        }
+                    }
+                }
+                .padding()
             }
         }
-        .frame(width: 400, height: 300)
+        .frame(width: 450, height: 350)
     }
 }
 
@@ -1657,6 +1684,7 @@ struct ScriptExecutionView: View {
     var onExecutionStarted: (() -> Void)?
 
     @State private var values: [String: String] = [:]
+    @State private var executedCommand: String?
     @StateObject private var runner = ScriptRunner()
 
     var isValid: Bool {
@@ -1677,9 +1705,10 @@ struct ScriptExecutionView: View {
                 Text(command.title)
                     .font(.headline)
 
-                Text(command.command)
+                Text(executedCommand ?? command.command)
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
             }
             .padding([.horizontal, .top])
             .padding(.bottom, 8)
@@ -1777,6 +1806,7 @@ struct ScriptExecutionView: View {
             .replacingOccurrences(of: "\u{2018}", with: "'")   // '
             .replacingOccurrences(of: "\u{2019}", with: "'")
 
+        executedCommand = finalCommand
         onExecutionStarted?()
 
         runner.run(command: finalCommand) { output in
