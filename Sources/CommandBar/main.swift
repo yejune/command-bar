@@ -1949,40 +1949,42 @@ struct ContentView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Button(action: {
-                                    ClipboardDetailWindowController.show(item: item, store: store, notesFolderName: settings.notesFolderName)
-                                }) {
-                                    Image(systemName: "doc.text.magnifyingglass")
+                                HStack(spacing: 2) {
+                                    Button(action: {
+                                        ClipboardDetailWindowController.show(item: item, store: store, notesFolderName: settings.notesFolderName)
+                                    }) {
+                                        Image(systemName: "doc.text.magnifyingglass")
+                                    }
+                                    .buttonStyle(SmallHoverButtonStyle())
+                                    Button(action: {
+                                        store.registerClipboardAsCommand(item, asLast: false)
+                                    }) {
+                                        Image(systemName: "arrow.up.doc")
+                                    }
+                                    .buttonStyle(SmallHoverButtonStyle())
+                                    .help(L.addToTop)
+                                    Button(action: {
+                                        store.registerClipboardAsCommand(item, asLast: true)
+                                    }) {
+                                        Image(systemName: "arrow.down.doc")
+                                    }
+                                    .buttonStyle(SmallHoverButtonStyle())
+                                    .help(L.addToBottom)
+                                    Button(action: {
+                                        store.sendToNotes(item, folderName: settings.notesFolderName)
+                                    }) {
+                                        Image(systemName: "note.text")
+                                    }
+                                    .buttonStyle(SmallHoverButtonStyle())
+                                    .help(L.clipboardSendToNotes)
+                                    Button(action: {
+                                        store.removeClipboardItem(item)
+                                    }) {
+                                        Image(systemName: "trash")
+                                            .foregroundStyle(.red)
+                                    }
+                                    .buttonStyle(SmallHoverButtonStyle())
                                 }
-                                .buttonStyle(SmallHoverButtonStyle())
-                                Button(action: {
-                                    store.registerClipboardAsCommand(item, asLast: false)
-                                }) {
-                                    Image(systemName: "arrow.up.doc")
-                                }
-                                .buttonStyle(SmallHoverButtonStyle())
-                                .help(L.addToTop)
-                                Button(action: {
-                                    store.registerClipboardAsCommand(item, asLast: true)
-                                }) {
-                                    Image(systemName: "arrow.down.doc")
-                                }
-                                .buttonStyle(SmallHoverButtonStyle())
-                                .help(L.addToBottom)
-                                Button(action: {
-                                    store.sendToNotes(item, folderName: settings.notesFolderName)
-                                }) {
-                                    Image(systemName: "note.text")
-                                }
-                                .buttonStyle(SmallHoverButtonStyle())
-                                .help(L.clipboardSendToNotes)
-                                Button(action: {
-                                    store.removeClipboardItem(item)
-                                }) {
-                                    Image(systemName: "trash")
-                                        .foregroundStyle(.red)
-                                }
-                                .buttonStyle(SmallHoverButtonStyle())
                             }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
@@ -2048,26 +2050,28 @@ struct ContentView: View {
                                     }
                                 }
                                 Spacer()
-                                Button(action: {
-                                    editingCommand = cmd
-                                }) {
-                                    Image(systemName: "pencil")
+                                HStack(spacing: 2) {
+                                    Button(action: {
+                                        editingCommand = cmd
+                                    }) {
+                                        Image(systemName: "pencil")
+                                    }
+                                    .buttonStyle(SmallHoverButtonStyle())
+                                    Button(action: {
+                                        store.restoreFromTrash(cmd)
+                                    }) {
+                                        Image(systemName: "arrow.uturn.backward")
+                                            .foregroundStyle(.blue)
+                                    }
+                                    .buttonStyle(SmallHoverButtonStyle())
+                                    Button(action: {
+                                        store.deletePermanently(cmd)
+                                    }) {
+                                        Image(systemName: "xmark")
+                                            .foregroundStyle(.red)
+                                    }
+                                    .buttonStyle(SmallHoverButtonStyle())
                                 }
-                                .buttonStyle(SmallHoverButtonStyle())
-                                Button(action: {
-                                    store.restoreFromTrash(cmd)
-                                }) {
-                                    Image(systemName: "arrow.uturn.backward")
-                                        .foregroundStyle(.blue)
-                                }
-                                .buttonStyle(SmallHoverButtonStyle())
-                                Button(action: {
-                                    store.deletePermanently(cmd)
-                                }) {
-                                    Image(systemName: "xmark")
-                                        .foregroundStyle(.red)
-                                }
-                                .buttonStyle(SmallHoverButtonStyle())
                             }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
@@ -3918,92 +3922,6 @@ struct SettingsView: View {
                 showAlert = true
             }
         }
-    }
-}
-
-struct TrashView: View {
-    @ObservedObject var store: CommandStore
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text(L.trashTitle)
-                    .font(.headline)
-                Spacer()
-                if !store.trashItems.isEmpty {
-                    Button(L.trashEmpty) {
-                        store.emptyTrash()
-                    }
-                    .foregroundStyle(.red)
-                }
-            }
-
-            if store.trashItems.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "trash")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                    Text(L.trashEmptyMessage)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 4) {
-                        ForEach(store.trashItems) { cmd in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(cmd.title)
-                                    if cmd.executionType == .schedule {
-                                        if let date = cmd.scheduleDate {
-                                            Text(date, format: .dateTime.month().day().hour().minute())
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                    } else {
-                                        Text(cmd.command)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                }
-                                Spacer()
-                                Button(L.buttonRestore) {
-                                    store.restoreFromTrash(cmd)
-                                }
-                                .buttonStyle(HoverButtonStyle())
-                                Button(action: {
-                                    store.deletePermanently(cmd)
-                                }) {
-                                    Image(systemName: "xmark")
-                                        .foregroundStyle(.red)
-                                }
-                                .buttonStyle(HoverButtonStyle())
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(Color.gray.opacity(0.1))
-                            )
-                        }
-                    }
-                }
-                .frame(height: 200)
-            }
-
-            HStack {
-                Spacer()
-                Button(L.buttonClose) {
-                    dismiss()
-                }
-                .buttonStyle(HoverTextButtonStyle())
-            }
-        }
-        .padding()
-        .frame(width: 350)
     }
 }
 
