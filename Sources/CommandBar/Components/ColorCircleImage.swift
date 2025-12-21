@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 extension NSImage {
-    static func colorCircle(size: CGFloat, color: NSColor) -> NSImage {
+    static func colorCircle(size: CGFloat, color: NSColor, leftShift: CGFloat = 0) -> NSImage {
         let image = NSImage(size: NSSize(width: size, height: size))
         image.lockFocus()
 
@@ -12,11 +12,16 @@ extension NSImage {
         path.fill()
 
         image.unlockFocus()
+
+        // alignmentRect로 왼쪽으로 이동
+        if leftShift != 0 {
+            image.alignmentRect = NSRect(x: leftShift, y: 0, width: size, height: size)
+        }
         return image
     }
 }
 
-func colorCircleImage(_ colorName: String, size: CGFloat = 10) -> Image {
+func colorCircleImage(_ colorName: String, size: CGFloat = 10, leftShift: CGFloat = 0) -> Image {
     let nsColor: NSColor
     switch colorName {
     case "blue": nsColor = .systemBlue
@@ -27,5 +32,5 @@ func colorCircleImage(_ colorName: String, size: CGFloat = 10) -> Image {
     case "gray": nsColor = .systemGray
     default: nsColor = .systemGray
     }
-    return Image(nsImage: NSImage.colorCircle(size: size, color: nsColor))
+    return Image(nsImage: NSImage.colorCircle(size: size, color: nsColor, leftShift: leftShift))
 }

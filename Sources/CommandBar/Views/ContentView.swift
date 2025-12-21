@@ -295,24 +295,24 @@ struct ContentView: View {
                     // 그룹 선택 Picker
                     Picker("", selection: $selectedGroupId) {
                         Label {
-                            Text(" \(L.groupAll)")
+                            Text("  \(L.groupAll)")
                         } icon: {
-                            colorCircleImage("gray", size: 8)
+                            colorCircleImage("gray", size: 8, leftShift: 2)
                         }.tag(nil as UUID?)
 
                         Divider()
 
                         ForEach(store.groups) { group in
                             Label {
-                                Text(" \(group.name)")
+                                Text("  \(group.name)")
                             } icon: {
-                                colorCircleImage(group.color, size: 8)
+                                colorCircleImage(group.color, size: 8, leftShift: 2)
                             }.tag(group.id as UUID?)
                         }
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
-                    .padding(.leading, -3)
+                    .padding(.leading, -4)
 
                     Button(action: { showFavoritesOnly.toggle() }) {
                         Image(systemName: showFavoritesOnly ? "star.fill" : "star")
