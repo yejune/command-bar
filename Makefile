@@ -10,7 +10,8 @@ build:
 # make release major   - major
 
 release:
-	@TYPE=$(word 2,$(MAKECMDGOALS)); \
+	@git fetch --tags; \
+	TYPE=$(word 2,$(MAKECMDGOALS)); \
 	TYPE=$${TYPE:-patch}; \
 	CURRENT=$$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0"); \
 	MAJOR=$$(echo $$CURRENT | sed 's/v//' | cut -d. -f1); \
