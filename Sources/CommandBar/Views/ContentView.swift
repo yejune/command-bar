@@ -19,6 +19,7 @@ struct ContentView: View {
     @State private var showAddGroupSheet = false
     @State private var editingGroup: Group? = nil
     @State private var restoringCommand: Command? = nil
+    @State private var registeringClipboardItem: ClipboardItem? = nil
 
     var hasActiveIndicator: Bool {
         store.activeItems.contains { cmd in
@@ -153,19 +154,12 @@ struct ContentView: View {
                                     }
                                     .buttonStyle(SmallHoverButtonStyle())
                                     Button(action: {
-                                        store.registerClipboardAsCommand(item, asLast: false)
+                                        registeringClipboardItem = item
                                     }) {
-                                        Image(systemName: "arrow.up.doc")
+                                        Image(systemName: "arrow.right.doc.on.clipboard")
                                     }
                                     .buttonStyle(SmallHoverButtonStyle())
-                                    .help(L.addToTop)
-                                    Button(action: {
-                                        store.registerClipboardAsCommand(item, asLast: true)
-                                    }) {
-                                        Image(systemName: "arrow.down.doc")
-                                    }
-                                    .buttonStyle(SmallHoverButtonStyle())
-                                    .help(L.addToBottom)
+                                    .help(L.registerClipboardTitle)
                                     Button(action: {
                                         store.sendToNotes(item, folderName: settings.notesFolderName)
                                     }) {
@@ -511,6 +505,9 @@ struct ContentView: View {
         }
         .sheet(item: $restoringCommand) { cmd in
             RestoreGroupSheet(store: store, command: cmd)
+        }
+        .sheet(item: $registeringClipboardItem) { item in
+            RegisterClipboardSheet(store: store, item: item)
         }
         .onAppear {
             settings.applyAlwaysOnTop()

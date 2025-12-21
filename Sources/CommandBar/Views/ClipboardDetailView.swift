@@ -32,16 +32,6 @@ struct ClipboardDetailView: View {
             Divider()
 
             HStack {
-                Button(L.addToTop) {
-                    store.registerClipboardAsCommand(item, asLast: false)
-                    onClose()
-                }
-                .buttonStyle(HoverTextButtonStyle())
-                Button(L.addToBottom) {
-                    store.registerClipboardAsCommand(item, asLast: true)
-                    onClose()
-                }
-                .buttonStyle(HoverTextButtonStyle())
                 Button(L.clipboardSendToNotes) {
                     store.sendToNotes(item, folderName: notesFolderName)
                     onClose()

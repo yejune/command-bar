@@ -139,14 +139,15 @@ class CommandStore: ObservableObject {
         saveClipboard()
     }
 
-    func registerClipboardAsCommand(_ item: ClipboardItem, asLast: Bool = true) {
+    func registerClipboardAsCommand(_ item: ClipboardItem, asLast: Bool = true, groupId: UUID = CommandStore.defaultGroupId, terminalApp: TerminalApp = .iterm2) {
         let firstLine = item.content.components(separatedBy: .newlines).first ?? item.content
         let title = String(firstLine.prefix(50))
         let cmd = Command(
+            groupId: groupId,
             title: title,
             command: item.content,
             executionType: .terminal,
-            terminalApp: .iterm2
+            terminalApp: terminalApp
         )
         if asLast {
             commands.append(cmd)

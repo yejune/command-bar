@@ -181,6 +181,12 @@ extension LocalizedStrings {
         groupCommandCount: "commands",
 
         favoriteAdd: "Add to Favorites",
-        favoriteRemove: "Remove from Favorites"
+        favoriteRemove: "Remove from Favorites",
+
+        registerClipboardTitle: "Register as Command",
+        registerClipboardPosition: "Position",
+        registerClipboardPositionTop: "Top",
+        registerClipboardPositionBottom: "Bottom",
+        registerClipboardRegister: "Register"
     )
 }

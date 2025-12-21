@@ -181,6 +181,12 @@ extension LocalizedStrings {
         groupCommandCount: "개 명령어",
 
         favoriteAdd: "즐겨찾기 추가",
-        favoriteRemove: "즐겨찾기 해제"
+        favoriteRemove: "즐겨찾기 해제",
+
+        registerClipboardTitle: "명령으로 등록",
+        registerClipboardPosition: "위치",
+        registerClipboardPositionTop: "맨 위로",
+        registerClipboardPositionBottom: "맨 아래로",
+        registerClipboardRegister: "등록"
     )
 }

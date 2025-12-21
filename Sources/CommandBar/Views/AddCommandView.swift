@@ -43,18 +43,6 @@ struct AddCommandView: View {
         return times
     }
 
-    func colorFor(_ name: String) -> Color {
-        switch name {
-        case "blue": return .blue
-        case "red": return .red
-        case "green": return .green
-        case "orange": return .orange
-        case "purple": return .purple
-        case "gray": return .gray
-        default: return .gray
-        }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(L.addNewItem)
@@ -77,33 +65,17 @@ struct AddCommandView: View {
                 Text(L.groupTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Menu {
+                Picker("", selection: $groupId) {
                     ForEach(store.groups) { group in
-                        Button(action: { groupId = group.id }) {
-                            HStack {
-                                Circle().fill(colorFor(group.color)).frame(width: 8, height: 8)
-                                Text(group.name)
-                                if groupId == group.id {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
+                        Label {
+                            Text(" \(group.name)")
+                        } icon: {
+                            colorCircleImage(group.color, size: 8)
+                        }.tag(group.id)
                     }
-                } label: {
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(colorFor(store.groups.first { $0.id == groupId }?.color ?? "gray"))
-                            .frame(width: 8, height: 8)
-                        Text(store.groups.first { $0.id == groupId }?.name ?? "")
-                        Spacer()
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(6)
-                    .background(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.3)))
                 }
-                .menuStyle(.borderlessButton)
+                .labelsHidden()
+                .pickerStyle(.menu)
             }
 
             VStack(alignment: .leading, spacing: 4) {

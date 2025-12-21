@@ -215,4 +215,11 @@ struct LocalizedStrings: Codable {
     // 즐겨찾기
     var favoriteAdd: String
     var favoriteRemove: String
+
+    // 클립보드 등록 모달
+    var registerClipboardTitle: String
+    var registerClipboardPosition: String
+    var registerClipboardPositionTop: String
+    var registerClipboardPositionBottom: String
+    var registerClipboardRegister: String
 }

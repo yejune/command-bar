@@ -181,7 +181,13 @@ extension LocalizedStrings {
         groupCommandCount: "コマンド",
 
         favoriteAdd: "お気に入りに追加",
-        favoriteRemove: "お気に入りから削除"
+        favoriteRemove: "お気に入りから削除",
+
+        registerClipboardTitle: "コマンドとして登録",
+        registerClipboardPosition: "位置",
+        registerClipboardPositionTop: "一番上",
+        registerClipboardPositionBottom: "一番下",
+        registerClipboardRegister: "登録"
     )
 
     static func forLanguage(_ language: Language) -> LocalizedStrings {
