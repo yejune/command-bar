@@ -3,6 +3,7 @@
 build:
 	swift build -c release
 	cp .build/release/CommandBar CommandBar.app/Contents/MacOS/CommandBar
+	cp -R CommandBar.app /Applications/
 
 # make release         - patch (default)
 # make release patch   - patch

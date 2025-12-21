@@ -2961,6 +2961,8 @@ struct OutputTextView: NSViewRepresentable {
         let scrollView = NSTextView.scrollableTextView()
         scrollView.drawsBackground = false
         scrollView.backgroundColor = .clear
+        scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        scrollView.scrollerInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
         let textView = scrollView.documentView as! NSTextView
         textView.isEditable = false
         textView.isSelectable = true
@@ -2968,6 +2970,8 @@ struct OutputTextView: NSViewRepresentable {
         textView.backgroundColor = .clear
         textView.drawsBackground = false
         textView.textColor = NSColor.labelColor
+        textView.textContainerInset = .zero
+        textView.textContainer?.lineFragmentPadding = 0
         return scrollView
     }
 
