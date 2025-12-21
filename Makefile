@@ -1,13 +1,23 @@
-.PHONY: build release
+.PHONY: build release patch minor major
 
 build:
 	swift build -c release
 	cp .build/release/CommandBar CommandBar.app/Contents/MacOS/CommandBar
 
-# Usage: make release [TYPE=patch|minor|major]
-TYPE ?= patch
+# make release / make patch  - patch (default)
+# make minor                 - minor
+# make major                 - major
 
-release:
+release patch:
+	@$(MAKE) _release TYPE=patch
+
+minor:
+	@$(MAKE) _release TYPE=minor
+
+major:
+	@$(MAKE) _release TYPE=major
+
+_release:
 	@CURRENT=$$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0"); \
 	MAJOR=$$(echo $$CURRENT | sed 's/v//' | cut -d. -f1); \
 	MINOR=$$(echo $$CURRENT | sed 's/v//' | cut -d. -f2); \
