@@ -1063,6 +1063,14 @@ struct ContentView: View {
                         .foregroundStyle(.primary)
                 }
                 .buttonStyle(.borderless)
+
+                Button(action: {
+                    DispatchQueue.main.async { snapToRight() }
+                }) {
+                    Image(systemName: "sidebar.right")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -1089,6 +1097,19 @@ struct ContentView: View {
             }
             return true
         }
+    }
+
+    func snapToRight() {
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow, let screen = window.screen else { return }
+        let visibleFrame = screen.visibleFrame
+        let minWidth: CGFloat = 280
+        let newFrame = NSRect(
+            x: visibleFrame.maxX - minWidth,
+            y: visibleFrame.minY,
+            width: minWidth,
+            height: visibleFrame.height
+        )
+        window.setFrame(newFrame, display: true, animate: false)
     }
 
     func handleRun(_ cmd: Command) {
