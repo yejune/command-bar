@@ -2,6 +2,41 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 
+struct HoverButtonStyle: ButtonStyle {
+    @State private var isHovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isHovering ? Color.primary.opacity(0.1) : Color.clear)
+            )
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .onHover { hovering in
+                isHovering = hovering
+            }
+    }
+}
+
+struct HoverTextButtonStyle: ButtonStyle {
+    @State private var isHovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isHovering ? Color.primary.opacity(0.15) : Color.primary.opacity(0.06))
+            )
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .onHover { hovering in
+                isHovering = hovering
+            }
+    }
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -784,7 +819,7 @@ struct ContentView: View {
                             store.clearHistory()
                         }
                         .font(.caption)
-                        .buttonStyle(.borderless)
+                        .buttonStyle(HoverButtonStyle())
                     }
                 }
                 .padding(.horizontal, 12)
@@ -824,7 +859,7 @@ struct ContentView: View {
                                     }) {
                                         Image(systemName: "doc.text.magnifyingglass")
                                     }
-                                    .buttonStyle(.borderless)
+                                    .buttonStyle(HoverButtonStyle())
                                 }
                             }
                             .padding(.horizontal, 10)
@@ -862,7 +897,7 @@ struct ContentView: View {
                             store.emptyTrash()
                         }
                         .font(.caption)
-                        .buttonStyle(.borderless)
+                        .buttonStyle(HoverButtonStyle())
                     }
                 }
                 .padding(.horizontal, 12)
@@ -896,21 +931,21 @@ struct ContentView: View {
                                 }) {
                                     Image(systemName: "pencil")
                                 }
-                                .buttonStyle(.borderless)
+                                .buttonStyle(HoverButtonStyle())
                                 Button(action: {
                                     store.restoreFromTrash(cmd)
                                 }) {
                                     Image(systemName: "arrow.uturn.backward")
                                         .foregroundStyle(.blue)
                                 }
-                                .buttonStyle(.borderless)
+                                .buttonStyle(HoverButtonStyle())
                                 Button(action: {
                                     store.deletePermanently(cmd)
                                 }) {
                                     Image(systemName: "xmark")
                                         .foregroundStyle(.red)
                                 }
-                                .buttonStyle(.borderless)
+                                .buttonStyle(HoverButtonStyle())
                             }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
@@ -1035,13 +1070,13 @@ struct ContentView: View {
                         }
                     }
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(HoverButtonStyle())
 
                 Button(action: { showAddSheet = true }) {
                     Image(systemName: "plus")
                         .foregroundStyle(!showingTrash && !showingHistory ? .primary : .secondary)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(HoverButtonStyle())
                 .disabled(showingTrash || showingHistory)
 
                 Spacer()
@@ -1050,19 +1085,19 @@ struct ContentView: View {
                     Image(systemName: store.history.isEmpty ? "clock" : "clock.fill")
                         .foregroundStyle(showingHistory ? .primary : .secondary)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(HoverButtonStyle())
 
                 Button(action: { showingTrash = true; showingHistory = false }) {
                     Image(systemName: store.trashItems.isEmpty ? "trash" : "trash.fill")
                         .foregroundStyle(showingTrash ? .primary : .secondary)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(HoverButtonStyle())
 
                 Button(action: { showSettings = true }) {
                     Image(systemName: "gearshape")
                         .foregroundStyle(.primary)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(HoverButtonStyle())
 
                 Button(action: {
                     DispatchQueue.main.async { snapToRight() }
@@ -1070,7 +1105,7 @@ struct ContentView: View {
                     Image(systemName: "sidebar.right")
                         .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(HoverButtonStyle())
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -1186,6 +1221,7 @@ struct HistoryOutputView: View {
                 Button("닫기") {
                     dismiss()
                 }
+                .buttonStyle(HoverTextButtonStyle())
             }
             .padding()
 
@@ -1596,6 +1632,7 @@ struct ParameterInputView: View {
 
             HStack {
                 Button("취소") { dismiss() }
+                    .buttonStyle(HoverTextButtonStyle())
                 Spacer()
                 Button("실행") {
                     // 옵션이 있는 파라미터는 기본값 설정
@@ -1608,6 +1645,7 @@ struct ParameterInputView: View {
                     onExecute(finalValues)
                     dismiss()
                 }
+                .buttonStyle(HoverTextButtonStyle())
                 .keyboardShortcut(.return)
             }
         }
@@ -1844,6 +1882,7 @@ struct ScriptExecutionView: View {
                         .foregroundStyle(.green)
                     Spacer()
                     Button("닫기") { onClose?() }
+                        .buttonStyle(HoverTextButtonStyle())
                 } else if runner.isRunning {
                     ProgressView()
                         .scaleEffect(0.7)
@@ -1852,13 +1891,16 @@ struct ScriptExecutionView: View {
                     Button("중단") {
                         runner.stop()
                     }
+                    .buttonStyle(HoverTextButtonStyle())
                     .foregroundStyle(.red)
                 } else {
                     Button("닫기") { onClose?() }
+                        .buttonStyle(HoverTextButtonStyle())
                     Spacer()
                     Button("실행") {
                         executeScript()
                     }
+                    .buttonStyle(HoverTextButtonStyle())
                     .keyboardShortcut(.return)
                     .disabled(!isValid && !command.parameterInfos.isEmpty)
                 }
@@ -2152,6 +2194,7 @@ struct AddCommandView: View {
                 Button("취소") {
                     dismiss()
                 }
+                .buttonStyle(HoverTextButtonStyle())
                 Spacer()
                 Button("추가") {
                     store.add(Command(
@@ -2166,6 +2209,7 @@ struct AddCommandView: View {
                     ))
                     dismiss()
                 }
+                .buttonStyle(HoverTextButtonStyle())
                 .disabled(!isValid)
             }
         }
@@ -2228,6 +2272,7 @@ struct ParameterHelpView: View {
             HStack {
                 Spacer()
                 Button("닫기") { dismiss() }
+                    .buttonStyle(HoverTextButtonStyle())
             }
         }
         .textSelection(.enabled)
@@ -2313,6 +2358,7 @@ struct SettingsView: View {
                 Button("닫기") {
                     dismiss()
                 }
+                .buttonStyle(HoverTextButtonStyle())
             }
         }
         .padding()
@@ -2494,14 +2540,14 @@ struct TrashView: View {
                                 Button("복원") {
                                     store.restoreFromTrash(cmd)
                                 }
-                                .buttonStyle(.borderless)
+                                .buttonStyle(HoverButtonStyle())
                                 Button(action: {
                                     store.deletePermanently(cmd)
                                 }) {
                                     Image(systemName: "xmark")
                                         .foregroundStyle(.red)
                                 }
-                                .buttonStyle(.borderless)
+                                .buttonStyle(HoverButtonStyle())
                             }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
@@ -2520,6 +2566,7 @@ struct TrashView: View {
                 Button("닫기") {
                     dismiss()
                 }
+                .buttonStyle(HoverTextButtonStyle())
             }
         }
         .padding()
@@ -2713,6 +2760,7 @@ struct EditCommandView: View {
                 Button("취소") {
                     dismiss()
                 }
+                .buttonStyle(HoverTextButtonStyle())
                 Spacer()
                 Button("저장") {
                     var updated = command
@@ -2727,6 +2775,7 @@ struct EditCommandView: View {
                     store.update(updated)
                     dismiss()
                 }
+                .buttonStyle(HoverTextButtonStyle())
                 .disabled(!isValid)
             }
         }
