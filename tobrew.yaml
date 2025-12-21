@@ -1,0 +1,25 @@
+name: command-bar
+language: binary
+description: Command launcher and schedule reminder app for macOS
+homepage: https://github.com/yejune/command-bar
+license: MIT
+github:
+    user: yejune
+    repo: command-bar
+    tap_repo: homebrew-tap
+build:
+    command: 'make build'
+formula:
+    install: |-
+        prefix.install "CommandBar.app"
+        bin.install_symlink prefix/"CommandBar.app/Contents/MacOS/CommandBar" => "command-bar"
+    test: system "#{bin}/command-bar", "--help"
+    caveats: |-
+        CommandBar.app has been installed to:
+          #{prefix}/CommandBar.app
+
+        To start CommandBar, run:
+          open #{prefix}/CommandBar.app
+
+        Or add to your Applications folder:
+          ln -sf #{prefix}/CommandBar.app /Applications/
