@@ -13,15 +13,15 @@ Command launcher and schedule reminder app for macOS
 
 ### Build from Source
 ```bash
-swift build -c release
-cp .build/release/CommandBar CommandBar.app/Contents/MacOS/CommandBar
-cp -r CommandBar.app /Applications/
+make build
 ```
 
 ## Features
 
 ### 1. Terminal Command Execution
 - Execute commands in iTerm2 or Terminal
+- Runs in current terminal window
+- Command output saved to history
 - Double-click or right-click menu to run
 
 ### 2. Background Command Execution
@@ -29,6 +29,7 @@ cp -r CommandBar.app /Applications/
 - Results displayed in list
 - Auto-repeat with interval setting
 - Countdown display until next execution
+- Remembers last execution time (resumes after app restart)
 - Interval presets: 10min, 1hr, 6hr, 12hr, 24hr, 7days
 
 ### 3. Script Execution
@@ -61,6 +62,16 @@ git checkout {branch:main|develop}     # branch dropdown selection
 - Record types: executed, background, script, schedule alert, pre-alert, added, deleted, restored, removed
 - Detail view: shows executed command + output
 
+### 6. Clipboard
+- Monitors clipboard history (max 10,000)
+- Quick register as command
+- Send to Apple Notes
+- View full content in detail window
+
+### 7. Multi-language Support
+- Korean, English, Japanese
+- Export/Import custom language packs
+
 ## Usage
 
 ### Add Command
@@ -85,13 +96,17 @@ git checkout {branch:main|develop}     # branch dropdown selection
 ### Bottom Buttons
 - 📄 Command list
 - ➕ Add command
+- 📋 Clipboard
 - 🕐 History
 - 🗑 Trash
 - ⚙️ Settings
 
 ### Settings
-- Always on top
-- Export/Import settings (JSON)
+- **General**: Always on top, Launch at login, Background opacity
+- **History**: Max count
+- **Clipboard**: Max count, Notes folder name
+- **Backup**: Export/Import (JSON)
+- **Language**: Korean/English/Japanese, Custom language pack
 
 ## Keyboard Shortcuts
 
@@ -112,6 +127,7 @@ git checkout {branch:main|develop}     # branch dropdown selection
 
 - Config: `~/.command_bar/app.json`
 - History: `~/.command_bar/history.json`
+- Clipboard: `~/.command_bar/clipboard.json`
 
 ## Requirements
 

@@ -13,15 +13,15 @@ macOS용 명령어 런처 및 일정 알림 앱
 
 ### 소스에서 빌드
 ```bash
-swift build -c release
-cp .build/release/CommandBar CommandBar.app/Contents/MacOS/CommandBar
-cp -r CommandBar.app /Applications/
+make build
 ```
 
 ## 기능
 
 ### 1. 터미널 명령 실행
 - iTerm2 또는 Terminal에서 명령 실행
+- 현재 터미널 창에서 실행
+- 명령 출력 히스토리에 저장
 - 더블클릭 또는 우클릭 메뉴로 실행
 
 ### 2. 백그라운드 명령 실행
@@ -29,6 +29,7 @@ cp -r CommandBar.app /Applications/
 - 결과가 리스트에 표시됨
 - 주기 설정으로 자동 반복 실행
 - 다음 실행까지 카운트다운 표시
+- 마지막 실행 시간 기억 (앱 재시작 후에도 유지)
 - 주기 프리셋: 10분, 1시간, 6시간, 12시간, 24시간, 7일
 
 ### 3. 스크립트 실행
@@ -61,6 +62,16 @@ git checkout {branch:main|develop}     # branch 드롭다운 선택
 - 기록 유형: 실행, 백그라운드, 스크립트, 일정 알림, 미리 알림, 등록, 삭제, 복원, 제거
 - 상세보기: 실행 명령어 + 출력 결과 확인 가능
 
+### 6. 클립보드
+- 클립보드 히스토리 모니터링 (최대 10,000개)
+- 빠른 명령 등록
+- Apple 메모로 보내기
+- 상세 창에서 전체 내용 보기
+
+### 7. 다국어 지원
+- 한국어, 영어, 일본어
+- 커스텀 언어팩 내보내기/가져오기
+
 ## 사용법
 
 ### 명령 추가
@@ -85,13 +96,17 @@ git checkout {branch:main|develop}     # branch 드롭다운 선택
 ### 하단 버튼
 - 📄 명령 목록
 - ➕ 명령 추가
+- 📋 클립보드
 - 🕐 히스토리
 - 🗑 휴지통
 - ⚙️ 설정
 
 ### 설정
-- 항상 위에 표시
-- 설정 내보내기/가져오기 (JSON)
+- **기본**: 항상 위에 표시, 로그인 시 시작, 배경 투명도
+- **히스토리**: 최대 개수
+- **클립보드**: 최대 개수, 메모 폴더명
+- **백업**: 내보내기/가져오기 (JSON)
+- **언어**: 한국어/영어/일본어, 커스텀 언어팩
 
 ## 단축키
 
@@ -112,6 +127,7 @@ git checkout {branch:main|develop}     # branch 드롭다운 선택
 
 - 설정: `~/.command_bar/app.json`
 - 히스토리: `~/.command_bar/history.json`
+- 클립보드: `~/.command_bar/clipboard.json`
 
 ## 요구사항
 
