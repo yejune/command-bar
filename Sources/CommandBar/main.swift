@@ -107,6 +107,28 @@ extension Command {
     }
 }
 
+// 히스토리 아이템
+enum HistoryType: String, Codable {
+    case executed = "실행"
+    case background = "백그라운드"
+    case script = "스크립트"
+    case scheduleAlert = "일정 알림"
+    case reminder = "미리 알림"
+    case added = "등록"
+    case deleted = "삭제"
+    case restored = "복원"
+    case permanentlyDeleted = "제거"
+}
+
+struct HistoryItem: Identifiable, Codable {
+    var id = UUID()
+    let timestamp: Date
+    let title: String
+    let command: String
+    let type: HistoryType
+    var output: String?
+}
+
 // 임포트/익스포트용 구조체
 struct ExportSettings: Codable {
     let alwaysOnTop: Bool
@@ -143,16 +165,45 @@ class Settings: ObservableObject {
 class CommandStore: ObservableObject {
     @Published var commands: [Command] = []
     @Published var alertingCommandId: UUID?  // 현재 알림 중인 명령
+    @Published var history: [HistoryItem] = []
     private var timers: [UUID: Timer] = [:]
     private var scheduleCheckTimer: Timer?
 
     private let url = URL(fileURLWithPath: NSHomeDirectory())
         .appendingPathComponent(".command_bar_app")
+    private let historyUrl = URL(fileURLWithPath: NSHomeDirectory())
+        .appendingPathComponent(".command_bar_history")
 
     init() {
         load()
+        loadHistory()
         startTimers()
         startScheduleChecker()
+    }
+
+    func addHistory(_ item: HistoryItem) {
+        history.insert(item, at: 0)
+        // 최대 100개 유지
+        if history.count > 100 {
+            history = Array(history.prefix(100))
+        }
+        saveHistory()
+    }
+
+    func loadHistory() {
+        guard let data = try? Data(contentsOf: historyUrl),
+              let decoded = try? JSONDecoder().decode([HistoryItem].self, from: data) else { return }
+        history = decoded
+    }
+
+    func saveHistory() {
+        guard let data = try? JSONEncoder().encode(history) else { return }
+        try? data.write(to: historyUrl)
+    }
+
+    func clearHistory() {
+        history.removeAll()
+        saveHistory()
     }
 
     func startScheduleChecker() {
@@ -173,6 +224,17 @@ class CommandStore: ObservableObject {
 
             // "지금!" 상태이고 아직 확인 안했으면 5초마다 알림
             if diff <= 0 && !commands[i].acknowledged {
+                // 최초 "지금" 알림 시 히스토리 기록 (alertedTimes에 0이 없으면)
+                if !commands[i].alertedTimes.contains(0) {
+                    commands[i].alertedTimes.insert(0)
+                    addHistory(HistoryItem(
+                        timestamp: Date(),
+                        title: commands[i].title,
+                        command: "",
+                        type: .scheduleAlert,
+                        output: nil
+                    ))
+                }
                 commands[i].alertState = .now
                 // 5초마다 알림 (현재 시간의 초가 5로 나눠떨어지면)
                 let seconds = Int(now.timeIntervalSince1970) % 5
@@ -190,6 +252,14 @@ class CommandStore: ObservableObject {
                         commands[i].alertedTimes.insert(reminderTime)
                         commands[i].alertState = alertStateFor(seconds: reminderTime)
                         triggerAlert(for: commands[i])
+                        // 히스토리 기록
+                        addHistory(HistoryItem(
+                            timestamp: Date(),
+                            title: commands[i].title,
+                            command: alertStateFor(seconds: reminderTime).rawValue,
+                            type: .reminder,
+                            output: nil
+                        ))
                     }
                     break
                 }
@@ -279,11 +349,25 @@ class CommandStore: ObservableObject {
         if cmd.executionType == .background && cmd.interval > 0 {
             startTimer(for: cmd)
         }
+        addHistory(HistoryItem(
+            timestamp: Date(),
+            title: cmd.title,
+            command: cmd.command,
+            type: .added,
+            output: nil
+        ))
     }
 
     func moveToTrash(at offsets: IndexSet) {
         for i in offsets {
             stopTimer(for: commands[i].id)
+            addHistory(HistoryItem(
+                timestamp: Date(),
+                title: commands[i].title,
+                command: commands[i].command,
+                type: .deleted,
+                output: nil
+            ))
             commands[i].isInTrash = true
         }
         save()
@@ -294,6 +378,13 @@ class CommandStore: ObservableObject {
             stopTimer(for: cmd.id)
             commands[i].isInTrash = true
             save()
+            addHistory(HistoryItem(
+                timestamp: Date(),
+                title: cmd.title,
+                command: cmd.command,
+                type: .deleted,
+                output: nil
+            ))
         }
     }
 
@@ -304,11 +395,25 @@ class CommandStore: ObservableObject {
             if commands[i].executionType == .background && commands[i].interval > 0 {
                 startTimer(for: commands[i])
             }
+            addHistory(HistoryItem(
+                timestamp: Date(),
+                title: cmd.title,
+                command: cmd.command,
+                type: .restored,
+                output: nil
+            ))
         }
     }
 
     func deletePermanently(_ cmd: Command) {
         stopTimer(for: cmd.id)
+        addHistory(HistoryItem(
+            timestamp: Date(),
+            title: cmd.title,
+            command: cmd.command,
+            type: .permanentlyDeleted,
+            output: nil
+        ))
         commands.removeAll { $0.id == cmd.id }
         save()
     }
@@ -394,6 +499,15 @@ class CommandStore: ObservableObject {
 
         var error: NSDictionary?
         NSAppleScript(source: script)?.executeAndReturnError(&error)
+
+        // 히스토리 기록
+        addHistory(HistoryItem(
+            timestamp: Date(),
+            title: cmd.title,
+            command: cmd.command,
+            type: .executed,
+            output: nil
+        ))
     }
 
     private func runInBackground(_ cmd: Command) {
@@ -424,13 +538,30 @@ class CommandStore: ObservableObject {
                         self.commands[i].isRunning = false
                         self.save()
                     }
+                    // 히스토리 기록
+                    self.addHistory(HistoryItem(
+                        timestamp: Date(),
+                        title: cmd.title,
+                        command: cmd.command,
+                        type: .background,
+                        output: output
+                    ))
                 }
             } catch {
                 DispatchQueue.main.async {
+                    let errorMsg = "Error: \(error.localizedDescription)"
                     if let i = self.commands.firstIndex(where: { $0.id == cmd.id }) {
-                        self.commands[i].lastOutput = "Error: \(error.localizedDescription)"
+                        self.commands[i].lastOutput = errorMsg
                         self.commands[i].isRunning = false
                     }
+                    // 히스토리 기록
+                    self.addHistory(HistoryItem(
+                        timestamp: Date(),
+                        title: cmd.title,
+                        command: cmd.command,
+                        type: .background,
+                        output: errorMsg
+                    ))
                 }
             }
         }
@@ -501,9 +632,11 @@ struct ContentView: View {
     @State private var showAddSheet = false
     @State private var showSettings = false
     @State private var showingTrash = false
+    @State private var showingHistory = false
     @State private var editingCommand: Command?
     @State private var selectedId: UUID?
     @State private var draggingItem: Command?
+    @State private var selectedHistoryItem: HistoryItem?
     // 스크립트 실행용
     @State private var parameterCommand: Command?
     @State private var resultTitle: String = ""
@@ -513,8 +646,97 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
 
-            if showingTrash {
+            if showingHistory {
+                // 히스토리 보기
+                HStack {
+                    Text("히스토리")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if !store.history.isEmpty {
+                        Button("지우기") {
+                            store.clearHistory()
+                        }
+                        .font(.caption)
+                        .buttonStyle(.borderless)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                Divider()
+                ScrollView {
+                    LazyVStack(spacing: 4) {
+                        ForEach(store.history) { item in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 4) {
+                                        Text(item.type.rawValue)
+                                            .font(.caption2)
+                                            .padding(.horizontal, 4)
+                                            .padding(.vertical, 1)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: 3)
+                                                    .fill(historyTypeColor(item.type).opacity(0.2))
+                                            )
+                                            .foregroundStyle(historyTypeColor(item.type))
+                                        Text(item.title)
+                                            .fontWeight(.medium)
+                                    }
+                                    Text(item.timestamp, format: .dateTime.month().day().hour().minute().second())
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if item.output != nil {
+                                    Button(action: {
+                                        selectedHistoryItem = item
+                                    }) {
+                                        Image(systemName: "doc.text.magnifyingglass")
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.gray.opacity(0.1))
+                            )
+                        }
+                    }
+                    .padding(8)
+                }
+                .background(Color(nsColor: .textBackgroundColor))
+                .overlay {
+                    if store.history.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "clock")
+                                .font(.title2)
+                                .foregroundStyle(.secondary)
+                            Text("히스토리가 없습니다")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            } else if showingTrash {
                 // 휴지통 보기
+                HStack {
+                    Text("휴지통")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if !store.trashItems.isEmpty {
+                        Button("비우기") {
+                            store.emptyTrash()
+                        }
+                        .font(.caption)
+                        .buttonStyle(.borderless)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                Divider()
                 ScrollView {
                     LazyVStack(spacing: 4) {
                         ForEach(store.trashItems) { cmd in
@@ -581,6 +803,18 @@ struct ContentView: View {
                 }
             } else {
                 // 일반 리스트
+                HStack {
+                    Text("명령 목록")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(store.activeItems.count)개")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                Divider()
                 ScrollView {
                     LazyVStack(spacing: 4) {
                         ForEach(store.activeItems) { cmd in
@@ -652,22 +886,28 @@ struct ContentView: View {
             Divider()
 
             HStack {
-                Button(action: { showingTrash = false }) {
+                Button(action: { showingTrash = false; showingHistory = false }) {
                     Image(systemName: "doc.text")
-                        .foregroundStyle(showingTrash ? .secondary : .primary)
+                        .foregroundStyle(!showingTrash && !showingHistory ? .primary : .secondary)
                 }
                 .buttonStyle(.borderless)
 
                 Button(action: { showAddSheet = true }) {
                     Image(systemName: "plus")
-                        .foregroundStyle(showingTrash ? .secondary : .primary)
+                        .foregroundStyle(!showingTrash && !showingHistory ? .primary : .secondary)
                 }
                 .buttonStyle(.borderless)
-                .disabled(showingTrash)
+                .disabled(showingTrash || showingHistory)
 
                 Spacer()
 
-                Button(action: { showingTrash = true }) {
+                Button(action: { showingHistory = true; showingTrash = false }) {
+                    Image(systemName: store.history.isEmpty ? "clock" : "clock.fill")
+                        .foregroundStyle(showingHistory ? .primary : .secondary)
+                }
+                .buttonStyle(.borderless)
+
+                Button(action: { showingTrash = true; showingHistory = false }) {
                     Image(systemName: store.trashItems.isEmpty ? "trash" : "trash.fill")
                         .foregroundStyle(showingTrash ? .primary : .secondary)
                 }
@@ -699,6 +939,9 @@ struct ContentView: View {
         .sheet(isPresented: $showResult) {
             ResultView(title: resultTitle, output: resultOutput)
         }
+        .sheet(item: $selectedHistoryItem) { item in
+            HistoryOutputView(item: item)
+        }
         .onAppear {
             settings.applyAlwaysOnTop()
         }
@@ -728,7 +971,7 @@ struct ContentView: View {
         resultTitle = cmd.title
         resultOutput = ""
 
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
             let process = Process()
             let pipe = Pipe()
 
@@ -747,14 +990,81 @@ struct ContentView: View {
                 DispatchQueue.main.async {
                     resultOutput = output
                     showResult = true
+                    // 히스토리 기록
+                    store.addHistory(HistoryItem(
+                        timestamp: Date(),
+                        title: cmd.title,
+                        command: finalCommand,
+                        type: .script,
+                        output: output
+                    ))
                 }
             } catch {
                 DispatchQueue.main.async {
-                    resultOutput = "Error: \(error.localizedDescription)"
+                    let errorMsg = "Error: \(error.localizedDescription)"
+                    resultOutput = errorMsg
                     showResult = true
+                    // 히스토리 기록
+                    store.addHistory(HistoryItem(
+                        timestamp: Date(),
+                        title: cmd.title,
+                        command: finalCommand,
+                        type: .script,
+                        output: errorMsg
+                    ))
                 }
             }
         }
+    }
+
+    func historyTypeColor(_ type: HistoryType) -> Color {
+        switch type {
+        case .executed: return .blue
+        case .background: return .orange
+        case .script: return .green
+        case .scheduleAlert: return .purple
+        case .reminder: return .pink
+        case .added: return .mint
+        case .deleted: return .red
+        case .restored: return .teal
+        case .permanentlyDeleted: return .gray
+        }
+    }
+}
+
+// 히스토리 출력 보기 뷰
+struct HistoryOutputView: View {
+    let item: HistoryItem
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(.headline)
+                    Text(item.timestamp, format: .dateTime)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("닫기") {
+                    dismiss()
+                }
+            }
+            .padding()
+
+            Divider()
+
+            ScrollView {
+                Text(item.output ?? "출력 없음")
+                    .font(.system(.body, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .padding()
+            }
+        }
+        .frame(width: 400, height: 300)
     }
 }
 
@@ -1385,6 +1695,7 @@ struct ParameterHelpView: View {
                 Button("닫기") { dismiss() }
             }
         }
+        .textSelection(.enabled)
         .padding()
         .frame(width: 320)
     }
