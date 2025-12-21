@@ -1134,12 +1134,14 @@ struct SettingsView: View {
     @ObservedObject var settings: Settings
     @ObservedObject var store: CommandStore
     @Environment(\.dismiss) private var dismiss
-    @State private var mergeImport = true
+    @State private var isExportMode = true
     @State private var showAlert = false
     @State private var alertMessage = ""
+    @State private var showImportChoice = false
+    @State private var pendingImportData: Data?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("설정")
                 .font(.headline)
 
@@ -1147,35 +1149,50 @@ struct SettingsView: View {
 
             Divider()
 
-            Text("데이터")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            // 내보내기
-            HStack(spacing: 8) {
-                Button("파일로 내보내기") {
-                    exportToFile()
+            // 탭 UI
+            HStack(spacing: 0) {
+                Button(action: { isExportMode = true }) {
+                    VStack(spacing: 4) {
+                        Text("내보내기")
+                            .foregroundColor(isExportMode ? .primary : .secondary)
+                        Rectangle()
+                            .fill(isExportMode ? Color.accentColor : Color.clear)
+                            .frame(height: 2)
+                    }
                 }
-                Button("클립보드 복사") {
-                    exportToClipboard()
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+
+                Button(action: { isExportMode = false }) {
+                    VStack(spacing: 4) {
+                        Text("가져오기")
+                            .foregroundColor(!isExportMode ? .primary : .secondary)
+                        Rectangle()
+                            .fill(!isExportMode ? Color.accentColor : Color.clear)
+                            .frame(height: 2)
+                    }
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+            }
+
+            if isExportMode {
+                HStack(spacing: 8) {
+                    Spacer()
+                    Button("파일 다운로드") { exportToFile() }
+                    Button("클립보드 복사하기") { exportToClipboard() }
+                    Spacer()
+                }
+            } else {
+                HStack(spacing: 8) {
+                    Spacer()
+                    Button("파일 업로드") { loadFromFile() }
+                    Button("클립보드 붙여넣기") { loadFromClipboard() }
+                    Spacer()
                 }
             }
 
-            // 가져오기
-            HStack(spacing: 8) {
-                Button("파일에서 가져오기") {
-                    importFromFile()
-                }
-                Button("클립보드 붙여넣기") {
-                    importFromClipboard()
-                }
-            }
-
-            Picker("가져오기 방식", selection: $mergeImport) {
-                Text("병합").tag(true)
-                Text("덮어쓰기").tag(false)
-            }
-            .pickerStyle(.segmented)
+            Spacer().frame(height: 8)
 
             HStack {
                 Spacer()
@@ -1185,11 +1202,22 @@ struct SettingsView: View {
             }
         }
         .padding()
-        .frame(width: 350)
+        .frame(width: 300)
         .alert("알림", isPresented: $showAlert) {
             Button("확인") {}
         } message: {
             Text(alertMessage)
+        }
+        .confirmationDialog("가져오기 방식", isPresented: $showImportChoice, titleVisibility: .visible) {
+            Button("병합 (기존 데이터 유지)") {
+                performImport(merge: true)
+            }
+            Button("덮어쓰기 (기존 데이터 삭제)") {
+                performImport(merge: false)
+            }
+            Button("취소", role: .cancel) {
+                pendingImportData = nil
+            }
         }
     }
 
@@ -1201,9 +1229,13 @@ struct SettingsView: View {
             return
         }
 
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyMMdd_HHmmss"
+        let filename = "commandbar_\(formatter.string(from: Date())).json"
+
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "commandbar_backup.json"
+        panel.nameFieldStringValue = filename
 
         if panel.runModal() == .OK, let url = panel.url {
             do {
@@ -1231,7 +1263,7 @@ struct SettingsView: View {
         showAlert = true
     }
 
-    func importFromFile() {
+    func loadFromFile() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
@@ -1239,12 +1271,15 @@ struct SettingsView: View {
         if panel.runModal() == .OK, let url = panel.url {
             do {
                 let data = try Data(contentsOf: url)
-                if store.importData(data, settings: settings, merge: mergeImport) {
-                    alertMessage = "가져오기 완료"
+                // 유효성 검사
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                if (try? decoder.decode(ExportData.self, from: data)) != nil {
+                    tryImport(data)
                 } else {
                     alertMessage = "잘못된 형식"
+                    showAlert = true
                 }
-                showAlert = true
             } catch {
                 alertMessage = "파일 읽기 실패"
                 showAlert = true
@@ -1252,7 +1287,7 @@ struct SettingsView: View {
         }
     }
 
-    func importFromClipboard() {
+    func loadFromClipboard() {
         guard let string = NSPasteboard.general.string(forType: .string),
               let data = string.data(using: .utf8) else {
             alertMessage = "클립보드가 비어있음"
@@ -1260,11 +1295,35 @@ struct SettingsView: View {
             return
         }
 
-        if store.importData(data, settings: settings, merge: mergeImport) {
-            alertMessage = "가져오기 완료"
+        // 유효성 검사
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        if (try? decoder.decode(ExportData.self, from: data)) != nil {
+            tryImport(data)
         } else {
             alertMessage = "잘못된 형식"
+            showAlert = true
         }
+    }
+
+    func tryImport(_ data: Data) {
+        pendingImportData = data
+        // 기존 데이터가 없으면 바로 가져오기
+        if store.activeItems.isEmpty {
+            performImport(merge: false)
+        } else {
+            showImportChoice = true
+        }
+    }
+
+    func performImport(merge: Bool) {
+        guard let data = pendingImportData else { return }
+        if store.importData(data, settings: settings, merge: merge) {
+            alertMessage = merge ? "병합 완료" : "덮어쓰기 완료"
+        } else {
+            alertMessage = "가져오기 실패"
+        }
+        pendingImportData = nil
         showAlert = true
     }
 }
