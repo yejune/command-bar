@@ -1517,14 +1517,18 @@ class ScriptRunner: ObservableObject {
     @Published var output = ""
 
     private var process: Process?
-    private var observer: NSObjectProtocol?
-    private var completion: ((String) -> Void)?
+    private var fileHandle: FileHandle?
+    private var buffer = ""
+    private var updateTimer: Timer?
+    private let queue = DispatchQueue(label: "ScriptRunner")
 
     func run(command: String, completion: @escaping (String) -> Void) {
-        isRunning = true
-        isFinished = false
-        output = ""
-        self.completion = completion
+        DispatchQueue.main.async {
+            self.isRunning = true
+            self.isFinished = false
+            self.output = ""
+        }
+        buffer = ""
 
         let proc = Process()
         let pipe = Pipe()
@@ -1536,63 +1540,112 @@ class ScriptRunner: ObservableObject {
 
         self.process = proc
         let handle = pipe.fileHandleForReading
+        self.fileHandle = handle
 
-        // NotificationCenter로 비동기 읽기
-        observer = NotificationCenter.default.addObserver(
-            forName: .NSFileHandleDataAvailable,
-            object: handle,
-            queue: .main
-        ) { [weak self] _ in
-            let data = handle.availableData
-            if data.isEmpty {
-                // EOF - 프로세스 종료됨
-                self?.finish()
-            } else {
-                if let str = String(data: data, encoding: .utf8) {
-                    self?.output += str
+        // 100ms마다 UI 업데이트
+        DispatchQueue.main.async {
+            self.updateTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+                guard let self = self else { return }
+                self.queue.sync {
+                    if !self.buffer.isEmpty {
+                        let text = self.buffer
+                        self.buffer = ""
+                        DispatchQueue.main.async {
+                            self.output += text
+                        }
+                    }
                 }
-                handle.waitForDataInBackgroundAndNotify()
             }
         }
 
-        // 프로세스 종료 핸들러
+        // 출력 읽기 (버퍼에 저장)
+        handle.readabilityHandler = { [weak self] h in
+            let data = h.availableData
+            if !data.isEmpty, let str = String(data: data, encoding: .utf8) {
+                self?.queue.sync {
+                    self?.buffer += str
+                }
+            }
+        }
+
+        // 프로세스 종료 감지
         proc.terminationHandler = { [weak self] _ in
+            handle.readabilityHandler = nil
+            let remaining = try? handle.readToEnd()
+
             DispatchQueue.main.async {
-                // 남은 데이터 읽기
-                let remaining = handle.availableData
-                if !remaining.isEmpty, let str = String(data: remaining, encoding: .utf8) {
+                self?.updateTimer?.invalidate()
+                self?.updateTimer = nil
+
+                // 남은 버퍼 + 마지막 데이터
+                self?.queue.sync {
+                    if !self!.buffer.isEmpty {
+                        self?.output += self!.buffer
+                        self?.buffer = ""
+                    }
+                }
+                if let data = remaining, !data.isEmpty,
+                   let str = String(data: data, encoding: .utf8) {
                     self?.output += str
                 }
-                self?.finish()
+
+                self?.isRunning = false
+                self?.isFinished = true
+                completion(self?.output ?? "")
             }
         }
 
         do {
             try proc.run()
-            handle.waitForDataInBackgroundAndNotify()
         } catch {
-            output = "Error: \(error.localizedDescription)"
-            isRunning = false
-            isFinished = true
+            DispatchQueue.main.async {
+                self.updateTimer?.invalidate()
+                handle.readabilityHandler = nil
+                self.output = "Error: \(error.localizedDescription)"
+                self.isRunning = false
+                self.isFinished = true
+            }
         }
-    }
-
-    private func finish() {
-        guard isRunning else { return }
-        if let obs = observer {
-            NotificationCenter.default.removeObserver(obs)
-            observer = nil
-        }
-        isRunning = false
-        isFinished = true
-        completion?(output)
-        completion = nil
     }
 
     func stop() {
+        updateTimer?.invalidate()
+        updateTimer = nil
+        fileHandle?.readabilityHandler = nil
         process?.terminate()
-        output += "\n(중단됨)"
-        finish()
+        DispatchQueue.main.async {
+            self.output += "\n(중단됨)"
+            self.isRunning = false
+            self.isFinished = true
+        }
+    }
+}
+
+// 효율적인 텍스트 뷰 (NSTextView 래퍼)
+struct OutputTextView: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSTextView.scrollableTextView()
+        let textView = scrollView.documentView as! NSTextView
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        textView.backgroundColor = NSColor.textBackgroundColor
+        textView.textColor = NSColor.labelColor
+        return scrollView
+    }
+
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        let textView = nsView.documentView as! NSTextView
+        let shouldScroll = textView.visibleRect.maxY >= textView.bounds.maxY - 20
+
+        textView.string = text
+
+        // 맨 아래로 스크롤
+        if shouldScroll {
+            textView.scrollToEndOfDocument(nil)
+        }
     }
 }
 
@@ -1643,29 +1696,21 @@ struct ScriptExecutionView: View {
 
             if runner.isRunning || runner.isFinished {
                 Divider()
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        Text(runner.output.isEmpty ? "(실행 중...)" : runner.output)
-                            .font(.system(.body, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
-                            .id("bottom")
-                    }
-                    .frame(maxHeight: 250)
-                    .padding(8)
-                    .background(Color(nsColor: .textBackgroundColor))
+                OutputTextView(text: runner.output.isEmpty ? "(실행 중...)" : runner.output)
+                    .frame(height: 200)
                     .cornerRadius(6)
-                    .onChange(of: runner.output) { _, _ in
-                        proxy.scrollTo("bottom", anchor: .bottom)
-                    }
-                }
             }
 
             HStack {
                 if runner.isFinished {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
                     Spacer()
                     Button("닫기") { dismiss() }
                 } else if runner.isRunning {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                        .frame(width: 16, height: 16)
                     Spacer()
                     Button("중단") {
                         runner.stop()
@@ -1682,7 +1727,7 @@ struct ScriptExecutionView: View {
             }
         }
         .padding()
-        .frame(width: 400)
+        .frame(width: 450)
     }
 
     func executeScript() {
