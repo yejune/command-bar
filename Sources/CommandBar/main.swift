@@ -32,6 +32,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 enum ExecutionType: String, Codable, CaseIterable {
     case terminal = "터미널"
     case background = "백그라운드"
+    case script = "실행"
     case schedule = "일정"
 }
 
@@ -75,6 +76,35 @@ struct Command: Identifiable, Codable {
     var alertedTimes: Set<Int> = []  // 이미 알림 준 시간들
     var acknowledged: Bool = false  // 클릭해서 확인함
     var isInTrash: Bool = false  // 휴지통에 있음
+}
+
+// 파라미터 파싱 extension
+extension Command {
+    var parameters: [String] {
+        guard let regex = try? NSRegularExpression(pattern: "\\{([^}]+)\\}") else { return [] }
+        let range = NSRange(command.startIndex..., in: command)
+        let matches = regex.matches(in: command, range: range)
+        var result: [String] = []
+        for match in matches {
+            if let r = Range(match.range(at: 1), in: command) {
+                let param = String(command[r])
+                if !result.contains(param) {
+                    result.append(param)
+                }
+            }
+        }
+        return result
+    }
+
+    var hasParameters: Bool { !parameters.isEmpty }
+
+    func commandWith(values: [String: String]) -> String {
+        var result = command
+        for (key, value) in values {
+            result = result.replacingOccurrences(of: "{\(key)}", with: value)
+        }
+        return result
+    }
 }
 
 // 임포트/익스포트용 구조체
@@ -330,6 +360,8 @@ class CommandStore: ObservableObject {
             runInTerminal(cmd, app: app)
         case .background:
             runInBackground(cmd)
+        case .script:
+            break  // 스크립트는 ContentView에서 처리
         case .schedule:
             break  // 일정은 수동 실행 없음
         }
@@ -472,6 +504,11 @@ struct ContentView: View {
     @State private var editingCommand: Command?
     @State private var selectedId: UUID?
     @State private var draggingItem: Command?
+    // 스크립트 실행용
+    @State private var parameterCommand: Command?
+    @State private var resultTitle: String = ""
+    @State private var resultOutput: String = ""
+    @State private var showResult = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -558,12 +595,12 @@ struct ContentView: View {
                                         store.acknowledge(cmd)
                                     }
                                 },
-                                onDoubleTap: { store.run(cmd) },
+                                onDoubleTap: { handleRun(cmd) },
                                 onEdit: { editingCommand = cmd },
                                 onDelete: {
                                     store.moveToTrash(cmd)
                                 },
-                                onRun: { store.run(cmd) }
+                                onRun: { handleRun(cmd) }
                             )
                             .onDrag {
                                 draggingItem = cmd
@@ -654,6 +691,14 @@ struct ContentView: View {
         .sheet(item: $editingCommand) { cmd in
             EditCommandView(store: store, command: cmd)
         }
+        .sheet(item: $parameterCommand) { cmd in
+            ParameterInputView(command: cmd) { values in
+                executeScript(cmd, with: values)
+            }
+        }
+        .sheet(isPresented: $showResult) {
+            ResultView(title: resultTitle, output: resultOutput)
+        }
         .onAppear {
             settings.applyAlwaysOnTop()
         }
@@ -663,6 +708,52 @@ struct ContentView: View {
                 store.save()
             }
             return true
+        }
+    }
+
+    func handleRun(_ cmd: Command) {
+        if cmd.executionType == .script {
+            if cmd.hasParameters {
+                parameterCommand = cmd
+            } else {
+                executeScript(cmd, with: [:])
+            }
+        } else {
+            store.run(cmd)
+        }
+    }
+
+    func executeScript(_ cmd: Command, with values: [String: String]) {
+        let finalCommand = cmd.commandWith(values: values)
+        resultTitle = cmd.title
+        resultOutput = ""
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let process = Process()
+            let pipe = Pipe()
+
+            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            process.arguments = ["-c", finalCommand]
+            process.standardOutput = pipe
+            process.standardError = pipe
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+                DispatchQueue.main.async {
+                    resultOutput = output
+                    showResult = true
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    resultOutput = "Error: \(error.localizedDescription)"
+                    showResult = true
+                }
+            }
         }
     }
 }
@@ -684,7 +775,17 @@ struct CommandRowView: View {
         switch cmd.executionType {
         case .terminal: return .blue
         case .background: return .orange
+        case .script: return .green
         case .schedule: return .purple
+        }
+    }
+
+    var typeIcon: String {
+        switch cmd.executionType {
+        case .terminal: return "terminal"
+        case .background: return "arrow.clockwise"
+        case .script: return "play.fill"
+        case .schedule: return "calendar"
         }
     }
 
@@ -694,6 +795,8 @@ struct CommandRowView: View {
             return cmd.terminalApp.rawValue
         case .background:
             return cmd.interval > 0 ? "\(cmd.interval)초" : "수동"
+        case .script:
+            return cmd.hasParameters ? "파라미터" : "실행"
         case .schedule:
             guard let date = cmd.scheduleDate else { return "일정" }
             let diff = date.timeIntervalSinceNow
@@ -757,6 +860,9 @@ struct CommandRowView: View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
+                    Image(systemName: typeIcon)
+                        .foregroundStyle(typeColor)
+                        .frame(width: 14)
                     Text(cmd.title)
                         .fontWeight(isAlerting ? .bold : .regular)
                     ProgressView()
@@ -790,13 +896,17 @@ struct CommandRowView: View {
                 }
             }
             Spacer()
-            Text(badgeText)
-                .font(.caption2)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(badgeColor.opacity(0.2))
-                .foregroundStyle(badgeColor)
-                .cornerRadius(4)
+            HStack(spacing: 4) {
+                Image(systemName: typeIcon)
+                    .font(.caption2)
+                Text(badgeText)
+                    .font(.caption2)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(badgeColor.opacity(0.2))
+            .foregroundStyle(badgeColor)
+            .cornerRadius(4)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -958,6 +1068,85 @@ struct ReorderDropDelegate: DropDelegate {
     }
 }
 
+// MARK: - 파라미터 입력 및 결과 표시
+
+struct ParameterInputView: View {
+    let command: Command
+    let onExecute: ([String: String]) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var values: [String: String] = [:]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(command.title)
+                .font(.headline)
+
+            Text(command.command)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+
+            Divider()
+
+            ForEach(command.parameters, id: \.self) { param in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(param)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("", text: Binding(
+                        get: { values[param] ?? "" },
+                        set: { values[param] = $0 }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                }
+            }
+
+            HStack {
+                Button("취소") { dismiss() }
+                Spacer()
+                Button("실행") {
+                    onExecute(values)
+                    dismiss()
+                }
+                .keyboardShortcut(.return)
+            }
+        }
+        .padding()
+        .frame(width: 350)
+    }
+}
+
+struct ResultView: View {
+    let title: String
+    let output: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(title)
+                .font(.headline)
+
+            ScrollView {
+                Text(output.isEmpty ? "(출력 없음)" : output)
+                    .font(.body.monospaced())
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+            .frame(maxHeight: 300)
+            .padding(8)
+            .background(Color(nsColor: .textBackgroundColor))
+            .cornerRadius(6)
+
+            HStack {
+                Spacer()
+                Button("닫기") { dismiss() }
+            }
+        }
+        .padding()
+        .frame(width: 400)
+    }
+}
+
 struct AddCommandView: View {
     @ObservedObject var store: CommandStore
     @Environment(\.dismiss) private var dismiss
@@ -975,11 +1164,12 @@ struct AddCommandView: View {
     @State private var remind30min = false
     @State private var remind1hour = false
     @State private var remind1day = false
+    @State private var showParamHelp = false
 
     var isValid: Bool {
         if title.isEmpty { return false }
         switch executionType {
-        case .terminal, .background:
+        case .terminal, .background, .script:
             return !command.isEmpty
         case .schedule:
             return true
@@ -1078,6 +1268,14 @@ struct AddCommandView: View {
                         .frame(height: 80)
                         .padding(4)
                         .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.gray.opacity(0.3)))
+                    if executionType == .script {
+                        Button(action: { showParamHelp = true }) {
+                            Text("예: echo {name} → 실행 시 name 입력")
+                                .font(.caption)
+                                .foregroundStyle(.blue)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
 
                 if executionType == .terminal {
@@ -1093,7 +1291,7 @@ struct AddCommandView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                     }
-                } else {
+                } else if executionType == .background {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("주기 (초, 0이면 수동)")
                             .font(.caption)
@@ -1102,6 +1300,7 @@ struct AddCommandView: View {
                             .textFieldStyle(.roundedBorder)
                     }
                 }
+                // script는 명령어만 입력
             }
 
             HStack {
@@ -1127,6 +1326,67 @@ struct AddCommandView: View {
         }
         .padding()
         .frame(width: 350)
+        .sheet(isPresented: $showParamHelp) {
+            ParameterHelpView()
+        }
+    }
+}
+
+struct ParameterHelpView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("파라미터 사용법")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("기본 문법")
+                        .font(.subheadline.bold())
+                    Text("{파라미터명}")
+                        .font(.body.monospaced())
+                        .padding(6)
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(4)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("예시")
+                        .font(.subheadline.bold())
+
+                    Group {
+                        Text("echo \"Hello {name}\"")
+                        Text("→ 실행 시 name 값 입력")
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption.monospaced())
+
+                    Group {
+                        Text("curl -X {method} {url}")
+                        Text("→ 실행 시 method, url 값 입력")
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption.monospaced())
+
+                    Group {
+                        Text("git commit -m \"{message}\"")
+                        Text("→ 실행 시 message 값 입력")
+                            .foregroundStyle(.secondary)
+                    }
+                    .font(.caption.monospaced())
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("닫기") { dismiss() }
+            }
+        }
+        .padding()
+        .frame(width: 320)
     }
 }
 
@@ -1427,6 +1687,7 @@ struct EditCommandView: View {
     @State private var scheduleDate: Date
     @State private var repeatType: RepeatType
     // 미리 알림
+    @State private var showParamHelp = false
     @State private var remind5min: Bool
     @State private var remind30min: Bool
     @State private var remind1hour: Bool
@@ -1451,7 +1712,7 @@ struct EditCommandView: View {
     var isValid: Bool {
         if title.isEmpty { return false }
         switch executionType {
-        case .terminal, .background:
+        case .terminal, .background, .script:
             return !commandText.isEmpty
         case .schedule:
             return true
@@ -1550,6 +1811,14 @@ struct EditCommandView: View {
                         .frame(height: 80)
                         .padding(4)
                         .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.gray.opacity(0.3)))
+                    if executionType == .script {
+                        Button(action: { showParamHelp = true }) {
+                            Text("예: echo {name} → 실행 시 name 입력")
+                                .font(.caption)
+                                .foregroundStyle(.blue)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
 
                 if executionType == .terminal {
@@ -1565,7 +1834,7 @@ struct EditCommandView: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                     }
-                } else {
+                } else if executionType == .background {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("주기 (초, 0이면 수동)")
                             .font(.caption)
@@ -1574,6 +1843,7 @@ struct EditCommandView: View {
                             .textFieldStyle(.roundedBorder)
                     }
                 }
+                // script는 명령어만
             }
 
             HStack {
@@ -1599,6 +1869,9 @@ struct EditCommandView: View {
         }
         .padding()
         .frame(width: 350)
+        .sheet(isPresented: $showParamHelp) {
+            ParameterHelpView()
+        }
     }
 }
 
