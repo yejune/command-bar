@@ -23,7 +23,9 @@ cp -r CommandBar.app /Applications/
 ### 2. Background Command Execution
 - Run commands in background without terminal
 - Results displayed in list
-- Auto-repeat with interval setting (e.g., run `date` every 5 seconds)
+- Auto-repeat with interval setting
+- Countdown display until next execution
+- Interval presets: 10min, 1hr, 6hr, 12hr, 24hr, 7days
 
 ### 3. Script Execution
 - Parameter support: `{paramName}` format
@@ -100,7 +102,12 @@ git checkout {branch:main|develop}     # branch dropdown selection
 | `date +%H:%M:%S` | Current time | 1s |
 | `uptime` | System uptime | 60s |
 | `df -h \| head -2` | Disk usage | 300s |
-| `curl -s wttr.in/Seoul?format=3` | Seoul weather | 3600s |
+| `curl -s "wttr.in/Seoul?format=3"` | Seoul weather | 3600s |
+
+## Data Storage
+
+- Config: `~/.command_bar/app.json`
+- History: `~/.command_bar/history.json`
 
 ## Requirements
 

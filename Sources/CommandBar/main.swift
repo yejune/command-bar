@@ -66,6 +66,7 @@ struct Command: Identifiable, Codable {
     var terminalApp: TerminalApp = .iterm2
     var interval: Int = 0  // 초 단위, 0이면 수동
     var lastOutput: String?
+    var lastExecutedAt: Date?  // 마지막 실행 시간
     var isRunning: Bool = false
     // 일정용
     var scheduleDate: Date?
@@ -208,16 +209,34 @@ class CommandStore: ObservableObject {
     private var timers: [UUID: Timer] = [:]
     private var scheduleCheckTimer: Timer?
 
-    private let url = URL(fileURLWithPath: NSHomeDirectory())
-        .appendingPathComponent(".command_bar_app")
-    private let historyUrl = URL(fileURLWithPath: NSHomeDirectory())
-        .appendingPathComponent(".command_bar_history")
+    private let configDir = URL(fileURLWithPath: NSHomeDirectory())
+        .appendingPathComponent(".command_bar")
+    private var url: URL { configDir.appendingPathComponent("app.json") }
+    private var historyUrl: URL { configDir.appendingPathComponent("history.json") }
 
     init() {
+        ensureConfigDir()
+        migrateOldFiles()
         load()
         loadHistory()
         startTimers()
         startScheduleChecker()
+    }
+
+    private func ensureConfigDir() {
+        try? FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
+    }
+
+    private func migrateOldFiles() {
+        let oldApp = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".command_bar_app")
+        let oldHistory = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".command_bar_history")
+
+        if FileManager.default.fileExists(atPath: oldApp.path) && !FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.moveItem(at: oldApp, to: url)
+        }
+        if FileManager.default.fileExists(atPath: oldHistory.path) && !FileManager.default.fileExists(atPath: historyUrl.path) {
+            try? FileManager.default.moveItem(at: oldHistory, to: historyUrl)
+        }
     }
 
     func addHistory(_ item: HistoryItem) {
@@ -396,8 +415,18 @@ class CommandStore: ObservableObject {
         try? data.write(to: url)
     }
 
+    // 스마트 따옴표를 일반 따옴표로 변환
+    func normalizeQuotes(_ text: String) -> String {
+        text.replacingOccurrences(of: "\u{201C}", with: "\"")  // "
+            .replacingOccurrences(of: "\u{201D}", with: "\"")  // "
+            .replacingOccurrences(of: "\u{2018}", with: "'")   // '
+            .replacingOccurrences(of: "\u{2019}", with: "'")   // '
+    }
+
     func add(_ cmd: Command) {
-        commands.append(cmd)
+        var newCmd = cmd
+        newCmd.command = normalizeQuotes(cmd.command)
+        commands.append(newCmd)
         save()
         if cmd.executionType == .background && cmd.interval > 0 {
             startTimer(for: cmd)
@@ -510,7 +539,9 @@ class CommandStore: ObservableObject {
     func update(_ cmd: Command) {
         if let i = commands.firstIndex(where: { $0.id == cmd.id }) {
             stopTimer(for: cmd.id)
-            commands[i] = cmd
+            var updated = cmd
+            updated.command = normalizeQuotes(cmd.command)
+            commands[i] = updated
             commands[i].alertedTimes = []  // 알림 상태 초기화
             commands[i].alertState = .none
             commands[i].acknowledged = false
@@ -608,6 +639,7 @@ class CommandStore: ObservableObject {
 
         commands[index].isRunning = true
         commands[index].lastOutput = nil
+        commands[index].lastExecutedAt = Date()
 
         DispatchQueue.global(qos: .userInitiated).async {
             let process = Process()
@@ -1214,7 +1246,12 @@ struct CommandRowView: View {
         case .terminal:
             return cmd.terminalApp.rawValue
         case .background:
-            return cmd.interval > 0 ? "\(cmd.interval)초" : "수동"
+            if cmd.interval == 0 { return "수동" }
+            guard let lastRun = cmd.lastExecutedAt else { return formatRemaining(cmd.interval) + " 후" }
+            let nextRun = lastRun.addingTimeInterval(Double(cmd.interval))
+            let remaining = Int(nextRun.timeIntervalSinceNow)
+            if remaining <= 0 { return "실행 중..." }
+            return formatRemaining(remaining) + " 후"
         case .script:
             return cmd.hasParameters ? "파라미터" : "실행"
         case .schedule:
@@ -1228,26 +1265,11 @@ struct CommandRowView: View {
 
             // 지난 시간 표시
             if diff < 0 {
-                let passed = -diff
-                if passed < 60 {
-                    return "\(Int(passed))초 지남"
-                } else if passed < 3600 {
-                    return "\(Int(passed / 60))분 지남"
-                } else if passed < 86400 {
-                    return "\(Int(passed / 3600))시간 지남"
-                } else {
-                    return "\(Int(passed / 86400))일 지남"
-                }
+                return formatRemaining(Int(-diff)) + " 지남"
             }
             // 남은 시간 표시
-            else if diff < 60 {
-                return "\(Int(diff))초 남음"
-            } else if diff < 3600 {
-                return "\(Int(diff / 60))분 남음"
-            } else if diff < 86400 {
-                return "\(Int(diff / 3600))시간 남음"
-            } else {
-                return "\(Int(diff / 86400))일 남음"
+            else {
+                return formatRemaining(Int(diff)) + " 후"
             }
         }
     }
@@ -1362,6 +1384,18 @@ struct CommandRowView: View {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             shakeOffset = 0
+        }
+    }
+
+    func formatRemaining(_ seconds: Int) -> String {
+        if seconds >= 86400 {
+            return "\(seconds / 86400)일"
+        } else if seconds >= 3600 {
+            return "\(seconds / 3600)시간"
+        } else if seconds >= 60 {
+            return "\(seconds / 60)분"
+        } else {
+            return "\(seconds)초"
         }
     }
 }
@@ -2079,6 +2113,15 @@ struct AddCommandView: View {
                             .foregroundStyle(.secondary)
                         TextField("", text: $interval)
                             .textFieldStyle(.roundedBorder)
+                        HStack(spacing: 4) {
+                            ForEach([("10분", 600), ("1시간", 3600), ("6시간", 21600), ("12시간", 43200), ("24시간", 86400), ("7일", 604800)], id: \.0) { label, seconds in
+                                Button(label) {
+                                    interval = String(seconds)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        }
                     }
                 }
                 // script는 명령어만 입력
@@ -2631,6 +2674,15 @@ struct EditCommandView: View {
                             .foregroundStyle(.secondary)
                         TextField("", text: $interval)
                             .textFieldStyle(.roundedBorder)
+                        HStack(spacing: 4) {
+                            ForEach([("10분", 600), ("1시간", 3600), ("6시간", 21600), ("12시간", 43200), ("24시간", 86400), ("7일", 604800)], id: \.0) { label, seconds in
+                                Button(label) {
+                                    interval = String(seconds)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                        }
                     }
                 }
                 // script는 명령어만

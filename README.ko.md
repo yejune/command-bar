@@ -23,7 +23,9 @@ cp -r CommandBar.app /Applications/
 ### 2. 백그라운드 명령 실행
 - 터미널 없이 백그라운드에서 명령 실행
 - 결과가 리스트에 표시됨
-- 주기 설정으로 자동 반복 실행 (예: 5초마다 `date` 실행)
+- 주기 설정으로 자동 반복 실행
+- 다음 실행까지 카운트다운 표시
+- 주기 프리셋: 10분, 1시간, 6시간, 12시간, 24시간, 7일
 
 ### 3. 스크립트 실행
 - 파라미터 지원: `{파라미터명}` 형식으로 입력
@@ -100,7 +102,12 @@ git checkout {branch:main|develop}     # branch 드롭다운 선택
 | `date +%H:%M:%S` | 현재 시간 | 1초 |
 | `uptime` | 시스템 가동 시간 | 60초 |
 | `df -h \| head -2` | 디스크 사용량 | 300초 |
-| `curl -s wttr.in/Seoul?format=3` | 서울 날씨 | 3600초 |
+| `curl -s "wttr.in/Seoul?format=3"` | 서울 날씨 | 3600초 |
+
+## 데이터 저장 경로
+
+- 설정: `~/.command_bar/app.json`
+- 히스토리: `~/.command_bar/history.json`
 
 ## 요구사항
 
