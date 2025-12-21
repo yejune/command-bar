@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -43,9 +44,17 @@ enum AlertState: String, Codable {
     case none = ""
     case dayBefore = "D-1"
     case hourBefore = "1시간 전"
+    case thirtyMinBefore = "30분 전"
     case fiveMinBefore = "5분 전"
     case now = "지금!"
     case passed = "지남"
+}
+
+enum RepeatType: String, Codable, CaseIterable {
+    case none = "없음"
+    case daily = "매일"
+    case weekly = "매주"
+    case monthly = "매월"
 }
 
 struct Command: Identifiable, Codable {
@@ -59,13 +68,25 @@ struct Command: Identifiable, Codable {
     var isRunning: Bool = false
     // 일정용
     var scheduleDate: Date?
-    var repeatInterval: Int = 0  // 초 단위, 0이면 반복 없음
+    var repeatType: RepeatType = .none
     var alertState: AlertState = .none
-    // 알림 시간 설정 (초 단위)
-    var alertTimes: [Int] = [0, 300, 3600, 86400]  // 기본: 0, 5분, 1시간, 1일
+    // 미리 알림 설정 (초 단위): 5분=300, 30분=1800, 1시간=3600, 1일=86400
+    var reminderTimes: Set<Int> = []  // 선택된 미리 알림 시간들
     var alertedTimes: Set<Int> = []  // 이미 알림 준 시간들
     var acknowledged: Bool = false  // 클릭해서 확인함
     var isInTrash: Bool = false  // 휴지통에 있음
+}
+
+// 임포트/익스포트용 구조체
+struct ExportSettings: Codable {
+    let alwaysOnTop: Bool
+}
+
+struct ExportData: Codable {
+    let version: Int
+    let exportedAt: Date
+    let settings: ExportSettings
+    let commands: [Command]
 }
 
 class Settings: ObservableObject {
@@ -131,14 +152,13 @@ class CommandStore: ObservableObject {
                 continue
             }
 
-            // 알림 시간 체크
-            for alertTime in commands[i].alertTimes.sorted().reversed() {
-                if diff <= Double(alertTime) + 30 && diff > Double(alertTime) - 30 {
+            // 미리 알림 시간 체크
+            for reminderTime in commands[i].reminderTimes.sorted().reversed() {
+                if diff <= Double(reminderTime) + 30 && diff > Double(reminderTime) - 30 {
                     // 이 알림 시간에 해당하고 아직 알림 안 줬으면
-                    let alertKey = alertTime
-                    if !commands[i].alertedTimes.contains(alertKey) {
-                        commands[i].alertedTimes.insert(alertKey)
-                        commands[i].alertState = alertStateFor(seconds: alertTime)
+                    if !commands[i].alertedTimes.contains(reminderTime) {
+                        commands[i].alertedTimes.insert(reminderTime)
+                        commands[i].alertState = alertStateFor(seconds: reminderTime)
                         triggerAlert(for: commands[i])
                     }
                     break
@@ -149,9 +169,9 @@ class CommandStore: ObservableObject {
             if diff <= 0 {
                 commands[i].alertState = .now
             } else {
-                for alertTime in commands[i].alertTimes.sorted() {
-                    if diff <= Double(alertTime) {
-                        commands[i].alertState = alertStateFor(seconds: alertTime)
+                for reminderTime in commands[i].reminderTimes.sorted() {
+                    if diff <= Double(reminderTime) {
+                        commands[i].alertState = alertStateFor(seconds: reminderTime)
                         break
                     }
                 }
@@ -162,9 +182,10 @@ class CommandStore: ObservableObject {
     func alertStateFor(seconds: Int) -> AlertState {
         switch seconds {
         case 0: return .now
-        case 1...300: return .fiveMinBefore
-        case 301...3600: return .hourBefore
-        case 3601...86400: return .dayBefore
+        case 300: return .fiveMinBefore
+        case 1800: return .thirtyMinBefore
+        case 3600: return .hourBefore
+        case 86400: return .dayBefore
         default: return .none
         }
     }
@@ -382,6 +403,64 @@ class CommandStore: ObservableObject {
             }
         }
     }
+
+    // MARK: - 임포트/익스포트
+
+    func exportData(settings: Settings) -> Data? {
+        let exportSettings = ExportSettings(alwaysOnTop: settings.alwaysOnTop)
+        let exportData = ExportData(
+            version: 1,
+            exportedAt: Date(),
+            settings: exportSettings,
+            commands: commands.filter { !$0.isInTrash }
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return try? encoder.encode(exportData)
+    }
+
+    func importData(_ data: Data, settings: Settings, merge: Bool) -> Bool {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let imported = try? decoder.decode(ExportData.self, from: data) else {
+            return false
+        }
+
+        // 설정 적용
+        settings.alwaysOnTop = imported.settings.alwaysOnTop
+
+        if merge {
+            // 병합: 기존 ID와 겹치면 새 ID 부여
+            let existingIds = Set(commands.map { $0.id })
+            for var cmd in imported.commands {
+                if existingIds.contains(cmd.id) {
+                    cmd.id = UUID()
+                }
+                // 런타임 상태 초기화
+                cmd.isRunning = false
+                cmd.alertedTimes = []
+                cmd.acknowledged = false
+                commands.append(cmd)
+            }
+        } else {
+            // 덮어쓰기: 기존 데이터 삭제
+            for cmd in commands {
+                stopTimer(for: cmd.id)
+            }
+            commands = imported.commands.map { cmd in
+                var c = cmd
+                c.isRunning = false
+                c.alertedTimes = []
+                c.acknowledged = false
+                return c
+            }
+        }
+
+        save()
+        startTimers()
+        return true
+    }
 }
 
 struct ContentView: View {
@@ -419,8 +498,17 @@ struct ContentView: View {
                                     }
                                 }
                                 Spacer()
-                                Button("복원") {
+                                Button(action: {
+                                    editingCommand = cmd
+                                }) {
+                                    Image(systemName: "pencil")
+                                }
+                                .buttonStyle(.borderless)
+                                Button(action: {
                                     store.restoreFromTrash(cmd)
+                                }) {
+                                    Image(systemName: "arrow.uturn.backward")
+                                        .foregroundStyle(.blue)
                                 }
                                 .buttonStyle(.borderless)
                                 Button(action: {
@@ -561,7 +649,7 @@ struct ContentView: View {
             AddCommandView(store: store)
         }
         .sheet(isPresented: $showSettings) {
-            SettingsView(settings: settings)
+            SettingsView(settings: settings, store: store)
         }
         .sheet(item: $editingCommand) { cmd in
             EditCommandView(store: store, command: cmd)
@@ -645,6 +733,7 @@ struct CommandRowView: View {
         switch cmd.alertState {
         case .now: return .red
         case .fiveMinBefore: return .orange
+        case .thirtyMinBefore: return .orange
         case .hourBefore: return .yellow
         case .dayBefore: return .green
         case .passed: return .gray
@@ -676,11 +765,16 @@ struct CommandRowView: View {
                         .opacity(cmd.isRunning ? 1 : 0)
                 }
                 if cmd.executionType == .schedule {
-                    if let date = cmd.scheduleDate {
-                        Text(date, format: .dateTime.month().day().hour().minute())
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        if let date = cmd.scheduleDate {
+                            Text(date, format: .dateTime.month().day().hour().minute())
+                        }
+                        if cmd.repeatType != .none {
+                            Text("(\(cmd.repeatType.rawValue))")
+                        }
                     }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 } else {
                     Text(cmd.command)
                         .font(.caption.monospaced())
@@ -875,7 +969,12 @@ struct AddCommandView: View {
     @State private var interval: String = "0"
     // 일정용
     @State private var scheduleDate = Date()
-    @State private var repeatInterval: String = "0"
+    @State private var repeatType: RepeatType = .none
+    // 미리 알림
+    @State private var remind5min = false
+    @State private var remind30min = false
+    @State private var remind1hour = false
+    @State private var remind1day = false
 
     var isValid: Bool {
         if title.isEmpty { return false }
@@ -885,6 +984,19 @@ struct AddCommandView: View {
         case .schedule:
             return true
         }
+    }
+
+    func canRemind(seconds: Int) -> Bool {
+        repeatType != .none || scheduleDate.timeIntervalSinceNow > Double(seconds)
+    }
+
+    var reminderTimes: Set<Int> {
+        var times: Set<Int> = []
+        if remind5min { times.insert(300) }
+        if remind30min { times.insert(1800) }
+        if remind1hour { times.insert(3600) }
+        if remind1day { times.insert(86400) }
+        return times
     }
 
     var body: some View {
@@ -923,11 +1035,38 @@ struct AddCommandView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("반복 주기 (초, 0이면 반복 안함)")
+                    Text("반복")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    TextField("", text: $repeatInterval)
-                        .textFieldStyle(.roundedBorder)
+                    Picker("", selection: $repeatType) {
+                        ForEach(RepeatType.allCases, id: \.self) {
+                            Text($0.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("미리 알림")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 12) {
+                        Toggle("5분 전", isOn: $remind5min)
+                            .toggleStyle(.checkbox)
+                            .disabled(!canRemind(seconds: 300))
+                        Toggle("30분 전", isOn: $remind30min)
+                            .toggleStyle(.checkbox)
+                            .disabled(!canRemind(seconds: 1800))
+                    }
+                    HStack(spacing: 12) {
+                        Toggle("1시간 전", isOn: $remind1hour)
+                            .toggleStyle(.checkbox)
+                            .disabled(!canRemind(seconds: 3600))
+                        Toggle("1일 전", isOn: $remind1day)
+                            .toggleStyle(.checkbox)
+                            .disabled(!canRemind(seconds: 86400))
+                    }
                 }
             } else {
                 VStack(alignment: .leading, spacing: 4) {
@@ -978,7 +1117,8 @@ struct AddCommandView: View {
                         terminalApp: terminalApp,
                         interval: Int(interval) ?? 0,
                         scheduleDate: executionType == .schedule ? scheduleDate : nil,
-                        repeatInterval: Int(repeatInterval) ?? 0
+                        repeatType: repeatType,
+                        reminderTimes: reminderTimes
                     ))
                     dismiss()
                 }
@@ -992,7 +1132,11 @@ struct AddCommandView: View {
 
 struct SettingsView: View {
     @ObservedObject var settings: Settings
+    @ObservedObject var store: CommandStore
     @Environment(\.dismiss) private var dismiss
+    @State private var mergeImport = true
+    @State private var showAlert = false
+    @State private var alertMessage = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1000,6 +1144,38 @@ struct SettingsView: View {
                 .font(.headline)
 
             Toggle("항상 위에 표시", isOn: $settings.alwaysOnTop)
+
+            Divider()
+
+            Text("데이터")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            // 내보내기
+            HStack(spacing: 8) {
+                Button("파일로 내보내기") {
+                    exportToFile()
+                }
+                Button("클립보드 복사") {
+                    exportToClipboard()
+                }
+            }
+
+            // 가져오기
+            HStack(spacing: 8) {
+                Button("파일에서 가져오기") {
+                    importFromFile()
+                }
+                Button("클립보드 붙여넣기") {
+                    importFromClipboard()
+                }
+            }
+
+            Picker("가져오기 방식", selection: $mergeImport) {
+                Text("병합").tag(true)
+                Text("덮어쓰기").tag(false)
+            }
+            .pickerStyle(.segmented)
 
             HStack {
                 Spacer()
@@ -1010,6 +1186,86 @@ struct SettingsView: View {
         }
         .padding()
         .frame(width: 350)
+        .alert("알림", isPresented: $showAlert) {
+            Button("확인") {}
+        } message: {
+            Text(alertMessage)
+        }
+    }
+
+    func exportToFile() {
+        guard let data = store.exportData(settings: settings),
+              let json = String(data: data, encoding: .utf8) else {
+            alertMessage = "내보내기 실패"
+            showAlert = true
+            return
+        }
+
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "commandbar_backup.json"
+
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                try json.write(to: url, atomically: true, encoding: .utf8)
+                alertMessage = "내보내기 완료"
+                showAlert = true
+            } catch {
+                alertMessage = "저장 실패: \(error.localizedDescription)"
+                showAlert = true
+            }
+        }
+    }
+
+    func exportToClipboard() {
+        guard let data = store.exportData(settings: settings),
+              let json = String(data: data, encoding: .utf8) else {
+            alertMessage = "내보내기 실패"
+            showAlert = true
+            return
+        }
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(json, forType: .string)
+        alertMessage = "클립보드에 복사됨"
+        showAlert = true
+    }
+
+    func importFromFile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                let data = try Data(contentsOf: url)
+                if store.importData(data, settings: settings, merge: mergeImport) {
+                    alertMessage = "가져오기 완료"
+                } else {
+                    alertMessage = "잘못된 형식"
+                }
+                showAlert = true
+            } catch {
+                alertMessage = "파일 읽기 실패"
+                showAlert = true
+            }
+        }
+    }
+
+    func importFromClipboard() {
+        guard let string = NSPasteboard.general.string(forType: .string),
+              let data = string.data(using: .utf8) else {
+            alertMessage = "클립보드가 비어있음"
+            showAlert = true
+            return
+        }
+
+        if store.importData(data, settings: settings, merge: mergeImport) {
+            alertMessage = "가져오기 완료"
+        } else {
+            alertMessage = "잘못된 형식"
+        }
+        showAlert = true
     }
 }
 
@@ -1110,8 +1366,12 @@ struct EditCommandView: View {
     @State private var interval: String
     // 일정용
     @State private var scheduleDate: Date
-    @State private var message: String
-    @State private var repeatInterval: String
+    @State private var repeatType: RepeatType
+    // 미리 알림
+    @State private var remind5min: Bool
+    @State private var remind30min: Bool
+    @State private var remind1hour: Bool
+    @State private var remind1day: Bool
 
     init(store: CommandStore, command: Command) {
         self.store = store
@@ -1122,8 +1382,11 @@ struct EditCommandView: View {
         _terminalApp = State(initialValue: command.terminalApp)
         _interval = State(initialValue: String(command.interval))
         _scheduleDate = State(initialValue: command.scheduleDate ?? Date())
-        _message = State(initialValue: command.message ?? "")
-        _repeatInterval = State(initialValue: String(command.repeatInterval))
+        _repeatType = State(initialValue: command.repeatType)
+        _remind5min = State(initialValue: command.reminderTimes.contains(300))
+        _remind30min = State(initialValue: command.reminderTimes.contains(1800))
+        _remind1hour = State(initialValue: command.reminderTimes.contains(3600))
+        _remind1day = State(initialValue: command.reminderTimes.contains(86400))
     }
 
     var isValid: Bool {
@@ -1132,8 +1395,21 @@ struct EditCommandView: View {
         case .terminal, .background:
             return !commandText.isEmpty
         case .schedule:
-            return !message.isEmpty
+            return true
         }
+    }
+
+    func canRemind(seconds: Int) -> Bool {
+        repeatType != .none || scheduleDate.timeIntervalSinceNow > Double(seconds)
+    }
+
+    var reminderTimes: Set<Int> {
+        var times: Set<Int> = []
+        if remind5min { times.insert(300) }
+        if remind30min { times.insert(1800) }
+        if remind1hour { times.insert(3600) }
+        if remind1day { times.insert(86400) }
+        return times
     }
 
     var body: some View {
@@ -1172,11 +1448,38 @@ struct EditCommandView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("반복 주기 (초, 0이면 반복 안함)")
+                    Text("반복")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    TextField("", text: $repeatInterval)
-                        .textFieldStyle(.roundedBorder)
+                    Picker("", selection: $repeatType) {
+                        ForEach(RepeatType.allCases, id: \.self) {
+                            Text($0.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("미리 알림")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 12) {
+                        Toggle("5분 전", isOn: $remind5min)
+                            .toggleStyle(.checkbox)
+                            .disabled(!canRemind(seconds: 300))
+                        Toggle("30분 전", isOn: $remind30min)
+                            .toggleStyle(.checkbox)
+                            .disabled(!canRemind(seconds: 1800))
+                    }
+                    HStack(spacing: 12) {
+                        Toggle("1시간 전", isOn: $remind1hour)
+                            .toggleStyle(.checkbox)
+                            .disabled(!canRemind(seconds: 3600))
+                        Toggle("1일 전", isOn: $remind1day)
+                            .toggleStyle(.checkbox)
+                            .disabled(!canRemind(seconds: 86400))
+                    }
                 }
             } else {
                 VStack(alignment: .leading, spacing: 4) {
@@ -1227,8 +1530,8 @@ struct EditCommandView: View {
                     updated.terminalApp = terminalApp
                     updated.interval = Int(interval) ?? 0
                     updated.scheduleDate = executionType == .schedule ? scheduleDate : nil
-                    updated.message = executionType == .schedule ? message : nil
-                    updated.repeatInterval = Int(repeatInterval) ?? 0
+                    updated.repeatType = repeatType
+                    updated.reminderTimes = reminderTimes
                     store.update(updated)
                     dismiss()
                 }
