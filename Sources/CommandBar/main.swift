@@ -74,34 +74,57 @@ struct Command: Identifiable, Codable {
     // 미리 알림 설정 (초 단위): 5분=300, 30분=1800, 1시간=3600, 1일=86400
     var reminderTimes: Set<Int> = []  // 선택된 미리 알림 시간들
     var alertedTimes: Set<Int> = []  // 이미 알림 준 시간들
+    var historyLoggedTimes: Set<Int> = []  // 히스토리 기록된 시간들
     var acknowledged: Bool = false  // 클릭해서 확인함
     var isInTrash: Bool = false  // 휴지통에 있음
 }
 
+// 파라미터 정보
+struct ParameterInfo {
+    let name: String      // 파라미터 이름
+    let options: [String] // 옵션 (비어있으면 텍스트 입력)
+    let fullMatch: String // 전체 매칭 문자열 (예: "앱이름:hae|bflow")
+}
+
 // 파라미터 파싱 extension
 extension Command {
-    var parameters: [String] {
+    var parameterInfos: [ParameterInfo] {
         guard let regex = try? NSRegularExpression(pattern: "\\{([^}]+)\\}") else { return [] }
         let range = NSRange(command.startIndex..., in: command)
         let matches = regex.matches(in: command, range: range)
-        var result: [String] = []
+        var result: [ParameterInfo] = []
+        var seenNames: Set<String> = []
         for match in matches {
             if let r = Range(match.range(at: 1), in: command) {
-                let param = String(command[r])
-                if !result.contains(param) {
-                    result.append(param)
+                let fullMatch = String(command[r])
+                // "이름:옵션1|옵션2" 형태 파싱
+                let parts = fullMatch.split(separator: ":", maxSplits: 1)
+                let name = String(parts[0])
+                let options: [String]
+                if parts.count > 1 {
+                    options = String(parts[1]).split(separator: "|").map { String($0) }
+                } else {
+                    options = []
+                }
+                if !seenNames.contains(name) {
+                    seenNames.insert(name)
+                    result.append(ParameterInfo(name: name, options: options, fullMatch: fullMatch))
                 }
             }
         }
         return result
     }
 
+    var parameters: [String] { parameterInfos.map { $0.name } }
+
     var hasParameters: Bool { !parameters.isEmpty }
 
     func commandWith(values: [String: String]) -> String {
         var result = command
-        for (key, value) in values {
-            result = result.replacingOccurrences(of: "{\(key)}", with: value)
+        for info in parameterInfos {
+            if let value = values[info.name] {
+                result = result.replacingOccurrences(of: "{\(info.fullMatch)}", with: value)
+            }
         }
         return result
     }
@@ -122,11 +145,14 @@ enum HistoryType: String, Codable {
 
 struct HistoryItem: Identifiable, Codable {
     var id = UUID()
-    let timestamp: Date
+    var timestamp: Date
     let title: String
     let command: String
     let type: HistoryType
     var output: String?
+    var count: Int = 1  // 반복 횟수
+    var endTimestamp: Date?  // 반복 종료 시간
+    var commandId: UUID?  // 원본 명령 ID (일정 알림 병합용)
 }
 
 // 임포트/익스포트용 구조체
@@ -148,9 +174,16 @@ class Settings: ObservableObject {
             applyAlwaysOnTop()
         }
     }
+    @Published var maxHistoryCount: Int {
+        didSet {
+            UserDefaults.standard.set(maxHistoryCount, forKey: "maxHistoryCount")
+        }
+    }
 
     init() {
         self.alwaysOnTop = UserDefaults.standard.bool(forKey: "alwaysOnTop")
+        let saved = UserDefaults.standard.integer(forKey: "maxHistoryCount")
+        self.maxHistoryCount = saved > 0 ? saved : 100
     }
 
     func applyAlwaysOnTop() {
@@ -182,10 +215,23 @@ class CommandStore: ObservableObject {
     }
 
     func addHistory(_ item: HistoryItem) {
+        // 지금! 알림은 같은 명령 ID면 병합
+        if item.type == .scheduleAlert, let cmdId = item.commandId {
+            if let index = history.firstIndex(where: { $0.type == .scheduleAlert && $0.commandId == cmdId }) {
+                var existing = history.remove(at: index)
+                existing.count += 1
+                existing.endTimestamp = item.timestamp
+                history.insert(existing, at: 0)
+                saveHistory()
+                return
+            }
+        }
+
         history.insert(item, at: 0)
-        // 최대 100개 유지
-        if history.count > 100 {
-            history = Array(history.prefix(100))
+        let maxCount = UserDefaults.standard.integer(forKey: "maxHistoryCount")
+        let limit = maxCount > 0 ? maxCount : 100
+        if history.count > limit {
+            history = Array(history.prefix(limit))
         }
         saveHistory()
     }
@@ -224,22 +270,21 @@ class CommandStore: ObservableObject {
 
             // "지금!" 상태이고 아직 확인 안했으면 5초마다 알림
             if diff <= 0 && !commands[i].acknowledged {
-                // 최초 "지금" 알림 시 히스토리 기록 (alertedTimes에 0이 없으면)
-                if !commands[i].alertedTimes.contains(0) {
-                    commands[i].alertedTimes.insert(0)
-                    addHistory(HistoryItem(
-                        timestamp: Date(),
-                        title: commands[i].title,
-                        command: "",
-                        type: .scheduleAlert,
-                        output: nil
-                    ))
-                }
+                commands[i].alertedTimes.insert(0)
                 commands[i].alertState = .now
                 // 5초마다 알림 (현재 시간의 초가 5로 나눠떨어지면)
                 let seconds = Int(now.timeIntervalSince1970) % 5
                 if seconds == 0 {
                     triggerAlert(for: commands[i])
+                    // 히스토리 기록
+                    addHistory(HistoryItem(
+                        timestamp: Date(),
+                        title: commands[i].title,
+                        command: "지금!",
+                        type: .scheduleAlert,
+                        output: nil,
+                        commandId: commands[i].id
+                    ))
                 }
                 continue
             }
@@ -250,6 +295,7 @@ class CommandStore: ObservableObject {
                     // 이 알림 시간에 해당하고 아직 알림 안 줬으면
                     if !commands[i].alertedTimes.contains(reminderTime) {
                         commands[i].alertedTimes.insert(reminderTime)
+                        save()
                         commands[i].alertState = alertStateFor(seconds: reminderTime)
                         triggerAlert(for: commands[i])
                         // 히스토리 기록
@@ -258,7 +304,8 @@ class CommandStore: ObservableObject {
                             title: commands[i].title,
                             command: alertStateFor(seconds: reminderTime).rawValue,
                             type: .reminder,
-                            output: nil
+                            output: nil,
+                            commandId: commands[i].id
                         ))
                     }
                     break
@@ -356,6 +403,24 @@ class CommandStore: ObservableObject {
             type: .added,
             output: nil
         ))
+    }
+
+    func duplicate(_ cmd: Command) {
+        var newCmd = cmd
+        newCmd.id = UUID()
+        newCmd.title = cmd.title + " (복사)"
+        newCmd.isRunning = false
+        newCmd.lastOutput = nil
+        newCmd.alertState = .none
+        newCmd.alertedTimes = []
+        newCmd.acknowledged = false
+
+        if let index = commands.firstIndex(where: { $0.id == cmd.id }) {
+            commands.insert(newCmd, at: index + 1)
+        } else {
+            commands.append(newCmd)
+        }
+        save()
     }
 
     func moveToTrash(at offsets: IndexSet) {
@@ -638,10 +703,13 @@ struct ContentView: View {
     @State private var draggingItem: Command?
     @State private var selectedHistoryItem: HistoryItem?
     // 스크립트 실행용
-    @State private var parameterCommand: Command?
-    @State private var resultTitle: String = ""
-    @State private var resultOutput: String = ""
-    @State private var showResult = false
+    @State private var scriptCommand: Command?
+
+    var hasActiveIndicator: Bool {
+        store.activeItems.contains { cmd in
+            cmd.isRunning || cmd.alertState == .now || store.alertingCommandId == cmd.id
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -668,23 +736,28 @@ struct ContentView: View {
                     LazyVStack(spacing: 4) {
                         ForEach(store.history) { item in
                             HStack {
+                                Image(systemName: historyTypeIcon(item.type))
+                                    .foregroundStyle(historyTypeColor(item.type))
+                                    .frame(width: 14)
                                 VStack(alignment: .leading, spacing: 2) {
                                     HStack(spacing: 4) {
-                                        Text(item.type.rawValue)
-                                            .font(.caption2)
-                                            .padding(.horizontal, 4)
-                                            .padding(.vertical, 1)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 3)
-                                                    .fill(historyTypeColor(item.type).opacity(0.2))
-                                            )
-                                            .foregroundStyle(historyTypeColor(item.type))
                                         Text(item.title)
                                             .fontWeight(.medium)
+                                        if item.count > 1 {
+                                            Text("(\(item.count)회)")
+                                                .font(.caption)
+                                                .foregroundStyle(.orange)
+                                        }
                                     }
-                                    Text(item.timestamp, format: .dateTime.month().day().hour().minute().second())
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                    if let endTime = item.endTimestamp, item.count > 1 {
+                                        Text("\(item.timestamp, format: .dateTime.hour().minute()) ~ \(endTime, format: .dateTime.hour().minute().second())")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    } else {
+                                        Text(item.timestamp, format: .dateTime.month().day().hour().minute().second())
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
                                 Spacer()
                                 if item.output != nil {
@@ -741,6 +814,9 @@ struct ContentView: View {
                     LazyVStack(spacing: 4) {
                         ForEach(store.trashItems) { cmd in
                             HStack {
+                                Image(systemName: trashItemIcon(cmd))
+                                    .foregroundStyle(trashItemColor(cmd))
+                                    .frame(width: 14)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(cmd.title)
                                     if cmd.executionType == .schedule {
@@ -831,6 +907,9 @@ struct ContentView: View {
                                 },
                                 onDoubleTap: { handleRun(cmd) },
                                 onEdit: { editingCommand = cmd },
+                                onCopy: {
+                                    store.duplicate(cmd)
+                                },
                                 onDelete: {
                                     store.moveToTrash(cmd)
                                 },
@@ -887,8 +966,16 @@ struct ContentView: View {
 
             HStack {
                 Button(action: { showingTrash = false; showingHistory = false }) {
-                    Image(systemName: "doc.text")
-                        .foregroundStyle(!showingTrash && !showingHistory ? .primary : .secondary)
+                    ZStack {
+                        Image(systemName: "doc.text")
+                            .foregroundStyle(!showingTrash && !showingHistory ? .primary : .secondary)
+                        if (showingTrash || showingHistory) && hasActiveIndicator {
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 6, height: 6)
+                                .offset(x: 6, y: -6)
+                        }
+                    }
                 }
                 .buttonStyle(.borderless)
 
@@ -931,13 +1018,8 @@ struct ContentView: View {
         .sheet(item: $editingCommand) { cmd in
             EditCommandView(store: store, command: cmd)
         }
-        .sheet(item: $parameterCommand) { cmd in
-            ParameterInputView(command: cmd) { values in
-                executeScript(cmd, with: values)
-            }
-        }
-        .sheet(isPresented: $showResult) {
-            ResultView(title: resultTitle, output: resultOutput)
+        .sheet(item: $scriptCommand) { cmd in
+            ScriptExecutionView(command: cmd, store: store)
         }
         .sheet(item: $selectedHistoryItem) { item in
             HistoryOutputView(item: item)
@@ -956,64 +1038,9 @@ struct ContentView: View {
 
     func handleRun(_ cmd: Command) {
         if cmd.executionType == .script {
-            if cmd.hasParameters {
-                parameterCommand = cmd
-            } else {
-                executeScript(cmd, with: [:])
-            }
+            scriptCommand = cmd
         } else {
             store.run(cmd)
-        }
-    }
-
-    func executeScript(_ cmd: Command, with values: [String: String]) {
-        let finalCommand = cmd.commandWith(values: values)
-        resultTitle = cmd.title
-        resultOutput = ""
-
-        DispatchQueue.global(qos: .userInitiated).async { [self] in
-            let process = Process()
-            let pipe = Pipe()
-
-            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            process.arguments = ["-c", finalCommand]
-            process.standardOutput = pipe
-            process.standardError = pipe
-
-            do {
-                try process.run()
-                process.waitUntilExit()
-
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-
-                DispatchQueue.main.async {
-                    resultOutput = output
-                    showResult = true
-                    // 히스토리 기록
-                    store.addHistory(HistoryItem(
-                        timestamp: Date(),
-                        title: cmd.title,
-                        command: finalCommand,
-                        type: .script,
-                        output: output
-                    ))
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    let errorMsg = "Error: \(error.localizedDescription)"
-                    resultOutput = errorMsg
-                    showResult = true
-                    // 히스토리 기록
-                    store.addHistory(HistoryItem(
-                        timestamp: Date(),
-                        title: cmd.title,
-                        command: finalCommand,
-                        type: .script,
-                        output: errorMsg
-                    ))
-                }
-            }
         }
     }
 
@@ -1028,6 +1055,38 @@ struct ContentView: View {
         case .deleted: return .red
         case .restored: return .teal
         case .permanentlyDeleted: return .gray
+        }
+    }
+
+    func historyTypeIcon(_ type: HistoryType) -> String {
+        switch type {
+        case .executed: return "terminal"
+        case .background: return "arrow.clockwise"
+        case .script: return "play.fill"
+        case .scheduleAlert: return "calendar"
+        case .reminder: return "bell.fill"
+        case .added: return "plus.circle"
+        case .deleted: return "trash"
+        case .restored: return "arrow.uturn.backward"
+        case .permanentlyDeleted: return "xmark.circle"
+        }
+    }
+
+    func trashItemIcon(_ cmd: Command) -> String {
+        switch cmd.executionType {
+        case .terminal: return "terminal"
+        case .background: return "arrow.clockwise"
+        case .script: return "play.fill"
+        case .schedule: return "calendar"
+        }
+    }
+
+    func trashItemColor(_ cmd: Command) -> Color {
+        switch cmd.executionType {
+        case .terminal: return .blue
+        case .background: return .orange
+        case .script: return .green
+        case .schedule: return .purple
         }
     }
 }
@@ -1076,6 +1135,7 @@ struct CommandRowView: View {
     let onTap: () -> Void
     let onDoubleTap: () -> Void
     let onEdit: () -> Void
+    let onCopy: () -> Void
     let onDelete: () -> Void
     let onRun: () -> Void
 
@@ -1206,17 +1266,13 @@ struct CommandRowView: View {
                 }
             }
             Spacer()
-            HStack(spacing: 4) {
-                Image(systemName: typeIcon)
-                    .font(.caption2)
-                Text(badgeText)
-                    .font(.caption2)
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(badgeColor.opacity(0.2))
-            .foregroundStyle(badgeColor)
-            .cornerRadius(4)
+            Text(badgeText)
+                .font(.caption2)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(badgeColor.opacity(0.2))
+                .foregroundStyle(badgeColor)
+                .cornerRadius(4)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -1239,6 +1295,7 @@ struct CommandRowView: View {
                 onSelect: onTap,
                 onRun: onRun,
                 onEdit: onEdit,
+                onCopy: onCopy,
                 onDelete: onDelete
             )
         }
@@ -1263,6 +1320,7 @@ struct RightClickMenu: NSViewRepresentable {
     let onSelect: () -> Void
     let onRun: () -> Void
     let onEdit: () -> Void
+    let onCopy: () -> Void
     let onDelete: () -> Void
 
     func makeNSView(context: Context) -> NSView {
@@ -1270,6 +1328,7 @@ struct RightClickMenu: NSViewRepresentable {
         view.onSelect = onSelect
         view.onRun = onRun
         view.onEdit = onEdit
+        view.onCopy = onCopy
         view.onDelete = onDelete
         return view
     }
@@ -1279,6 +1338,7 @@ struct RightClickMenu: NSViewRepresentable {
         view.onSelect = onSelect
         view.onRun = onRun
         view.onEdit = onEdit
+        view.onCopy = onCopy
         view.onDelete = onDelete
     }
 
@@ -1286,6 +1346,7 @@ struct RightClickMenu: NSViewRepresentable {
         var onSelect: (() -> Void)?
         var onRun: (() -> Void)?
         var onEdit: (() -> Void)?
+        var onCopy: (() -> Void)?
         var onDelete: (() -> Void)?
 
         override func rightMouseDown(with event: NSEvent) {
@@ -1324,6 +1385,10 @@ struct RightClickMenu: NSViewRepresentable {
             editItem.target = self
             menu.addItem(editItem)
 
+            let copyItem = NSMenuItem(title: "복사", action: #selector(copyAction), keyEquivalent: "")
+            copyItem.target = self
+            menu.addItem(copyItem)
+
             menu.addItem(NSMenuItem.separator())
 
             let deleteItem = NSMenuItem(title: "삭제", action: #selector(deleteAction), keyEquivalent: "")
@@ -1335,6 +1400,7 @@ struct RightClickMenu: NSViewRepresentable {
 
         @objc func runAction() { onRun?() }
         @objc func editAction() { onEdit?() }
+        @objc func copyAction() { onCopy?() }
         @objc func deleteAction() { onDelete?() }
     }
 }
@@ -1398,16 +1464,28 @@ struct ParameterInputView: View {
 
             Divider()
 
-            ForEach(command.parameters, id: \.self) { param in
+            ForEach(command.parameterInfos, id: \.name) { info in
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(param)
+                    Text(info.name)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    TextField("", text: Binding(
-                        get: { values[param] ?? "" },
-                        set: { values[param] = $0 }
-                    ))
-                    .textFieldStyle(.roundedBorder)
+                    if info.options.isEmpty {
+                        TextField("", text: Binding(
+                            get: { values[info.name] ?? "" },
+                            set: { values[info.name] = $0 }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                    } else {
+                        Picker("", selection: Binding(
+                            get: { values[info.name] ?? info.options.first ?? "" },
+                            set: { values[info.name] = $0 }
+                        )) {
+                            ForEach(info.options, id: \.self) { option in
+                                Text(option).tag(option)
+                            }
+                        }
+                        .labelsHidden()
+                    }
                 }
             }
 
@@ -1415,7 +1493,14 @@ struct ParameterInputView: View {
                 Button("취소") { dismiss() }
                 Spacer()
                 Button("실행") {
-                    onExecute(values)
+                    // 옵션이 있는 파라미터는 기본값 설정
+                    var finalValues = values
+                    for info in command.parameterInfos {
+                        if finalValues[info.name] == nil, let first = info.options.first {
+                            finalValues[info.name] = first
+                        }
+                    }
+                    onExecute(finalValues)
                     dismiss()
                 }
                 .keyboardShortcut(.return)
@@ -1426,34 +1511,199 @@ struct ParameterInputView: View {
     }
 }
 
-struct ResultView: View {
-    let title: String
-    let output: String
+class ScriptRunner: ObservableObject {
+    @Published var isRunning = false
+    @Published var isFinished = false
+    @Published var output = ""
+
+    private var process: Process?
+    private var observer: NSObjectProtocol?
+    private var completion: ((String) -> Void)?
+
+    func run(command: String, completion: @escaping (String) -> Void) {
+        isRunning = true
+        isFinished = false
+        output = ""
+        self.completion = completion
+
+        let proc = Process()
+        let pipe = Pipe()
+
+        proc.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        proc.arguments = ["-c", command]
+        proc.standardOutput = pipe
+        proc.standardError = pipe
+
+        self.process = proc
+        let handle = pipe.fileHandleForReading
+
+        // NotificationCenter로 비동기 읽기
+        observer = NotificationCenter.default.addObserver(
+            forName: .NSFileHandleDataAvailable,
+            object: handle,
+            queue: .main
+        ) { [weak self] _ in
+            let data = handle.availableData
+            if data.isEmpty {
+                // EOF - 프로세스 종료됨
+                self?.finish()
+            } else {
+                if let str = String(data: data, encoding: .utf8) {
+                    self?.output += str
+                }
+                handle.waitForDataInBackgroundAndNotify()
+            }
+        }
+
+        // 프로세스 종료 핸들러
+        proc.terminationHandler = { [weak self] _ in
+            DispatchQueue.main.async {
+                // 남은 데이터 읽기
+                let remaining = handle.availableData
+                if !remaining.isEmpty, let str = String(data: remaining, encoding: .utf8) {
+                    self?.output += str
+                }
+                self?.finish()
+            }
+        }
+
+        do {
+            try proc.run()
+            handle.waitForDataInBackgroundAndNotify()
+        } catch {
+            output = "Error: \(error.localizedDescription)"
+            isRunning = false
+            isFinished = true
+        }
+    }
+
+    private func finish() {
+        guard isRunning else { return }
+        if let obs = observer {
+            NotificationCenter.default.removeObserver(obs)
+            observer = nil
+        }
+        isRunning = false
+        isFinished = true
+        completion?(output)
+        completion = nil
+    }
+
+    func stop() {
+        process?.terminate()
+        output += "\n(중단됨)"
+        finish()
+    }
+}
+
+struct ScriptExecutionView: View {
+    let command: Command
+    let store: CommandStore
     @Environment(\.dismiss) private var dismiss
 
+    @State private var values: [String: String] = [:]
+    @StateObject private var runner = ScriptRunner()
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(title)
+        VStack(alignment: .leading, spacing: 12) {
+            Text(command.title)
                 .font(.headline)
 
-            ScrollView {
-                Text(output.isEmpty ? "(출력 없음)" : output)
-                    .font(.body.monospaced())
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
+            Text(command.command)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+
+            if !command.parameterInfos.isEmpty && !runner.isRunning && !runner.isFinished {
+                Divider()
+                ForEach(command.parameterInfos, id: \.name) { info in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(info.name)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if info.options.isEmpty {
+                            TextField("", text: Binding(
+                                get: { values[info.name] ?? "" },
+                                set: { values[info.name] = $0 }
+                            ))
+                            .textFieldStyle(.roundedBorder)
+                        } else {
+                            Picker("", selection: Binding(
+                                get: { values[info.name] ?? info.options.first ?? "" },
+                                set: { values[info.name] = $0 }
+                            )) {
+                                ForEach(info.options, id: \.self) { option in
+                                    Text(option).tag(option)
+                                }
+                            }
+                            .labelsHidden()
+                        }
+                    }
+                }
             }
-            .frame(maxHeight: 300)
-            .padding(8)
-            .background(Color(nsColor: .textBackgroundColor))
-            .cornerRadius(6)
+
+            if runner.isRunning || runner.isFinished {
+                Divider()
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        Text(runner.output.isEmpty ? "(실행 중...)" : runner.output)
+                            .font(.system(.body, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .id("bottom")
+                    }
+                    .frame(maxHeight: 250)
+                    .padding(8)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .cornerRadius(6)
+                    .onChange(of: runner.output) { _, _ in
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                    }
+                }
+            }
 
             HStack {
-                Spacer()
-                Button("닫기") { dismiss() }
+                if runner.isFinished {
+                    Spacer()
+                    Button("닫기") { dismiss() }
+                } else if runner.isRunning {
+                    Spacer()
+                    Button("중단") {
+                        runner.stop()
+                    }
+                    .foregroundStyle(.red)
+                } else {
+                    Button("닫기") { dismiss() }
+                    Spacer()
+                    Button("실행") {
+                        executeScript()
+                    }
+                    .keyboardShortcut(.return)
+                }
             }
         }
         .padding()
         .frame(width: 400)
+    }
+
+    func executeScript() {
+        var finalValues = values
+        for info in command.parameterInfos {
+            if finalValues[info.name] == nil, let first = info.options.first {
+                finalValues[info.name] = first
+            }
+        }
+        let finalCommand = command.commandWith(values: finalValues)
+
+        runner.run(command: finalCommand) { output in
+            store.addHistory(HistoryItem(
+                timestamp: Date(),
+                title: command.title,
+                command: finalCommand,
+                type: .script,
+                output: output,
+                commandId: command.id
+            ))
+        }
     }
 }
 
@@ -1717,6 +1967,14 @@ struct SettingsView: View {
                 .font(.headline)
 
             Toggle("항상 위에 표시", isOn: $settings.alwaysOnTop)
+
+            HStack {
+                Text("히스토리 최대 개수")
+                Spacer()
+                TextField("", value: $settings.maxHistoryCount, format: .number)
+                    .frame(width: 60)
+                    .textFieldStyle(.roundedBorder)
+            }
 
             Divider()
 
