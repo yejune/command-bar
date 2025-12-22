@@ -9,8 +9,8 @@ class CommandStore: ObservableObject {
     @Published var alertingCommandId: UUID?  // 현재 알림 중인 명령
     @Published var history: [HistoryItem] = []
     @Published var clipboardItems: [ClipboardItem] = []
-    private var timers: [UUID: Timer] = [:]
     private var scheduleCheckTimer: Timer?
+    private var backgroundCheckTimer: Timer?
     private var clipboardTimer: Timer?
     private var lastClipboardChangeCount: Int = 0
 
@@ -27,9 +27,47 @@ class CommandStore: ObservableObject {
         load()
         loadHistory()
         loadClipboard()
-        startTimers()
+        startBackgroundChecker()
         startScheduleChecker()
         startClipboardMonitor()
+
+        // 잠자기에서 깨어났을 때
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleSystemResume()
+        }
+
+        // 화면이 켜졌을 때
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.screensDidWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleSystemResume()
+        }
+
+        // 앱이 활성화될 때
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleSystemResume()
+        }
+    }
+
+    func handleSystemResume() {
+        // 백그라운드 체커가 중지되었으면 재시작
+        if backgroundCheckTimer == nil || !backgroundCheckTimer!.isValid {
+            startBackgroundChecker()
+        }
+        // 스케줄 체커가 중지되었으면 재시작
+        if scheduleCheckTimer == nil || !scheduleCheckTimer!.isValid {
+            startScheduleChecker()
+        }
     }
 
     private func ensureConfigDir() {
@@ -400,58 +438,29 @@ class CommandStore: ObservableObject {
         }
     }
 
-    func startTimers() {
-        for cmd in commands where cmd.executionType == .background && cmd.interval > 0 && !cmd.isInTrash {
-            startTimer(for: cmd)
+    func startBackgroundChecker() {
+        backgroundCheckTimer?.invalidate()
+        backgroundCheckTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            self?.checkBackgroundCommands()
         }
     }
 
-    func startTimer(for cmd: Command) {
-        stopTimer(for: cmd.id)
-        guard cmd.interval > 0 else { return }
-
-        // 마지막 실행 시간 기준으로 남은 시간 계산
+    func checkBackgroundCommands() {
         let now = Date()
-        var initialDelay: TimeInterval = 0
+        for cmd in commands where cmd.executionType == .background && cmd.interval > 0 && !cmd.isInTrash && !cmd.isRunning {
+            let shouldRun: Bool
+            if let lastRun = cmd.lastExecutedAt {
+                let elapsed = now.timeIntervalSince(lastRun)
+                shouldRun = elapsed >= TimeInterval(cmd.interval)
+            } else {
+                // 처음 실행
+                shouldRun = true
+            }
 
-        if let lastRun = cmd.lastExecutedAt {
-            let elapsed = now.timeIntervalSince(lastRun)
-            let remaining = TimeInterval(cmd.interval) - elapsed
-            if remaining > 0 {
-                initialDelay = remaining
+            if shouldRun {
+                runInBackground(cmd)
             }
         }
-
-        if initialDelay > 0 {
-            // 남은 시간 후에 첫 실행
-            DispatchQueue.main.asyncAfter(deadline: .now() + initialDelay) { [weak self] in
-                guard let self = self else { return }
-                self.runInBackground(cmd)
-                let timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(cmd.interval), repeats: true) { [weak self] _ in
-                    self?.runInBackground(cmd)
-                }
-                self.timers[cmd.id] = timer
-            }
-        } else {
-            // 즉시 실행 + 타이머 시작
-            runInBackground(cmd)
-            let timer = Timer.scheduledTimer(withTimeInterval: TimeInterval(cmd.interval), repeats: true) { [weak self] _ in
-                self?.runInBackground(cmd)
-            }
-            timers[cmd.id] = timer
-        }
-    }
-
-    func stopTimer(for id: UUID) {
-        timers[id]?.invalidate()
-        timers.removeValue(forKey: id)
-    }
-
-    func stopAllTimers() {
-        for timer in timers.values {
-            timer.invalidate()
-        }
-        timers.removeAll()
     }
 
     func load() {
@@ -503,7 +512,6 @@ class CommandStore: ObservableObject {
         commands.append(newCmd)
         save()
         if cmd.executionType == .background && cmd.interval > 0 {
-            startTimer(for: cmd)
         }
         addHistory(HistoryItem(
             timestamp: Date(),
@@ -534,7 +542,6 @@ class CommandStore: ObservableObject {
 
     func moveToTrash(at offsets: IndexSet) {
         for i in offsets {
-            stopTimer(for: commands[i].id)
             addHistory(HistoryItem(
                 timestamp: Date(),
                 title: commands[i].title,
@@ -549,7 +556,6 @@ class CommandStore: ObservableObject {
 
     func moveToTrash(_ cmd: Command) {
         if let i = commands.firstIndex(where: { $0.id == cmd.id }) {
-            stopTimer(for: cmd.id)
             commands[i].isInTrash = true
             save()
             addHistory(HistoryItem(
@@ -574,7 +580,6 @@ class CommandStore: ObservableObject {
             }
             save()
             if commands[i].executionType == .background && commands[i].interval > 0 {
-                startTimer(for: commands[i])
             }
             addHistory(HistoryItem(
                 timestamp: Date(),
@@ -587,7 +592,6 @@ class CommandStore: ObservableObject {
     }
 
     func deletePermanently(_ cmd: Command) {
-        stopTimer(for: cmd.id)
         addHistory(HistoryItem(
             timestamp: Date(),
             title: cmd.title,
@@ -619,7 +623,6 @@ class CommandStore: ObservableObject {
 
     func update(_ cmd: Command) {
         if let i = commands.firstIndex(where: { $0.id == cmd.id }) {
-            stopTimer(for: cmd.id)
             var updated = cmd
             updated.command = normalizeQuotes(cmd.command)
             commands[i] = updated
@@ -628,7 +631,6 @@ class CommandStore: ObservableObject {
             commands[i].acknowledged = false
             save()
             if cmd.executionType == .background && cmd.interval > 0 {
-                startTimer(for: cmd)
             }
         }
     }
@@ -830,7 +832,6 @@ class CommandStore: ObservableObject {
         guard group.id != Self.defaultGroupId else { return }
         // 해당 그룹의 명령어들을 휴지통으로 이동
         for i in commands.indices where commands[i].groupId == group.id {
-            stopTimer(for: commands[i].id)
             commands[i].isInTrash = true
         }
         groups.removeAll { $0.id == group.id }
@@ -933,7 +934,6 @@ class CommandStore: ObservableObject {
         } else {
             // 덮어쓰기: 기존 데이터 삭제
             for cmd in commands {
-                stopTimer(for: cmd.id)
             }
             commands = imported.commands.map { cmd in
                 var c = cmd
@@ -945,7 +945,6 @@ class CommandStore: ObservableObject {
         }
 
         save()
-        startTimers()
         return true
     }
 }
