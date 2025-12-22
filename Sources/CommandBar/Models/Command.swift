@@ -116,7 +116,7 @@ struct ParameterInfo {
 // 파라미터 파싱 extension
 extension Command {
     var parameterInfos: [ParameterInfo] {
-        guard let regex = try? NSRegularExpression(pattern: "\\{([^}]+)\\}") else { return [] }
+        guard let regex = try? NSRegularExpression(pattern: "\\{([a-zA-Z_가-힣][a-zA-Z0-9_가-힣]*(?::[^}]*)?)\\}") else { return [] }
         let range = NSRange(command.startIndex..., in: command)
         let matches = regex.matches(in: command, range: range)
         var result: [ParameterInfo] = []
@@ -166,7 +166,7 @@ extension Command {
 // API 파라미터 관련 extension
 extension Command {
     var apiParameterInfos: [ParameterInfo] {
-        guard let regex = try? NSRegularExpression(pattern: "\\{([^}]+)\\}") else { return [] }
+        guard let regex = try? NSRegularExpression(pattern: "\\{([a-zA-Z_가-힣][a-zA-Z0-9_가-힣]*(?::[^}]*)?)\\}") else { return [] }
 
         var result: [ParameterInfo] = []
         var seenNames: Set<String> = []
