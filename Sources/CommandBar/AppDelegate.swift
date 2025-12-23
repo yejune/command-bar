@@ -16,8 +16,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             setupTitlebarButtons(for: window)
 
             // 저장된 창 프레임 즉시 적용 (최초 1회)
-            if !didRestoreFrame, let frame = Settings.shared.storedWindowFrame {
-                window.setFrame(frame, display: false)
+            if !didRestoreFrame {
+                if let frame = Settings.shared.storedWindowFrame {
+                    window.setFrame(frame, display: false)
+                }
+                Settings.shared.finishRestoring()
                 didRestoreFrame = true
             }
         }

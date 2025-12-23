@@ -139,11 +139,6 @@ class Settings: ObservableObject {
             self.saveWindowFrame(window.frame)
         }
 
-        // isRestoringFrame 해제 (앱 시작 후 0.5초간 프레임 저장 방지)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.isRestoringFrame = false
-        }
-
         // 자동 숨기기 적용
         if autoHide {
             applyAutoHide()
@@ -187,6 +182,10 @@ class Settings: ObservableObject {
     }
 
     // MARK: - Window Frame
+
+    func finishRestoring() {
+        isRestoringFrame = false
+    }
 
     private func saveWindowFrame(_ frame: NSRect) {
         db.setDoubleSetting("windowX", value: Double(frame.origin.x))
