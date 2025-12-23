@@ -57,6 +57,7 @@ struct LocalizedStrings: Codable {
 
     // 공통 버튼
     var buttonClose: String
+    var hideWindow: String
     var snapToLeft: String
     var snapToRight: String
     var buttonCancel: String

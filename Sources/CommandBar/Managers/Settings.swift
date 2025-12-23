@@ -19,10 +19,18 @@ class Settings: ObservableObject {
             applyLaunchAtLogin()
         }
     }
+    @Published var useBackgroundOpacity: Bool {
+        didSet {
+            db.setBoolSetting("useBackgroundOpacity", value: useBackgroundOpacity)
+            applyBackgroundOpacity()
+        }
+    }
     @Published var backgroundOpacity: Double {
         didSet {
             db.setDoubleSetting("backgroundOpacity", value: backgroundOpacity)
-            applyBackgroundOpacity()
+            if useBackgroundOpacity {
+                applyBackgroundOpacity()
+            }
         }
     }
     @Published var notesFolderName: String {
@@ -47,6 +55,7 @@ class Settings: ObservableObject {
     private var mouseMonitor: Any?
     private var hotKeyRef: EventHotKeyRef?
     private var isHidden = false
+    private var savedWindowHeight: CGFloat = 0
     @Published var hotKeyRegistered = true
 
     init() {
@@ -55,7 +64,8 @@ class Settings: ObservableObject {
 
         self.alwaysOnTop = db.getBoolSetting("alwaysOnTop", defaultValue: false)
         self.launchAtLogin = db.getBoolSetting("launchAtLogin", defaultValue: false)
-        self.backgroundOpacity = db.getDoubleSetting("backgroundOpacity", defaultValue: 1.0)
+        self.useBackgroundOpacity = db.getBoolSetting("useBackgroundOpacity", defaultValue: false)
+        self.backgroundOpacity = db.getDoubleSetting("backgroundOpacity", defaultValue: 0.8)
         self.notesFolderName = db.getSetting("notesFolderName") ?? "클립보드 메모"
         self.autoHide = db.getBoolSetting("autoHide", defaultValue: false)
         self.hideShortcut = db.getSetting("hideShortcut") ?? "⌘⇧H"
@@ -131,9 +141,10 @@ class Settings: ObservableObject {
 
     func applyBackgroundOpacity() {
         DispatchQueue.main.async {
+            let opacity = self.useBackgroundOpacity ? self.backgroundOpacity : 1.0
             for window in NSApp.windows where window.canBecomeMain {
-                window.isOpaque = self.backgroundOpacity >= 1.0
-                window.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(self.backgroundOpacity)
+                window.isOpaque = opacity >= 1.0
+                window.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(opacity)
             }
         }
     }
@@ -164,28 +175,19 @@ class Settings: ObservableObject {
     }
 
     private func handleMouseMoved(_ event: NSEvent) {
-        guard let window = NSApp.mainWindow, let screen = window.screen else { return }
+        guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
 
         let mouseLocation = NSEvent.mouseLocation
         let windowFrame = window.frame
-        let screenFrame = screen.frame
 
         if isHidden {
-            // 숨겨진 상태: 화면 가장자리에 마우스가 가면 표시
-            let edgeThreshold: CGFloat = 5
-
-            // 창이 왼쪽에 있었는지 오른쪽에 있었는지 확인
-            let wasOnLeft = windowFrame.minX <= screenFrame.minX + 50
-            let wasOnRight = windowFrame.maxX >= screenFrame.maxX - 50
-
-            if wasOnLeft && mouseLocation.x <= screenFrame.minX + edgeThreshold {
-                showWindow()
-            } else if wasOnRight && mouseLocation.x >= screenFrame.maxX - edgeThreshold {
+            // 접힌 상태: 타이틀바 위에 마우스가 오면 펼치기
+            if windowFrame.contains(mouseLocation) {
                 showWindow()
             }
         } else {
-            // 보이는 상태: 마우스가 창을 벗어나면 숨기기
-            let expandedFrame = windowFrame.insetBy(dx: -20, dy: -20)
+            // 펼쳐진 상태: 마우스가 창을 벗어나면 접기
+            let expandedFrame = windowFrame.insetBy(dx: -10, dy: -10)
             if !expandedFrame.contains(mouseLocation) {
                 hideWindow()
             }
@@ -193,24 +195,17 @@ class Settings: ObservableObject {
     }
 
     func hideWindow() {
-        guard !isHidden, autoHide else { return }
-        guard let window = NSApp.mainWindow, let screen = window.screen else { return }
+        guard !isHidden else { return }
+        guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
 
-        let windowFrame = window.frame
-        let screenFrame = screen.visibleFrame
+        // 현재 높이 저장
+        savedWindowHeight = window.frame.height
 
-        // 창이 왼쪽에 가까운지 오른쪽에 가까운지 확인
-        let distanceToLeft = windowFrame.minX - screenFrame.minX
-        let distanceToRight = screenFrame.maxX - windowFrame.maxX
-
-        var newFrame = windowFrame
-        if distanceToLeft < distanceToRight {
-            // 왼쪽으로 숨기기 (5px만 보이게)
-            newFrame.origin.x = screenFrame.minX - windowFrame.width + 5
-        } else {
-            // 오른쪽으로 숨기기 (5px만 보이게)
-            newFrame.origin.x = screenFrame.maxX - 5
-        }
+        // 타이틀바 높이만 남기기 (약 28px)
+        let titlebarHeight: CGFloat = 28
+        var newFrame = window.frame
+        newFrame.origin.y += window.frame.height - titlebarHeight
+        newFrame.size.height = titlebarHeight
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2
@@ -221,20 +216,13 @@ class Settings: ObservableObject {
     }
 
     func showWindow() {
-        guard isHidden else { return }
-        guard let window = NSApp.mainWindow, let screen = window.screen else { return }
+        guard isHidden, savedWindowHeight > 0 else { return }
+        guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
 
-        let windowFrame = window.frame
-        let screenFrame = screen.visibleFrame
-
-        var newFrame = windowFrame
-
-        // 화면 안으로 복원
-        if windowFrame.minX < screenFrame.minX {
-            newFrame.origin.x = screenFrame.minX
-        } else if windowFrame.maxX > screenFrame.maxX {
-            newFrame.origin.x = screenFrame.maxX - windowFrame.width
-        }
+        // 원래 높이로 복원
+        var newFrame = window.frame
+        newFrame.origin.y -= savedWindowHeight - window.frame.height
+        newFrame.size.height = savedWindowHeight
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2

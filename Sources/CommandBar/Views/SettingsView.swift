@@ -48,82 +48,85 @@ struct SettingsView: View {
             }
             .padding(.top, 8)
 
-            // 탭 콘텐츠 (고정 높이)
+            // 탭 콘텐츠
             VStack(alignment: .leading, spacing: 0) {
                 if selectedTab == 0 {
                     // 기본 설정
-                    Toggle(L.settingsAlwaysOnTop, isOn: $settings.alwaysOnTop)
-                        .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
-                    Toggle(L.settingsLaunchAtLogin, isOn: $settings.launchAtLogin)
-                        .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
-                    HStack {
-                        Text(L.settingsBackgroundOpacity)
-                        Slider(value: $settings.backgroundOpacity, in: 0.3...1.0, step: 0.1)
-                        Text("\(Int(settings.backgroundOpacity * 100))%")
-                            .frame(width: 40)
+                    SettingRow(label: L.settingsAlwaysOnTop) {
+                        Toggle("", isOn: $settings.alwaysOnTop)
+                            .labelsHidden()
                     }
-                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
-                    HStack {
-                        Toggle(L.settingsAutoHide, isOn: $settings.autoHide)
-                        Spacer()
-                        HStack(spacing: 4) {
-                            ShortcutRecorderView(shortcut: $settings.hideShortcut)
-                                .frame(width: 80)
-                            if settings.autoHide && !settings.hotKeyRegistered {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(.orange)
-                                    .help(L.shortcutConflict)
+                    SettingDivider()
+                    SettingRow(label: L.settingsLaunchAtLogin) {
+                        Toggle("", isOn: $settings.launchAtLogin)
+                            .labelsHidden()
+                    }
+                    SettingDivider()
+                    SettingRow(label: L.settingsBackgroundOpacity) {
+                        HStack(spacing: 8) {
+                            Toggle("", isOn: $settings.useBackgroundOpacity)
+                                .labelsHidden()
+                            if settings.useBackgroundOpacity {
+                                Slider(value: $settings.backgroundOpacity, in: 0.3...1.0, step: 0.1)
+                                    .frame(width: 100)
+                                Text("\(Int(settings.backgroundOpacity * 100))%")
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 35)
                             }
                         }
-                        .disabled(!settings.autoHide)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                    SettingDivider()
+                    SettingRow(label: L.settingsAutoHide) {
+                        HStack(spacing: 8) {
+                            Toggle("", isOn: $settings.autoHide)
+                                .labelsHidden()
+                            if settings.autoHide {
+                                ShortcutRecorderView(shortcut: $settings.hideShortcut)
+                                    .frame(width: 80)
+                                if !settings.hotKeyRegistered {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundStyle(.orange)
+                                        .help(L.shortcutConflict)
+                                }
+                            }
+                        }
+                    }
                 } else if selectedTab == 1 {
                     // 클립보드 설정
-                    HStack {
-                        Text(L.settingsNotesFolderName)
-                        Spacer()
+                    SettingRow(label: L.settingsNotesFolderName) {
                         TextField("", text: $settings.notesFolderName)
-                            .frame(width: 120)
+                            .frame(width: 150)
                             .textFieldStyle(.roundedBorder)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
                 } else if selectedTab == 2 {
                     // 백업 (가져오기/내보내기)
-                    Text(L.settingsBackupNote)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
-                    HStack(spacing: 8) {
-                        Button(L.settingsExportFile) { exportToFile() }
-                        Button(L.settingsImportFile) { loadFromFile() }
-                        Spacer()
+                    SettingRow(label: L.settingsBackupNote) {
+                        HStack(spacing: 8) {
+                            Button(L.settingsExportFile) { exportToFile() }
+                            Button(L.settingsImportFile) { loadFromFile() }
+                        }
                     }
-                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
                 } else {
                     // 언어 설정
-                    HStack {
-                        Text(L.settingsLanguage)
-                        Spacer()
+                    SettingRow(label: L.settingsLanguage) {
                         Picker("", selection: $languageManager.currentLanguage) {
                             ForEach(Language.allCases, id: \.self) { lang in
                                 Text(lang.displayName).tag(lang)
                             }
                         }
                         .labelsHidden()
-                        .frame(width: 100)
+                        .frame(width: 120)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
-                    HStack(spacing: 8) {
-                        Button(L.settingsExportLanguagePack) { exportLanguagePack() }
-                        Button(L.settingsImportLanguagePack) { importLanguagePack() }
-                        Spacer()
+                    SettingDivider()
+                    SettingRow(label: L.settingsLanguagePack) {
+                        HStack(spacing: 8) {
+                            Button(L.settingsExportLanguagePack) { exportLanguagePack() }
+                            Button(L.settingsImportLanguagePack) { importLanguagePack() }
+                        }
                     }
-                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
                 }
                 Spacer()
             }
-            .frame(height: 115)
             .padding(12)
 
             Divider()
@@ -335,6 +338,7 @@ class ShortcutRecorderNSView: NSView {
     }
     var onShortcutChange: ((String) -> Void)?
     private var isRecording = false
+    private var localMonitor: Any?
 
     private lazy var textField: NSTextField = {
         let tf = NSTextField()
@@ -357,6 +361,10 @@ class ShortcutRecorderNSView: NSView {
         setup()
     }
 
+    deinit {
+        stopMonitor()
+    }
+
     private func setup() {
         addSubview(textField)
         textField.translatesAutoresizingMaskIntoConstraints = false
@@ -371,33 +379,46 @@ class ShortcutRecorderNSView: NSView {
     override var acceptsFirstResponder: Bool { true }
 
     override func mouseDown(with event: NSEvent) {
-        window?.makeFirstResponder(self)
+        startRecording()
+    }
+
+    private func startRecording() {
         isRecording = true
         textField.stringValue = "..."
         textField.textColor = .secondaryLabelColor
+
+        // 로컬 이벤트 모니터 시작
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+            guard let self = self, self.isRecording else { return event }
+            return self.handleKeyEvent(event) ? nil : event
+        }
     }
 
-    override func keyDown(with event: NSEvent) {
-        guard isRecording else {
-            super.keyDown(with: event)
-            return
-        }
+    private func stopRecording() {
+        isRecording = false
+        textField.textColor = .labelColor
+        stopMonitor()
+    }
 
+    private func stopMonitor() {
+        if let monitor = localMonitor {
+            NSEvent.removeMonitor(monitor)
+            localMonitor = nil
+        }
+    }
+
+    private func handleKeyEvent(_ event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection([.command, .option, .shift, .control])
-
-        // 수정자 키만 누른 경우 무시
-        guard modifiers.isEmpty == false else {
-            super.keyDown(with: event)
-            return
-        }
 
         // ESC 키 = 취소
         if event.keyCode == 53 {
-            isRecording = false
             textField.stringValue = shortcut
-            textField.textColor = .labelColor
-            return
+            stopRecording()
+            return true
         }
+
+        // 수정자 키만 누른 경우 무시
+        guard !modifiers.isEmpty else { return false }
 
         // 단축키 문자열 생성
         var parts: [String] = []
@@ -415,21 +436,45 @@ class ShortcutRecorderNSView: NSView {
 
                 let newShortcut = parts.joined()
                 shortcut = newShortcut
+                textField.stringValue = newShortcut
                 onShortcutChange?(newShortcut)
 
-                isRecording = false
-                textField.stringValue = newShortcut
-                textField.textColor = .labelColor
+                stopRecording()
+                return true
             }
         }
+        return false
     }
 
     override func resignFirstResponder() -> Bool {
         if isRecording {
-            isRecording = false
             textField.stringValue = shortcut
-            textField.textColor = .labelColor
+            stopRecording()
         }
         return super.resignFirstResponder()
+    }
+}
+
+// 설정 행 컴포넌트
+struct SettingRow<Content: View>: View {
+    let label: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            content
+        }
+        .padding(.vertical, 8)
+    }
+}
+
+// 설정 구분선
+struct SettingDivider: View {
+    var body: some View {
+        Divider()
+            .opacity(0.5)
     }
 }
