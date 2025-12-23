@@ -98,31 +98,35 @@ struct EnvironmentManagerView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 // 테이블 뷰
-                ScrollView([.horizontal, .vertical]) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        // 헤더 행
-                        HStack(spacing: 0) {
-                            Text(L.envVariable)
-                                .font(.caption.bold())
-                                .frame(width: 120, alignment: .leading)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 6)
-                                .background(Color.gray.opacity(0.1))
+                GeometryReader { geometry in
+                    ScrollView([.horizontal, .vertical]) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            // 헤더 행
+                            HStack(spacing: 0) {
+                                Text(L.envVariable)
+                                    .font(.caption.bold())
+                                    .frame(width: 120, alignment: .leading)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 6)
+                                    .background(Color.gray.opacity(0.1))
 
-                            ForEach(store.environments) { env in
-                                environmentColumnHeader(env)
+                                ForEach(store.environments) { env in
+                                    environmentColumnHeader(env)
+                                }
                             }
-                        }
 
-                        Divider()
-
-                        // 변수 행들
-                        ForEach(allVariableNames, id: \.self) { varName in
-                            variableRow(varName)
                             Divider()
+
+                            // 변수 행들
+                            ForEach(allVariableNames, id: \.self) { varName in
+                                variableRow(varName)
+                                Divider()
+                            }
+
+                            Spacer(minLength: 0)
                         }
+                        .frame(minWidth: geometry.size.width, minHeight: geometry.size.height, alignment: .topLeading)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             }
 

@@ -4,6 +4,10 @@
 [![Swift](https://img.shields.io/badge/Swift-5.9+-orange.svg)](https://swift.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+**AI 시대 최고의 파트너**
+
+모든 것을 명령으로 등록해서 재사용 가능하게 만들고, 히스토리와 클립보드를 스마트하게 관리하세요. 바이브 코딩에 꼭 필요한 파트너입니다.
+
 macOS용 명령어 런처, 클립보드 관리자, 일정 알림 앱
 
 [English](README.md)

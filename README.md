@@ -4,6 +4,10 @@
 [![Swift](https://img.shields.io/badge/Swift-5.9+-orange.svg)](https://swift.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+**Your Best Partner in the AI Era**
+
+Register everything as reusable commands, smartly manage history and clipboard. The essential partner for vibe coding.
+
 A powerful command launcher, clipboard manager, and schedule reminder for macOS.
 
 [한국어](README.ko.md)
