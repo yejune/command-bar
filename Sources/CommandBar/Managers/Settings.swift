@@ -52,10 +52,12 @@ class Settings: ObservableObject {
     }
 
     private var appearanceObserver: NSObjectProtocol?
+    private var resizeObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
     private var localMouseMonitor: Any?
     private var hotKeyRef: EventHotKeyRef?
     @Published var isHidden = false
+    private var isAnimating = false
     private var savedWindowHeight: CGFloat = 0
     private var hideTimestamp: Date = .distantPast
     @Published var hotKeyRegistered = true
@@ -79,6 +81,21 @@ class Settings: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             self?.applyBackgroundOpacity()
+        }
+
+        // 창 리사이즈 감지 (수동 리사이즈 시 높이 저장)
+        resizeObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResizeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self,
+                  !self.isHidden,
+                  !self.isAnimating,
+                  let window = notification.object as? NSWindow,
+                  window.canBecomeMain,
+                  window.frame.height >= 100 else { return }
+            self.savedWindowHeight = window.frame.height
         }
 
         // 단축키 등록
@@ -114,6 +131,9 @@ class Settings: ObservableObject {
     deinit {
         if let observer = appearanceObserver {
             DistributedNotificationCenter.default().removeObserver(observer)
+        }
+        if let observer = resizeObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
         if let monitor = mouseMonitor {
             NSEvent.removeMonitor(monitor)
@@ -213,7 +233,7 @@ class Settings: ObservableObject {
     }
 
     func hideWindow() {
-        guard !isHidden else { return }
+        guard !isHidden, !isAnimating else { return }
         guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
 
         // 모달이나 시트가 열려있으면 숨기지 않음
@@ -224,13 +244,10 @@ class Settings: ObservableObject {
         if !otherWindows.isEmpty { return }
 
         let titlebarHeight: CGFloat = 28
-        let currentHeight = window.frame.height
 
-        // 현재 높이 저장 (펼쳐진 상태에서만 - 최소 높이 300 이상)
-        if currentHeight >= 300 {
-            savedWindowHeight = currentHeight
-        } else if savedWindowHeight == 0 {
-            savedWindowHeight = 400  // 기본값
+        // 현재 높이 저장 (최초 1회만)
+        if savedWindowHeight == 0 {
+            savedWindowHeight = window.frame.height
         }
 
         // 최소 높이 제한 임시 해제
@@ -240,10 +257,13 @@ class Settings: ObservableObject {
         newFrame.origin.y += window.frame.height - titlebarHeight
         newFrame.size.height = titlebarHeight
 
+        isAnimating = true
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2
             window.animator().setFrame(newFrame, display: true)
             window.animator().alphaValue = 0.1
+        } completionHandler: { [weak self] in
+            self?.isAnimating = false
         }
 
         isHidden = true
@@ -251,7 +271,7 @@ class Settings: ObservableObject {
     }
 
     func showWindow() {
-        guard isHidden, savedWindowHeight > 0 else { return }
+        guard isHidden, !isAnimating, savedWindowHeight > 0 else { return }
         // 숨긴 직후 바로 펼쳐지는 것 방지 (0.3초)
         guard Date().timeIntervalSince(hideTimestamp) > 0.3 else { return }
         guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
@@ -268,14 +288,16 @@ class Settings: ObservableObject {
         let originalAlpha = useBackgroundOpacity ? backgroundOpacity : 1.0
 
         isHidden = false
+        isAnimating = true
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2
             context.allowsImplicitAnimation = true
             window.animator().setFrame(newFrame, display: true)
             window.animator().alphaValue = originalAlpha
-        } completionHandler: {
+        } completionHandler: { [weak self] in
             window.minSize = NSSize(width: window.minSize.width, height: 300)
+            self?.isAnimating = false
         }
     }
 
