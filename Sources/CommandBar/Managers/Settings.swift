@@ -147,6 +147,10 @@ class Settings: ObservableObject {
             for window in NSApp.windows where window.canBecomeMain {
                 window.isOpaque = opacity >= 1.0
                 window.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(opacity)
+                // 숨기기 상태가 아닐 때만 alphaValue 적용
+                if !self.isHidden {
+                    window.alphaValue = opacity
+                }
             }
         }
     }
@@ -219,11 +223,14 @@ class Settings: ObservableObject {
         let otherWindows = NSApp.windows.filter { $0.isVisible && $0 != window && $0.canBecomeMain }
         if !otherWindows.isEmpty { return }
 
-        // 현재 높이 저장
-        savedWindowHeight = window.frame.height
+        let titlebarHeight: CGFloat = 28
+
+        // 현재 높이 저장 (펼쳐진 상태에서만)
+        if window.frame.height > titlebarHeight + 10 {
+            savedWindowHeight = window.frame.height
+        }
 
         // 최소 높이 제한 임시 해제
-        let titlebarHeight: CGFloat = 28
         window.minSize = NSSize(width: window.minSize.width, height: titlebarHeight)
 
         var newFrame = window.frame
