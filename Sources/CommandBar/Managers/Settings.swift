@@ -162,8 +162,8 @@ class Settings: ObservableObject {
 
     private func startMouseMonitor() {
         stopMouseMonitor()
-        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] event in
-            self?.handleMouseMoved(event)
+        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown]) { [weak self] event in
+            self?.handleMouseEvent(event)
         }
     }
 
@@ -174,7 +174,7 @@ class Settings: ObservableObject {
         }
     }
 
-    private func handleMouseMoved(_ event: NSEvent) {
+    private func handleMouseEvent(_ event: NSEvent) {
         guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
 
         let mouseLocation = NSEvent.mouseLocation
