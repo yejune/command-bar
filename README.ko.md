@@ -1,6 +1,10 @@
 # CommandBar
 
-macOS용 명령어 런처 및 일정 알림 앱
+[![macOS](https://img.shields.io/badge/macOS-14.0+-blue.svg)](https://www.apple.com/macos)
+[![Swift](https://img.shields.io/badge/Swift-5.9+-orange.svg)](https://swift.org)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+macOS용 명령어 런처, 클립보드 관리자, 일정 알림 앱
 
 [English](README.md)
 
@@ -18,85 +22,55 @@ make build
 
 ## 기능
 
-### 1. 터미널 명령 실행
-- iTerm2 또는 Terminal에서 명령 실행
-- 현재 터미널 창에서 실행
-- 명령 출력 히스토리에 저장
-- 더블클릭 또는 우클릭 메뉴로 실행
+### 명령 실행 방식
 
-### 2. 백그라운드 명령 실행
-- 터미널 없이 백그라운드에서 명령 실행
-- 결과가 리스트에 표시됨
-- 주기 설정으로 자동 반복 실행
-- 다음 실행까지 카운트다운 표시
-- 마지막 실행 시간 기억 (앱 재시작 후에도 유지)
-- 주기 프리셋: 10분, 1시간, 6시간, 12시간, 24시간, 7일
+| 타입 | 설명 |
+|------|------|
+| **터미널** | iTerm2 또는 Terminal에서 실행, 출력 히스토리 저장 |
+| **백그라운드** | 터미널 없이 자동 반복 실행 (10분, 1시간, 6시간, 12시간, 24시간, 7일) |
+| **스크립트** | 파라미터 지원, 리사이즈 가능한 결과 창 |
+| **일정** | 날짜/시간 알림, 반복 (매일/매주/매월), 미리 알림 |
+| **API** | REST API 테스트 (모든 HTTP 메서드) |
 
-### 3. 스크립트 실행
-- 파라미터 지원: `{파라미터명}` 형식으로 입력
-- 옵션 선택 지원: `{파라미터명:옵션1|옵션2|옵션3}` 형식
-- 실행 시 파라미터 값 입력 받음 (필수)
-- 결과를 리사이즈 가능한 창으로 표시
+### 스크립트 파라미터
+```bash
+echo "Hello {name}"                      # 텍스트 입력
+curl -X {method:GET|POST|PUT} {url}      # 드롭다운 + 텍스트 입력
+git checkout {branch:main|develop}       # 드롭다운 선택
+```
 - 쉘 특수문자 자동 이스케이프 (`"`, `$`, `` ` ``, `\`)
 - 스마트 따옴표 자동 변환
 
-```bash
-# 예시
-echo "Hello {name}"                    # name 텍스트 입력
-curl -X {method:GET|POST|PUT} {url}    # method 드롭다운 선택, url 텍스트 입력
-git checkout {branch:main|develop}     # branch 드롭다운 선택
-```
-
-### 4. 일정 알림
-- 날짜/시간 설정으로 알림 예약
-- 반복 설정: 매일, 매주, 매월
+### 일정 알림
 - 남은 시간 실시간 표시 (1일, 2시간, 30초...)
 - 미리 알림: 1시간 전, 30분 전, 10분 전, 5분 전, 1분 전
-- 시간이 되면 부르르 효과로 알림
-- 클릭하면 확인:
-  - 일회성: 체크 표시
-  - 반복: 다음 알림 시간으로 자동 리셋
+- 시간 되면 부르르 효과
+- 일회성: 체크 표시 / 반복: 다음 알림으로 자동 리셋
 
-### 5. 히스토리
-- 모든 실행 기록 저장 (최대 100개)
-- 기록 유형: 실행, 백그라운드, 스크립트, 일정 알림, 미리 알림, 등록, 삭제, 복원, 제거
-- 상세보기: 실행 명령어 + 출력 결과 확인 가능
-
-### 6. 클립보드
-- 클립보드 히스토리 모니터링 (최대 10,000개)
-- 빠른 명령 등록
-- Apple 메모로 보내기
-- 상세 창에서 전체 내용 보기
-
-### 7. 그룹
-- 명령어를 색상별 그룹으로 정리
-- 명령 목록에서 그룹별 필터링
-- 드래그 앤 드롭으로 그룹 순서 변경
-- 그룹 관리 페이지 (하단 폴더 아이콘)
-
-### 8. 즐겨찾기
-- 별 아이콘 클릭으로 즐겨찾기 토글
-- 즐겨찾기만 필터링 가능
-- 그룹 필터와 조합 사용 가능
-
-### 9. API 요청
-- 5가지 실행 방식 중 하나 (터미널/백그라운드/스크립트/일정/API)
-- REST API 테스트 기능
+### API 요청
 - HTTP 메서드: GET, POST, PUT, DELETE, PATCH
 - 헤더, 쿼리 파라미터, 바디 설정
-- 파라미터 지원: `{변수명}` 형식
-  - URL, 헤더, 쿼리 파라미터, 바디에서 사용 가능
-  - 실행 시 값 입력 프롬프트 표시
-  - 예: `https://api.example.com/users/{userId}`
-- 바디 타입:
-  - JSON: Raw JSON 형식
-  - Form Data: 키-값 쌍
-  - Multipart: 파일 업로드 지원
-- 파일 업로드 시 MIME 타입 자동 감지
-- 응답 저장 및 확인
-- 응답 히스토리 추적
+- 파라미터 지원: URL, 헤더, 바디에 `{변수명}` 사용
+- 바디 타입: JSON, Form Data, Multipart (파일 업로드)
+- 응답 히스토리 저장
 
-### 10. 다국어 지원
+### 데이터 관리
+
+| 기능 | 설명 |
+|------|------|
+| **히스토리** | 실행 기록 텍스트/날짜 검색 (최대 100개) |
+| **클립보드** | 클립보드 모니터링 및 검색 (최대 10,000개), Apple 메모로 보내기 |
+| **그룹** | 색상별 명령어 정리, 드래그 앤 드롭 순서 변경 |
+| **즐겨찾기** | 별 아이콘 토글, 그룹과 조합 필터 |
+| **휴지통** | 삭제 항목 복구 가능 |
+
+### 창 기능
+- 항상 위에 표시 옵션
+- 배경 투명도 조절
+- 포커스 잃으면 자동 숨기기 (투명도 설정 가능)
+- 창 위치/크기 기억
+
+### 다국어
 - 한국어, 영어, 일본어
 - 커스텀 언어팩 내보내기/가져오기
 
@@ -105,65 +79,33 @@ git checkout {branch:main|develop}     # branch 드롭다운 선택
 ### 명령 추가
 1. `+` 버튼 클릭
 2. 제목 입력
-3. 실행 방식 선택:
-   - **터미널**: iTerm2 / Terminal 선택
-   - **백그라운드**: 주기 입력 (0이면 수동)
-   - **스크립트**: 파라미터 `{name}` 형식 지원
-   - **일정**: 날짜/시간, 미리 알림 선택
-   - **API**: HTTP 요청 설정
+3. 실행 방식 선택 및 설정
+4. 저장
 
 ### 명령 실행
 - 더블클릭
 - 우클릭 → 실행
 
-### 명령 수정/삭제
+### 수정/삭제
 - 우클릭 → 수정/삭제
 
 ### 순서 변경
 - 드래그 앤 드롭
 
-### API 요청 사용법
-1. 명령 추가 시 **API** 타입 선택
-2. 요청 설정:
-   - **메서드**: GET, POST, PUT, DELETE, PATCH
-   - **URL**: 엔드포인트 URL 입력 (`{변수명}` 파라미터 지원)
-   - **헤더**: 커스텀 헤더 추가 (키-값 쌍, `{변수명}` 지원)
-   - **쿼리 파라미터**: URL 파라미터 추가 (키-값 쌍, `{변수명}` 지원)
-   - **바디**: 요청 바디 설정 (`{변수명}` 지원)
-     - JSON: Raw JSON 형식
-     - Form Data: 키-값 쌍
-     - Multipart: 파일 업로드 + 텍스트 파라미터
-3. 실행하면 API 호출
-   - `{변수명}` 파라미터 사용 시 값 입력 프롬프트 표시
-4. 응답 결과 창에서 확인:
-   - 상태 코드 및 응답 시간
-   - 응답 헤더
-   - 응답 바디 (JSON 포맷팅 또는 raw 텍스트)
-
-### 하단 버튼
-- 📄 명령 목록
-- ➕ 명령 추가
-- 📁 그룹 관리
-- 📋 클립보드
-- 🕐 히스토리
-- 🗑 휴지통
-- ⚙️ 설정
-
-### 설정
-- **기본**: 항상 위에 표시, 로그인 시 시작, 배경 투명도
-- **히스토리**: 최대 개수
-- **클립보드**: 최대 개수, 메모 폴더명
-- **백업**: 내보내기/가져오기 (JSON)
-- **언어**: 한국어/영어/일본어, 커스텀 언어팩
+### 하단 바
+📄 명령 목록 | ➕ 추가 | 📁 그룹 | 📋 클립보드 | 🕐 히스토리 | 🗑 휴지통 | ⚙️ 설정
 
 ## 단축키
 
-- `↑/↓`: 항목 선택
-- `Enter`: 선택한 항목 실행
-- `Delete`: 선택한 항목 삭제
+| 키 | 동작 |
+|----|------|
+| `↑/↓` | 항목 이동 |
+| `Enter` | 선택 항목 실행 |
+| `Delete` | 선택 항목 삭제 |
 
-## 백그라운드 명령 예시
+## 예시
 
+### 백그라운드 명령
 | 명령 | 설명 | 주기 |
 |------|------|------|
 | `date +%H:%M:%S` | 현재 시간 | 1초 |
@@ -171,51 +113,43 @@ git checkout {branch:main|develop}     # branch 드롭다운 선택
 | `df -h \| head -2` | 디스크 사용량 | 300초 |
 | `curl -s "wttr.in/Seoul?format=3"` | 서울 날씨 | 3600초 |
 
-## API 요청 예시
+### API 요청
 
-| 이름 | 메서드 | URL | 설명 |
-|------|--------|-----|------|
-| 사용자 목록 | GET | `https://api.example.com/users` | 사용자 목록 조회 |
-| 사용자 조회 | GET | `https://api.example.com/users/{userId}` | 특정 사용자 조회 (userId 입력) |
-| 사용자 생성 | POST | `https://api.example.com/users` | 새 사용자 생성 (JSON 바디) |
-| 사용자 수정 | PUT | `https://api.example.com/users/{userId}` | 사용자 정보 수정 (userId 입력) |
-| 파일 업로드 | POST | `https://api.example.com/upload` | Multipart 파일 업로드 |
+**파라미터 포함 GET:**
+```
+URL: https://api.example.com/users/{userId}
+→ 실행 시 userId 입력 프롬프트
+```
 
-### API 설정 예시
-
-**GET 요청 (파라미터 포함):**
-- 메서드: GET
-- URL: `https://api.example.com/users/{userId}`
-- 설명: 실행 시 userId 값 입력 프롬프트
-
-**POST 요청 (JSON 바디):**
-- 메서드: POST
-- URL: `https://api.example.com/users`
-- 헤더: `Content-Type: application/json`
-- 바디:
-  ```json
-  {
-    "name": "{userName}",
-    "email": "{userEmail}"
-  }
-  ```
-- 설명: 실행 시 userName, userEmail 값 입력
+**JSON 바디 POST:**
+```
+URL: https://api.example.com/users
+헤더: Content-Type: application/json
+바디: {"name": "{userName}", "email": "{userEmail}"}
+→ 실행 시 userName, userEmail 입력
+```
 
 **Multipart 파일 업로드:**
-- 메서드: POST
-- URL: `https://api.example.com/upload`
-- 바디 타입: Multipart
-- 텍스트 파라미터: `description: 내 파일`
-- 파일 파라미터: `file: /path/to/image.png`
-- 설명: MIME 타입 자동 감지
+```
+URL: https://api.example.com/upload
+바디 타입: Multipart
+텍스트: description: 내 파일
+파일: file: /path/to/image.png
+→ MIME 타입 자동 감지
+```
 
-## 데이터 저장 경로
+## 데이터 저장
 
-- 설정: `~/.command_bar/app.json`
-- 히스토리: `~/.command_bar/history.json`
-- 클립보드: `~/.command_bar/clipboard.json`
+모든 데이터는 SQLite 데이터베이스에 저장:
+```
+~/.command_bar/command_bar.db
+```
 
 ## 요구사항
 
 - macOS 14.0+
 - Swift 5.9+
+
+## 라이선스
+
+MIT

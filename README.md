@@ -1,6 +1,10 @@
 # CommandBar
 
-Command launcher and schedule reminder app for macOS
+[![macOS](https://img.shields.io/badge/macOS-14.0+-blue.svg)](https://www.apple.com/macos)
+[![Swift](https://img.shields.io/badge/Swift-5.9+-orange.svg)](https://swift.org)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+A powerful command launcher, clipboard manager, and schedule reminder for macOS.
 
 [한국어](README.ko.md)
 
@@ -18,85 +22,55 @@ make build
 
 ## Features
 
-### 1. Terminal Command Execution
-- Execute commands in iTerm2 or Terminal
-- Runs in current terminal window
-- Command output saved to history
-- Double-click or right-click menu to run
+### Command Execution
 
-### 2. Background Command Execution
-- Run commands in background without terminal
-- Results displayed in list
-- Auto-repeat with interval setting
-- Countdown display until next execution
-- Remembers last execution time (resumes after app restart)
-- Interval presets: 10min, 1hr, 6hr, 12hr, 24hr, 7days
+| Type | Description |
+|------|-------------|
+| **Terminal** | Execute in iTerm2 or Terminal, output saved to history |
+| **Background** | Run silently with auto-repeat intervals (10min, 1hr, 6hr, 12hr, 24hr, 7days) |
+| **Script** | Parameter support with resizable result window |
+| **Schedule** | Date/time reminders with repeat (daily/weekly/monthly) and pre-alerts |
+| **API** | REST API testing with all HTTP methods |
 
-### 3. Script Execution
-- Parameter support: `{paramName}` format
-- Option selection: `{paramName:option1|option2|option3}` format
-- Parameter values required at execution
-- Results shown in resizable window
-- Auto-escape shell special characters (`"`, `$`, `` ` ``, `\`)
-- Smart quotes auto-conversion
-
+### Script Parameters
 ```bash
-# Examples
-echo "Hello {name}"                    # name text input
-curl -X {method:GET|POST|PUT} {url}    # method dropdown, url text input
-git checkout {branch:main|develop}     # branch dropdown selection
+echo "Hello {name}"                      # Text input
+curl -X {method:GET|POST|PUT} {url}      # Dropdown + text input
+git checkout {branch:main|develop}       # Dropdown selection
 ```
+- Shell special characters auto-escaped (`"`, `$`, `` ` ``, `\`)
+- Smart quotes auto-converted
 
-### 4. Schedule Reminders
-- Set date/time for reminders
-- Repeat options: daily, weekly, monthly
+### Schedule Reminders
 - Real-time countdown display (1 day, 2 hours, 30 seconds...)
 - Pre-alerts: 1 hour, 30 min, 10 min, 5 min, 1 min before
 - Shake effect when time comes
-- Click to acknowledge:
-  - One-time: shows checkmark
-  - Repeating: auto-resets to next occurrence
+- One-time: shows checkmark / Repeating: auto-resets to next occurrence
 
-### 5. History
-- Saves all execution records (max 100)
-- Record types: executed, background, script, schedule alert, pre-alert, added, deleted, restored, removed
-- Detail view: shows executed command + output
-
-### 6. Clipboard
-- Monitors clipboard history (max 10,000)
-- Quick register as command
-- Send to Apple Notes
-- View full content in detail window
-
-### 7. Groups
-- Organize commands into groups with colors
-- Filter by group in command list
-- Drag and drop to reorder groups
-- Group management page (folder icon in bottom bar)
-
-### 8. Favorites
-- Click star icon to toggle favorite
-- Filter to show favorites only
-- Works with group filter
-
-### 9. API Requests
-- One of five execution types (Terminal/Background/Script/Schedule/API)
-- REST API testing functionality
+### API Requests
 - HTTP methods: GET, POST, PUT, DELETE, PATCH
-- Configure headers, query parameters, and body data
-- Parameter support: `{variableName}` format
-  - Use in URL, headers, query parameters, and body
-  - Prompts for values at execution time
-  - Example: `https://api.example.com/users/{userId}`
-- Body types:
-  - JSON: Raw JSON format
-  - Form Data: Key-value pairs
-  - Multipart: File upload support
-- File upload with automatic MIME type detection
-- Save and view responses
-- Response history tracking
+- Headers, query parameters, body configuration
+- Parameter support: `{variableName}` in URL, headers, body
+- Body types: JSON, Form Data, Multipart (file upload)
+- Response saved to history
 
-### 10. Multi-language Support
+### Data Management
+
+| Feature | Description |
+|---------|-------------|
+| **History** | Execution records with text/date search (max 100) |
+| **Clipboard** | Monitor clipboard with search (max 10,000), send to Apple Notes |
+| **Groups** | Organize commands with colors, drag & drop reorder |
+| **Favorites** | Star icon toggle, filter with group |
+| **Trash** | Deleted items recoverable |
+
+### Window Features
+- Always on top option
+- Background opacity control
+- Auto-hide when focus lost (with opacity setting)
+- Window position/size remembered
+
+### Multi-language
 - Korean, English, Japanese
 - Export/Import custom language packs
 
@@ -105,66 +79,33 @@ git checkout {branch:main|develop}     # branch dropdown selection
 ### Add Command
 1. Click `+` button
 2. Enter title
-3. Select execution type:
-   - **Terminal**: choose iTerm2 / Terminal
-   - **Background**: set interval (0 for manual)
-   - **Script**: supports `{name}` parameters
-   - **Schedule**: set date/time, pre-alerts
-   - **API**: configure HTTP request
+3. Select execution type and configure
+4. Save
 
 ### Run Command
 - Double-click
 - Right-click → Run
 
-### Edit/Delete Command
+### Edit/Delete
 - Right-click → Edit/Delete
 
 ### Reorder
 - Drag and drop
 
-### API Request Usage
-1. Select **API** type when adding command
-2. Configure request:
-   - **Method**: GET, POST, PUT, DELETE, PATCH
-   - **URL**: Enter endpoint URL (supports `{variableName}` parameters)
-   - **Headers**: Add custom headers (key-value pairs, supports `{variableName}`)
-   - **Query Parameters**: Add URL parameters (key-value pairs, supports `{variableName}`)
-   - **Body**: Configure request body (supports `{variableName}`)
-     - JSON: Raw JSON format
-     - Form Data: Key-value pairs
-     - Multipart: File upload with text parameters
-3. Click **Send** or run command to execute
-   - If using `{variableName}` parameters, you'll be prompted to enter values
-4. View response in detail window:
-   - Status code and response time
-   - Response headers
-   - Response body (formatted JSON or raw text)
-5. Response saved to history for reference
-
-### Bottom Buttons
-- 📄 Command list
-- ➕ Add command
-- 📁 Group management
-- 📋 Clipboard
-- 🕐 History
-- 🗑 Trash
-- ⚙️ Settings
-
-### Settings
-- **General**: Always on top, Launch at login, Background opacity
-- **History**: Max count
-- **Clipboard**: Max count, Notes folder name
-- **Backup**: Export/Import (JSON)
-- **Language**: Korean/English/Japanese, Custom language pack
+### Bottom Bar
+📄 Commands | ➕ Add | 📁 Groups | 📋 Clipboard | 🕐 History | 🗑 Trash | ⚙️ Settings
 
 ## Keyboard Shortcuts
 
-- `↑/↓`: Select item
-- `Enter`: Run selected item
-- `Delete`: Delete selected item
+| Key | Action |
+|-----|--------|
+| `↑/↓` | Navigate items |
+| `Enter` | Run selected |
+| `Delete` | Delete selected |
 
-## Background Command Examples
+## Examples
 
+### Background Commands
 | Command | Description | Interval |
 |---------|-------------|----------|
 | `date +%H:%M:%S` | Current time | 1s |
@@ -172,69 +113,43 @@ git checkout {branch:main|develop}     # branch dropdown selection
 | `df -h \| head -2` | Disk usage | 300s |
 | `curl -s "wttr.in/Seoul?format=3"` | Seoul weather | 3600s |
 
-## API Request Examples
+### API Requests
 
-| Name | Method | URL | Description |
-|------|--------|-----|-------------|
-| Get Users | GET | `https://api.example.com/users` | Fetch user list |
-| Get User by ID | GET | `https://api.example.com/users/{userId}` | Fetch specific user (prompts for userId) |
-| Create User | POST | `https://api.example.com/users` | Create new user (JSON body) |
-| Update User | PUT | `https://api.example.com/users/{userId}` | Update user data (prompts for userId) |
-| Delete User | DELETE | `https://api.example.com/users/{userId}` | Delete user (prompts for userId) |
-| Weather API | GET | `https://api.openweathermap.org/data/2.5/weather` | Get weather (query params: q, appid) |
+**GET with parameter:**
+```
+URL: https://api.example.com/users/{userId}
+→ Prompts for userId at execution
+```
 
-### Example API Configuration
+**POST with JSON body:**
+```
+URL: https://api.example.com/users
+Headers: Content-Type: application/json
+Body: {"name": "{userName}", "email": "{userEmail}"}
+→ Prompts for userName, userEmail at execution
+```
 
-**GET Request with Query Parameters:**
-- Method: GET
-- URL: `https://api.github.com/users/octocat`
-- Headers: `Accept: application/vnd.github.v3+json`
-
-**GET Request with Variable Parameter:**
-- Method: GET
-- URL: `https://api.example.com/users/{userId}`
-- Description: Prompts for userId value when executed
-
-**POST Request with JSON Body:**
-- Method: POST
-- URL: `https://api.example.com/users`
-- Headers: `Content-Type: application/json`
-- Body (JSON):
-  ```json
-  {
-    "name": "John Doe",
-    "email": "john@example.com"
-  }
-  ```
-
-**POST Request with Variable in Body:**
-- Method: POST
-- URL: `https://api.example.com/users`
-- Headers: `Content-Type: application/json`
-- Body (JSON):
-  ```json
-  {
-    "name": "{userName}",
-    "email": "{userEmail}"
-  }
-  ```
-- Description: Prompts for userName and userEmail values when executed
-
-**Multipart File Upload:**
-- Method: POST
-- URL: `https://api.example.com/upload`
-- Body Type: Multipart
-- Text Parameters: `description: My file`
-- File Parameters: `file: /path/to/image.png`
-- Description: Uploads file with automatic MIME type detection
+**Multipart file upload:**
+```
+URL: https://api.example.com/upload
+Body Type: Multipart
+Text: description: My file
+File: file: /path/to/image.png
+→ MIME type auto-detected
+```
 
 ## Data Storage
 
-- Config: `~/.command_bar/app.json`
-- History: `~/.command_bar/history.json`
-- Clipboard: `~/.command_bar/clipboard.json`
+All data stored in SQLite database:
+```
+~/.command_bar/command_bar.db
+```
 
 ## Requirements
 
 - macOS 14.0+
 - Swift 5.9+
+
+## License
+
+MIT
