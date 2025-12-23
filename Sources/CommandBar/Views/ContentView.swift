@@ -21,7 +21,6 @@ struct ContentView: View {
     @State private var restoringCommand: Command? = nil
     @State private var registeringClipboardItem: ClipboardItem? = nil
     @State private var apiCommandWithParameters: Command? = nil
-    @State private var showEnvironmentManager = false
 
     // 검색 상태
     @State private var historySearchText = ""
@@ -463,7 +462,9 @@ struct ContentView: View {
 
                         Spacer()
 
-                        Button(action: { showEnvironmentManager = true }) {
+                        Button(action: {
+                            EnvironmentManagerWindowController.show(store: store)
+                        }) {
                             Label(L.envManage, systemImage: "globe")
                                 .font(.caption)
                         }
@@ -647,9 +648,6 @@ struct ContentView: View {
             APIParameterInputView(command: cmd, store: store) { values in
                 executeAPIWithParameters(cmd, values: values)
             }
-        }
-        .sheet(isPresented: $showEnvironmentManager) {
-            EnvironmentManagerView(store: store)
         }
         .onAppear {
             settings.applyAlwaysOnTop()

@@ -28,7 +28,6 @@ struct AddCommandView: View {
     @State private var bodyData = ""
     @State private var bodyParams: [KeyValuePair] = []
     @State private var fileParams: [KeyValuePair] = []
-    @State private var showEnvironmentManager = false
 
     var isValid: Bool {
         if title.isEmpty { return false }
@@ -166,7 +165,9 @@ struct AddCommandView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button(action: { showEnvironmentManager = true }) {
+                    Button(action: {
+                        EnvironmentManagerWindowController.show(store: store)
+                    }) {
                         Label(L.envManage, systemImage: "globe")
                             .font(.caption)
                     }
@@ -539,9 +540,6 @@ struct AddCommandView: View {
         .frame(width: 450)
         .sheet(isPresented: $showParamHelp) {
             ParameterHelpView()
-        }
-        .sheet(isPresented: $showEnvironmentManager) {
-            EnvironmentManagerView(store: store)
         }
     }
 

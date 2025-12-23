@@ -99,7 +99,7 @@ struct EnvironmentManagerView: View {
             } else {
                 // 테이블 뷰
                 ScrollView([.horizontal, .vertical]) {
-                    VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 0) {
                         // 헤더 행
                         HStack(spacing: 0) {
                             Text(L.envVariable)
@@ -122,6 +122,7 @@ struct EnvironmentManagerView: View {
                             Divider()
                         }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             }
 

@@ -30,7 +30,6 @@ struct EditCommandView: View {
     @State private var bodyData: String
     @State private var bodyParams: [KeyValuePair]
     @State private var fileParams: [KeyValuePair]
-    @State private var showEnvironmentManager = false
 
     init(store: CommandStore, command: Command, onRun: ((Command) -> Void)? = nil) {
         self.store = store
@@ -204,7 +203,9 @@ struct EditCommandView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button(action: { showEnvironmentManager = true }) {
+                    Button(action: {
+                        EnvironmentManagerWindowController.show(store: store)
+                    }) {
                         Label(L.envManage, systemImage: "globe")
                             .font(.caption)
                     }
@@ -575,9 +576,6 @@ struct EditCommandView: View {
         .frame(width: 450)
         .sheet(isPresented: $showParamHelp) {
             ParameterHelpView()
-        }
-        .sheet(isPresented: $showEnvironmentManager) {
-            EnvironmentManagerView(store: store)
         }
     }
 
