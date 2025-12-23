@@ -854,6 +854,7 @@ struct SearchBarView: View {
                     onClear()
                 }) {
                     Image(systemName: "xmark.circle.fill")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
