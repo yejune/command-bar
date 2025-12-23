@@ -64,6 +64,7 @@ struct AutocompleteTextEditor: NSViewRepresentable {
     enum TriggerType {
         case dollar       // $VAR
         case idRef        // {id:xxx}
+        case uuidRef      // {uuid:xxx}
         case varRef       // {var:xxx}
         case none
     }
@@ -186,6 +187,14 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 }
             }
 
+            // {uuid: 트리거 체크
+            if let uuidRange = beforeCursor.range(of: "{uuid:", options: .backwards) {
+                let afterTrigger = String(beforeCursor[uuidRange.upperBound...])
+                if !afterTrigger.contains("}") && !afterTrigger.contains(where: { $0.isWhitespace }) {
+                    return .uuidRef
+                }
+            }
+
             // {var: 트리거 체크
             if let varRange = beforeCursor.range(of: "{var:", options: .backwards) {
                 let afterTrigger = String(beforeCursor[varRange.upperBound...])
@@ -248,6 +257,17 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 }.prefix(maxSuggestions)
                 return filtered.map { "\($0.id): \($0.title)" }
 
+            case .uuidRef:
+                guard let uuidRange = beforeCursor.range(of: "{uuid:", options: .backwards) else { return [] }
+                let afterTrigger = String(beforeCursor[uuidRange.upperBound...])
+                let allShortIds = Database.shared.getAllShortIds()
+                let filtered = allShortIds.filter { item in
+                    afterTrigger.isEmpty ||
+                    item.fullId.lowercased().hasPrefix(afterTrigger.lowercased()) ||
+                    item.shortId.lowercased().hasPrefix(afterTrigger.lowercased())
+                }.prefix(maxSuggestions)
+                return filtered.map { "\($0.fullId): \($0.shortId)" }
+
             case .varRef:
                 guard let varRange = beforeCursor.range(of: "{var:", options: .backwards) else { return [] }
                 let afterTrigger = String(beforeCursor[varRange.upperBound...])
@@ -292,6 +312,17 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 textView.string = newText
                 self.text = newText
                 let newCursorPosition = triggerStart + 5 + idPart.count
+                textView.setSelectedRange(NSRange(location: newCursorPosition, length: 0))
+
+            case .uuidRef:
+                guard let uuidRange = beforeCursor.range(of: "{uuid:", options: .backwards) else { return }
+                let triggerStart = text.distance(from: text.startIndex, to: uuidRange.lowerBound)
+                let beforeTrigger = String(text.prefix(triggerStart))
+                let uuidPart = suggestion.split(separator: ":").first.map(String.init) ?? suggestion
+                let newText = beforeTrigger + "{uuid:" + uuidPart + "}" + afterCursor
+                textView.string = newText
+                self.text = newText
+                let newCursorPosition = triggerStart + 7 + uuidPart.count
                 textView.setSelectedRange(NSRange(location: newCursorPosition, length: 0))
 
             case .varRef:

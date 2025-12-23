@@ -46,6 +46,7 @@ struct AutocompleteTextField: NSViewRepresentable {
     enum TriggerType {
         case dollar       // $VAR
         case idRef        // {id:xxx}
+        case uuidRef      // {uuid:xxx}
         case varRef       // {var:xxx}
         case none
     }
@@ -126,6 +127,14 @@ struct AutocompleteTextField: NSViewRepresentable {
                 }
             }
 
+            // {uuid: 트리거 체크
+            if let uuidRange = beforeCursor.range(of: "{uuid:", options: .backwards) {
+                let afterTrigger = String(beforeCursor[uuidRange.upperBound...])
+                if !afterTrigger.contains("}") && !afterTrigger.contains(where: { $0.isWhitespace }) {
+                    return .uuidRef
+                }
+            }
+
             // {var: 트리거 체크
             if let varRange = beforeCursor.range(of: "{var:", options: .backwards) {
                 let afterTrigger = String(beforeCursor[varRange.upperBound...])
@@ -189,6 +198,19 @@ struct AutocompleteTextField: NSViewRepresentable {
                 }.prefix(maxSuggestions)
                 return filtered.map { "\($0.id): \($0.title)" }
 
+            case .uuidRef:
+                // {uuid: 이후 입력된 문자열로 필터링 (UUID로 표시)
+                guard let uuidRange = beforeCursor.range(of: "{uuid:", options: .backwards) else { return [] }
+                let afterTrigger = String(beforeCursor[uuidRange.upperBound...])
+                // Database에서 전체 shortId 목록 가져오기
+                let allShortIds = Database.shared.getAllShortIds()
+                let filtered = allShortIds.filter { item in
+                    afterTrigger.isEmpty ||
+                    item.fullId.lowercased().hasPrefix(afterTrigger.lowercased()) ||
+                    item.shortId.lowercased().hasPrefix(afterTrigger.lowercased())
+                }.prefix(maxSuggestions)
+                return filtered.map { "\($0.fullId): \($0.shortId)" }
+
             case .varRef:
                 // {var: 이후 입력된 문자열로 필터링 (환경 변수)
                 guard let varRange = beforeCursor.range(of: "{var:", options: .backwards) else { return [] }
@@ -236,6 +258,22 @@ struct AutocompleteTextField: NSViewRepresentable {
                 self.text = text
 
                 let newCursorPosition = triggerStart + 5 + idPart.count  // {id: + id + }
+                editor.selectedRange = NSRange(location: newCursorPosition, length: 0)
+
+            case .uuidRef:
+                // {uuid: 위치 찾기
+                guard let uuidRange = beforeCursor.range(of: "{uuid:", options: .backwards) else { return }
+                let triggerStart = text.distance(from: text.startIndex, to: uuidRange.lowerBound)
+                let beforeTrigger = String(text.prefix(triggerStart))
+
+                // suggestion에서 UUID 부분만 추출 (: 전까지)
+                let uuidPart = suggestion.split(separator: ":").first.map(String.init) ?? suggestion
+
+                text = beforeTrigger + "{uuid:" + uuidPart + "}" + afterCursor
+                textField.stringValue = text
+                self.text = text
+
+                let newCursorPosition = triggerStart + 7 + uuidPart.count  // {uuid: + uuid + }
                 editor.selectedRange = NSRange(location: newCursorPosition, length: 0)
 
             case .varRef:
