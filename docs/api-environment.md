@@ -127,6 +127,63 @@ URL: [{{HOST_API}}/users/$              ]
 - 선택하면 `{{변수명}}` 형태로 자동 입력
 - 현재 활성 환경의 값을 미리보기로 표시
 
+## 추가 기능
+
+### 1. 환경별 색상 구분
+
+각 환경에 색상을 지정하여 시각적 구분:
+
+```
++----------------------------------------------------------------+
+| 환경 관리                              [+ 변수] [+ 환경]         |
++----------------------------------------------------------------+
+|          |               | 🟢 Dev      | 🟡 Staging | 🔴 Prod   |
++----------------------------------------------------------------+
+```
+
+- 환경 선택 드롭다운에서도 색상 표시
+- 활성 환경 표시 시 색상으로 강조
+- 기본 색상: 개발(초록), 스테이징(노랑), 운영(빨강)
+
+### 2. 환경 내보내기/가져오기
+
+환경 관리 창에서 내보내기/가져오기 버튼:
+
+```
++----------------------------------------------------------------+
+| 환경 관리                    [내보내기] [가져오기] [+ 환경]      |
++----------------------------------------------------------------+
+```
+
+**내보내기 형식 (JSON):**
+```json
+{
+  "environments": [
+    {
+      "name": "개발",
+      "color": "green",
+      "variables": {
+        "HOST_API": "http://localhost:3000",
+        "token": "dev-123"
+      }
+    },
+    {
+      "name": "운영",
+      "color": "red",
+      "variables": {
+        "HOST_API": "https://api.example.com",
+        "token": "prod-456"
+      }
+    }
+  ],
+  "variableGroups": ["var", "header"]
+}
+```
+
+**가져오기 옵션:**
+- 덮어쓰기: 기존 환경 삭제 후 가져오기
+- 병합: 기존 환경 유지, 새 환경/변수 추가
+
 ## 데이터 구조
 
 ### APIEnvironment 모델
@@ -134,6 +191,7 @@ URL: [{{HOST_API}}/users/$              ]
 struct APIEnvironment: Identifiable, Codable {
     var id = UUID()
     var name: String              // "개발", "운영", "스테이징"
+    var color: String             // "green", "yellow", "red" 등
     var variables: [String: String]  // key-value 쌍
     var group: String?            // "var", "header" 등 (선택적)
     var order: Int                // 정렬 순서
@@ -145,7 +203,15 @@ struct APIEnvironment: Identifiable, Codable {
 CREATE TABLE environments (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT 'blue',
     variables TEXT NOT NULL,  -- JSON 형태로 저장
+    sort_order INTEGER DEFAULT 0
+);
+
+-- 변수 그룹 테이블
+CREATE TABLE environment_groups (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
     sort_order INTEGER DEFAULT 0
 );
 
