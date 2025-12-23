@@ -189,7 +189,7 @@ struct ContentView: View {
                                                     .onEnded { _ in store.toggleClipboardFavorite(item) }
                                             )
                                         Text(item.preview)
-                                            .lineLimit(2)
+                                            .lineLimit(1)
                                     }
                                     Text(item.timestamp, format: .dateTime.month().day().hour().minute().second())
                                         .font(.caption)
