@@ -90,6 +90,11 @@ struct LocalizedStrings: Codable {
     var settingsAutoHide: String
     var settingsHideOpacity: String
     var settingsDoubleClickToRun: String
+    var settingsScrollMode: String
+    var settingsInfiniteScroll: String
+    var settingsPaging: String
+    var settingsPageSize: String
+    var buttonLoadMore: String
     var shortcutConflict: String
     var settingsExportFile: String
     var settingsImportFile: String

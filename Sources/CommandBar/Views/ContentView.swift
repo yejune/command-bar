@@ -127,6 +127,25 @@ struct ContentView: View {
                                 RoundedRectangle(cornerRadius: 6)
                                     .fill(Color.gray.opacity(0.1))
                             )
+                            .onAppear {
+                                // 무한 스크롤: 마지막 항목이 나타나면 더 로드
+                                if settings.useInfiniteScroll,
+                                   item.id == store.history.last?.id,
+                                   store.hasMoreHistory {
+                                    store.loadMoreHistory()
+                                }
+                            }
+                        }
+                        // 페이징 모드: 더 보기 버튼
+                        if !settings.useInfiniteScroll && store.hasMoreHistory {
+                            Button(action: { store.loadMoreHistory() }) {
+                                Text(L.buttonLoadMore)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(8)
@@ -230,6 +249,26 @@ struct ContentView: View {
                                 RoundedRectangle(cornerRadius: 6)
                                     .fill(Color.gray.opacity(0.1))
                             )
+                            .onAppear {
+                                // 무한 스크롤: 마지막 항목이 나타나면 더 로드
+                                if settings.useInfiniteScroll,
+                                   !showClipboardFavoritesOnly,
+                                   item.id == store.clipboardItems.last?.id,
+                                   store.hasMoreClipboard {
+                                    store.loadMoreClipboard()
+                                }
+                            }
+                        }
+                        // 페이징 모드: 더 보기 버튼
+                        if !settings.useInfiniteScroll && !showClipboardFavoritesOnly && store.hasMoreClipboard {
+                            Button(action: { store.loadMoreClipboard() }) {
+                                Text(L.buttonLoadMore)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(8)

@@ -59,6 +59,16 @@ class Settings: ObservableObject {
             db.setBoolSetting("doubleClickToRun", value: doubleClickToRun)
         }
     }
+    @Published var useInfiniteScroll: Bool {
+        didSet {
+            db.setBoolSetting("useInfiniteScroll", value: useInfiniteScroll)
+        }
+    }
+    @Published var pageSize: Int {
+        didSet {
+            db.setIntSetting("pageSize", value: pageSize)
+        }
+    }
 
     private var appearanceObserver: NSObjectProtocol?
     private var resizeObserver: NSObjectProtocol?
@@ -87,6 +97,8 @@ class Settings: ObservableObject {
         self.useHideOpacity = db.getBoolSetting("useHideOpacity", defaultValue: true)
         self.hideOpacity = db.getDoubleSetting("hideOpacity", defaultValue: 0.1)
         self.doubleClickToRun = db.getBoolSetting("doubleClickToRun", defaultValue: true)
+        self.useInfiniteScroll = db.getBoolSetting("useInfiniteScroll", defaultValue: true)
+        self.pageSize = db.getIntSetting("pageSize", defaultValue: 50)
 
         // 저장된 창 프레임 로드
         let x = db.getDoubleSetting("windowX", defaultValue: -1)

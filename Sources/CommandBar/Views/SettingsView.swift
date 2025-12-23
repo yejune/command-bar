@@ -107,6 +107,24 @@ struct SettingsView: View {
                             .frame(width: 150)
                             .textFieldStyle(.roundedBorder)
                     }
+                    SettingDivider()
+                    SettingRow(label: L.settingsScrollMode) {
+                        Picker("", selection: $settings.useInfiniteScroll) {
+                            Text(L.settingsInfiniteScroll).tag(true)
+                            Text(L.settingsPaging).tag(false)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 150)
+                    }
+                    SettingRow(label: L.settingsPageSize) {
+                        Picker("", selection: $settings.pageSize) {
+                            Text("30").tag(30)
+                            Text("50").tag(50)
+                            Text("100").tag(100)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 120)
+                    }
                 } else if selectedTab == 2 {
                     // 백업 (가져오기/내보내기)
                     SettingRow(label: L.settingsBackupNote) {
