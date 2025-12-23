@@ -57,6 +57,7 @@ class Settings: ObservableObject {
     private var hotKeyRef: EventHotKeyRef?
     @Published var isHidden = false
     private var savedWindowHeight: CGFloat = 0
+    private var hideTimestamp: Date = .distantPast
     @Published var hotKeyRegistered = true
 
     init() {
@@ -167,8 +168,8 @@ class Settings: ObservableObject {
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown]) { [weak self] event in
             self?.handleMouseEvent(event)
         }
-        // 로컬 모니터 (앱 내부 이벤트) - 접힌 상태에서 클릭 시 펼치기
-        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
+        // 로컬 모니터 (앱 내부 이벤트) - 접힌 상태에서 클릭 또는 호버 시 펼치기
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .mouseMoved, .mouseEntered]) { [weak self] event in
             if self?.isHidden == true {
                 self?.showWindow()
             }
@@ -236,30 +237,35 @@ class Settings: ObservableObject {
         }
 
         isHidden = true
+        hideTimestamp = Date()
     }
 
     func showWindow() {
         guard isHidden, savedWindowHeight > 0 else { return }
+        // 숨긴 직후 바로 펼쳐지는 것 방지 (0.3초)
+        guard Date().timeIntervalSince(hideTimestamp) > 0.3 else { return }
         guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
+
+        // 최소 높이 제한 먼저 복원
+        window.minSize = NSSize(width: window.minSize.width, height: 28)
 
         // 원래 높이로 복원
         var newFrame = window.frame
         newFrame.origin.y -= savedWindowHeight - window.frame.height
         newFrame.size.height = savedWindowHeight
 
-        // 최소 높이 제한 복원
-        window.minSize = NSSize(width: window.minSize.width, height: 300)
-
         // 원래 투명도로 복원
         let originalAlpha = useBackgroundOpacity ? backgroundOpacity : 1.0
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2
+            context.allowsImplicitAnimation = true
             window.animator().setFrame(newFrame, display: true)
             window.animator().alphaValue = originalAlpha
+        } completionHandler: { [weak self] in
+            window.minSize = NSSize(width: window.minSize.width, height: 300)
+            self?.isHidden = false
         }
-
-        isHidden = false
     }
 
     func toggleHide() {
