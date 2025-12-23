@@ -53,6 +53,7 @@ class Settings: ObservableObject {
 
     private var appearanceObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
+    private var localMouseMonitor: Any?
     private var hotKeyRef: EventHotKeyRef?
     @Published var isHidden = false
     private var savedWindowHeight: CGFloat = 0
@@ -162,8 +163,16 @@ class Settings: ObservableObject {
 
     private func startMouseMonitor() {
         stopMouseMonitor()
+        // 글로벌 모니터 (앱 외부 이벤트)
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown]) { [weak self] event in
             self?.handleMouseEvent(event)
+        }
+        // 로컬 모니터 (앱 내부 이벤트) - 접힌 상태에서 클릭 시 펼치기
+        localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
+            if self?.isHidden == true {
+                self?.showWindow()
+            }
+            return event
         }
     }
 
@@ -171,6 +180,10 @@ class Settings: ObservableObject {
         if let monitor = mouseMonitor {
             NSEvent.removeMonitor(monitor)
             mouseMonitor = nil
+        }
+        if let monitor = localMouseMonitor {
+            NSEvent.removeMonitor(monitor)
+            localMouseMonitor = nil
         }
     }
 
