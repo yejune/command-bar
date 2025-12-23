@@ -232,7 +232,7 @@ struct ContentView: View {
                                     Text(cmd.title)
                                     if cmd.executionType == .schedule {
                                         if let date = cmd.scheduleDate {
-                                            Text(date, format: .dateTime.month().day().weekday().hour().minute())
+                                            Text(formatScheduleDate(date, repeatType: cmd.repeatType))
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
                                         }
@@ -549,6 +549,22 @@ struct ContentView: View {
             height: visibleFrame.height
         )
         window.setFrame(newFrame, display: true, animate: false)
+    }
+
+    func formatScheduleDate(_ date: Date, repeatType: RepeatType) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        switch repeatType {
+        case .none:
+            formatter.dateFormat = "M월 d일 E HH:mm"
+        case .daily:
+            formatter.dateFormat = "HH:mm"
+        case .weekly:
+            formatter.dateFormat = "E HH:mm"
+        case .monthly:
+            formatter.dateFormat = "d일 HH:mm"
+        }
+        return formatter.string(from: date)
     }
 
     func handleRun(_ cmd: Command) {

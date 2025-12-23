@@ -149,16 +149,11 @@ struct CommandRowView: View {
                         .opacity(cmd.isRunning ? 1 : 0)
                 }
                 if cmd.executionType == .schedule {
-                    HStack(spacing: 4) {
-                        if let date = cmd.scheduleDate {
-                            Text(date, format: .dateTime.month().day().weekday().hour().minute())
-                        }
-                        if cmd.repeatType != .none {
-                            Text("(\(cmd.repeatType.rawValue))")
-                        }
+                    if let date = cmd.scheduleDate {
+                        Text(formatScheduleDate(date, repeatType: cmd.repeatType))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 } else if cmd.executionType == .api {
                     Text(cmd.url)
                         .font(.caption.monospaced())
@@ -231,6 +226,22 @@ struct CommandRowView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             shakeOffset = 0
         }
+    }
+
+    func formatScheduleDate(_ date: Date, repeatType: RepeatType) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        switch repeatType {
+        case .none:
+            formatter.dateFormat = "M월 d일 E HH:mm"
+        case .daily:
+            formatter.dateFormat = "HH:mm"
+        case .weekly:
+            formatter.dateFormat = "E HH:mm"
+        case .monthly:
+            formatter.dateFormat = "d일 HH:mm"
+        }
+        return formatter.string(from: date)
     }
 
     func formatRemaining(_ seconds: Int) -> String {

@@ -99,6 +99,8 @@ struct EditCommandView: View {
             Text(L.commandEditTitle)
                 .font(.headline)
 
+            Divider()
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(L.commandTitle)
                     .font(.caption)
@@ -486,6 +488,8 @@ struct EditCommandView: View {
                 }
                 // script는 명령어만
             }
+
+            Divider()
 
             HStack {
                 Button(L.buttonCancel) {
