@@ -66,41 +66,16 @@ struct ContentView: View {
                 .padding(.vertical, 4)
 
                 // 검색 바
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
-                    TextField(L.searchPlaceholder, text: $historySearchText)
-                        .textFieldStyle(.plain)
-                        .font(.caption)
-                        .onChange(of: historySearchText) { _, _ in
-                            performHistorySearch()
-                        }
-                    if historySearchDate != nil {
-                        Text(historySearchDate!, format: .dateTime.month().day())
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                SearchBarView(
+                    searchText: $historySearchText,
+                    searchDate: $historySearchDate,
+                    onSearch: { performHistorySearch() },
+                    onClear: {
+                        historySearchText = ""
+                        historySearchDate = nil
+                        store.loadHistory()
                     }
-                    DatePicker("", selection: Binding(
-                        get: { historySearchDate ?? Date() },
-                        set: { historySearchDate = $0; performHistorySearch() }
-                    ), displayedComponents: .date)
-                    .labelsHidden()
-                    .frame(width: 20)
-                    if !historySearchText.isEmpty || historySearchDate != nil {
-                        Button(action: {
-                            historySearchText = ""
-                            historySearchDate = nil
-                            store.loadHistory()
-                        }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
+                )
                 Divider()
                 ScrollView {
                     LazyVStack(spacing: 4) {
@@ -183,41 +158,16 @@ struct ContentView: View {
                 .padding(.vertical, 4)
 
                 // 검색 바
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
-                    TextField(L.searchPlaceholder, text: $clipboardSearchText)
-                        .textFieldStyle(.plain)
-                        .font(.caption)
-                        .onChange(of: clipboardSearchText) { _, _ in
-                            performClipboardSearch()
-                        }
-                    if clipboardSearchDate != nil {
-                        Text(clipboardSearchDate!, format: .dateTime.month().day())
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                SearchBarView(
+                    searchText: $clipboardSearchText,
+                    searchDate: $clipboardSearchDate,
+                    onSearch: { performClipboardSearch() },
+                    onClear: {
+                        clipboardSearchText = ""
+                        clipboardSearchDate = nil
+                        store.loadClipboard()
                     }
-                    DatePicker("", selection: Binding(
-                        get: { clipboardSearchDate ?? Date() },
-                        set: { clipboardSearchDate = $0; performClipboardSearch() }
-                    ), displayedComponents: .date)
-                    .labelsHidden()
-                    .frame(width: 20)
-                    if !clipboardSearchText.isEmpty || clipboardSearchDate != nil {
-                        Button(action: {
-                            clipboardSearchText = ""
-                            clipboardSearchDate = nil
-                            store.loadClipboard()
-                        }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
+                )
                 Divider()
                 ScrollView {
                     LazyVStack(spacing: 4) {
@@ -810,5 +760,84 @@ struct ContentView: View {
             let endDate = clipboardSearchDate.map { Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: $0))! }
             store.searchClipboard(query: clipboardSearchText, startDate: startDate, endDate: endDate)
         }
+    }
+}
+
+// MARK: - Search Bar
+
+struct SearchBarView: View {
+    @Binding var searchText: String
+    @Binding var searchDate: Date?
+    var onSearch: () -> Void
+    var onClear: () -> Void
+
+    @State private var showDatePicker = false
+    @State private var tempDate = Date()
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+
+            TextField(L.searchPlaceholder, text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.caption)
+                .onChange(of: searchText) { _, _ in
+                    onSearch()
+                }
+
+            if let date = searchDate {
+                Text(date, format: .dateTime.month().day())
+                    .font(.caption)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.2))
+                    .cornerRadius(4)
+            }
+
+            Button(action: {
+                tempDate = searchDate ?? Date()
+                showDatePicker.toggle()
+            }) {
+                Image(systemName: "calendar")
+                    .font(.caption)
+                    .foregroundStyle(searchDate != nil ? .primary : .secondary)
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showDatePicker, arrowEdge: .bottom) {
+                VStack(spacing: 8) {
+                    DatePicker("", selection: $tempDate, displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                        .labelsHidden()
+                        .frame(width: 220)
+
+                    HStack {
+                        Button(L.buttonCancel) {
+                            showDatePicker = false
+                        }
+                        Spacer()
+                        Button(L.buttonConfirm) {
+                            searchDate = tempDate
+                            showDatePicker = false
+                            onSearch()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .padding(.horizontal, 8)
+                }
+                .padding(8)
+            }
+
+            if !searchText.isEmpty || searchDate != nil {
+                Button(action: onClear) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
     }
 }

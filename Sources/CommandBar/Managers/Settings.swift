@@ -246,14 +246,20 @@ class Settings: ObservableObject {
 
             // 다른 창이 열려있으면 무시
             guard let mainWindow = NSApp.windows.first(where: { $0.canBecomeMain }) else { return event }
-            let otherWindows = NSApp.windows.filter {
+
+            // 시트가 열려있으면 무시
+            if mainWindow.attachedSheet != nil { return event }
+
+            // 다른 일반 창이 열려있으면 무시
+            let hasOtherWindow = NSApp.windows.contains {
                 $0.isVisible &&
                 $0 != mainWindow &&
                 $0.level == .normal &&
-                $0.className != "NSStatusBarWindow" &&
-                $0.className != "_NSPopoverWindow"
+                !$0.className.contains("StatusBar") &&
+                !$0.className.contains("Popover") &&
+                $0.frame.width > 50  // 작은 유틸리티 창 제외
             }
-            if otherWindows.isEmpty {
+            if !hasOtherWindow {
                 self.showWindow()
             }
             return event
@@ -278,14 +284,15 @@ class Settings: ObservableObject {
         if window.attachedSheet != nil { return }
 
         // 다른 창이 열려있으면 무시
-        let otherWindows = NSApp.windows.filter {
+        let hasOtherWindow = NSApp.windows.contains {
             $0.isVisible &&
             $0 != window &&
             $0.level == .normal &&
-            $0.className != "NSStatusBarWindow" &&
-            $0.className != "_NSPopoverWindow"
+            !$0.className.contains("StatusBar") &&
+            !$0.className.contains("Popover") &&
+            $0.frame.width > 50
         }
-        if !otherWindows.isEmpty { return }
+        if hasOtherWindow { return }
 
         let mouseLocation = NSEvent.mouseLocation
         let windowFrame = window.frame
@@ -311,15 +318,16 @@ class Settings: ObservableObject {
         // 모달이나 시트가 열려있으면 숨기지 않음
         if window.attachedSheet != nil { return }
 
-        // 다른 창이 열려있으면 숨기지 않음 (메인 창, 상태바 메뉴 등 제외)
-        let otherWindows = NSApp.windows.filter {
+        // 다른 창이 열려있으면 숨기지 않음
+        let hasOtherWindow = NSApp.windows.contains {
             $0.isVisible &&
             $0 != window &&
             $0.level == .normal &&
-            $0.className != "NSStatusBarWindow" &&
-            $0.className != "_NSPopoverWindow"
+            !$0.className.contains("StatusBar") &&
+            !$0.className.contains("Popover") &&
+            $0.frame.width > 50
         }
-        if !otherWindows.isEmpty { return }
+        if hasOtherWindow { return }
 
         let titlebarHeight: CGFloat = 28
 
