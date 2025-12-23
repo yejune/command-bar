@@ -12,7 +12,7 @@ struct SettingsView: View {
     @State private var pendingImportData: Data?
 
     private var tabTitles: [String] {
-        [L.settingsGeneral, L.settingsHistoryTab, L.settingsClipboardTab, L.settingsBackup, L.settingsLanguage]
+        [L.settingsGeneral, L.settingsClipboardTab, L.settingsBackup, L.settingsLanguage]
     }
 
     var body: some View {
@@ -64,25 +64,7 @@ struct SettingsView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
                 } else if selectedTab == 1 {
-                    // 히스토리 설정
-                    HStack {
-                        Text(L.settingsMaxCount)
-                        Spacer()
-                        TextField("", value: $settings.maxHistoryCount, format: .number)
-                            .frame(width: 80)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
-                } else if selectedTab == 2 {
                     // 클립보드 설정
-                    HStack {
-                        Text(L.settingsMaxCount)
-                        Spacer()
-                        TextField("", value: $settings.maxClipboardCount, format: .number)
-                            .frame(width: 80)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
                     HStack {
                         Text(L.settingsNotesFolderName)
                         Spacer()
@@ -91,7 +73,7 @@ struct SettingsView: View {
                             .textFieldStyle(.roundedBorder)
                     }
                     .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
-                } else if selectedTab == 3 {
+                } else if selectedTab == 2 {
                     // 백업 (가져오기/내보내기)
                     Text(L.settingsBackupNote)
                         .font(.caption)

@@ -21,9 +21,12 @@ class CommandStore: ObservableObject {
     private var historyUrl: URL { configDir.appendingPathComponent("history.json") }
     private var clipboardUrl: URL { configDir.appendingPathComponent("clipboard.json") }
 
+    private let db = Database.shared
+
     init() {
         ensureConfigDir()
         migrateOldFiles()
+        migrateJsonToDb()
         load()
         loadHistory()
         loadClipboard()
@@ -86,54 +89,81 @@ class CommandStore: ObservableObject {
         }
     }
 
+    private func migrateJsonToDb() {
+        guard db.needsMigration() else { return }
+
+        // Migrate groups
+        if let groupsData = try? Data(contentsOf: groupsUrl),
+           let decodedGroups = try? JSONDecoder().decode([Group].self, from: groupsData) {
+            db.saveGroups(decodedGroups)
+        }
+
+        // Migrate commands
+        if let data = try? Data(contentsOf: url),
+           let decoded = try? JSONDecoder().decode([Command].self, from: data) {
+            db.saveCommands(decoded)
+        }
+
+        // Migrate history
+        if let historyData = try? Data(contentsOf: historyUrl),
+           let decodedHistory = try? JSONDecoder().decode([HistoryItem].self, from: historyData) {
+            for item in decodedHistory {
+                db.addHistory(item)
+            }
+        }
+
+        // Migrate clipboard
+        if let clipboardData = try? Data(contentsOf: clipboardUrl),
+           let decodedClipboard = try? JSONDecoder().decode([ClipboardItem].self, from: clipboardData) {
+            for item in decodedClipboard {
+                db.addClipboard(item)
+            }
+        }
+
+        // Rename old JSON files to .bak
+        try? FileManager.default.moveItem(at: url, to: url.appendingPathExtension("bak"))
+        try? FileManager.default.moveItem(at: groupsUrl, to: groupsUrl.appendingPathExtension("bak"))
+        try? FileManager.default.moveItem(at: historyUrl, to: historyUrl.appendingPathExtension("bak"))
+        try? FileManager.default.moveItem(at: clipboardUrl, to: clipboardUrl.appendingPathExtension("bak"))
+    }
+
     func addHistory(_ item: HistoryItem) {
         // 지금! 알림은 같은 명령 ID면 병합
         if item.type == .scheduleAlert, let cmdId = item.commandId {
-            if let index = history.firstIndex(where: { $0.type == .scheduleAlert && $0.commandId == cmdId }) {
-                var existing = history.remove(at: index)
+            if var existing = db.findHistoryByCommandId(cmdId, type: .scheduleAlert) {
                 existing.count += 1
                 existing.endTimestamp = item.timestamp
-                history.insert(existing, at: 0)
-                saveHistory()
+                existing.timestamp = item.timestamp
+                db.updateHistory(existing)
+                loadHistory()
                 return
             }
         }
 
-        history.insert(item, at: 0)
-        let maxCount = UserDefaults.standard.integer(forKey: "maxHistoryCount")
-        let limit = maxCount > 0 ? maxCount : 100
-        if history.count > limit {
-            history = Array(history.prefix(limit))
-        }
-        saveHistory()
+        db.addHistory(item)
+        loadHistory()
     }
 
     func loadHistory() {
-        guard let data = try? Data(contentsOf: historyUrl),
-              let decoded = try? JSONDecoder().decode([HistoryItem].self, from: data) else { return }
-        history = decoded
+        history = db.loadHistory(limit: 100, offset: 0)
     }
 
-    func saveHistory() {
-        guard let data = try? JSONEncoder().encode(history) else { return }
-        try? data.write(to: historyUrl)
+    func searchHistory(query: String) -> [HistoryItem] {
+        return db.searchHistory(query: query)
     }
 
     func clearHistory() {
+        db.clearHistory()
         history.removeAll()
-        saveHistory()
     }
 
     // 클립보드 관련
     func loadClipboard() {
-        guard let data = try? Data(contentsOf: clipboardUrl),
-              let decoded = try? JSONDecoder().decode([ClipboardItem].self, from: data) else { return }
-        clipboardItems = decoded
+        clipboardItems = db.loadClipboard(limit: 100, offset: 0)
     }
 
-    func saveClipboard() {
-        guard let data = try? JSONEncoder().encode(clipboardItems) else { return }
-        try? data.write(to: clipboardUrl)
+    func searchClipboard(query: String) -> [ClipboardItem] {
+        return db.searchClipboard(query: query)
     }
 
     func startClipboardMonitor() {
@@ -152,29 +182,22 @@ class CommandStore: ObservableObject {
         guard let content = pasteboard.string(forType: .string),
               !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
-        // 중복 체크 (마지막 아이템과 같으면 무시)
-        if let last = clipboardItems.first, last.content == content { return }
+        // 중복 체크
+        if db.clipboardExists(content) { return }
 
-        clipboardItems.insert(ClipboardItem(content: content), at: 0)
-
-        // 최대 개수 제한
-        let maxCount = UserDefaults.standard.integer(forKey: "maxClipboardCount")
-        let limit = maxCount > 0 ? maxCount : 10000
-        if clipboardItems.count > limit {
-            clipboardItems = Array(clipboardItems.prefix(limit))
-        }
-
-        saveClipboard()
+        let item = ClipboardItem(content: content)
+        db.addClipboard(item)
+        loadClipboard()
     }
 
     func removeClipboardItem(_ item: ClipboardItem) {
+        db.deleteClipboard(item.id)
         clipboardItems.removeAll { $0.id == item.id }
-        saveClipboard()
     }
 
     func clearClipboard() {
+        db.clearClipboard()
         clipboardItems.removeAll()
-        saveClipboard()
     }
 
     func registerClipboardAsCommand(_ item: ClipboardItem, asLast: Bool = true, groupId: UUID = CommandStore.defaultGroupId, terminalApp: TerminalApp = .iterm2) {
@@ -465,37 +488,31 @@ class CommandStore: ObservableObject {
 
     func load() {
         // Load groups first
-        if let groupsData = try? Data(contentsOf: groupsUrl),
-           let decodedGroups = try? JSONDecoder().decode([Group].self, from: groupsData) {
-            groups = decodedGroups
-        }
+        groups = db.loadGroups()
         ensureDefaultGroup()
 
         // Load commands
-        guard let data = try? Data(contentsOf: url),
-              let decoded = try? JSONDecoder().decode([Command].self, from: data) else {
-            return
-        }
+        commands = db.loadCommands()
 
         // Migration: assign default group ID to commands without groupId or with invalid groupId
         let validGroupIds = Set(groups.map { $0.id })
-        commands = decoded.map { cmd in
+        var needsSave = false
+        commands = commands.map { cmd in
             var updatedCmd = cmd
             if !validGroupIds.contains(updatedCmd.groupId) {
                 updatedCmd.groupId = Self.defaultGroupId
+                needsSave = true
             }
             return updatedCmd
+        }
+        if needsSave {
+            save()
         }
     }
 
     func save() {
-        // Save commands
-        guard let data = try? JSONEncoder().encode(commands) else { return }
-        try? data.write(to: url)
-
-        // Save groups
-        guard let groupsData = try? JSONEncoder().encode(groups) else { return }
-        try? groupsData.write(to: groupsUrl)
+        db.saveCommands(commands)
+        db.saveGroups(groups)
     }
 
     // 스마트 따옴표를 일반 따옴표로 변환

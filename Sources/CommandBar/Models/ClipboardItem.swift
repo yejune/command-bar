@@ -11,6 +11,12 @@ struct ClipboardItem: Identifiable, Codable {
         self.timestamp = Date()
     }
 
+    init(id: UUID, timestamp: Date, content: String) {
+        self.id = id
+        self.timestamp = timestamp
+        self.content = content
+    }
+
     var preview: String {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.count > 100 {
