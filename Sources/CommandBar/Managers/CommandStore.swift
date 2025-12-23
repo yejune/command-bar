@@ -163,7 +163,20 @@ class CommandStore: ObservableObject {
             }
         }
 
-        db.addHistory(item)
+        // 같은 title + command + type이 있으면 카운트 증가 및 최상단 이동
+        if db.historyExistsAndUpdate(title: item.title, command: item.command, type: item.type) {
+            loadHistory()
+            return
+        }
+
+        // 새로운 히스토리 추가
+        var newItem = item
+        newItem.firstExecutedAt = item.firstExecutedAt ?? Date()
+        db.addHistory(newItem)
+
+        // 첫 실행 이력도 추가
+        db.addHistoryExecution(historyId: newItem.id.uuidString, executedAt: Date())
+
         loadHistory()
     }
 
@@ -247,9 +260,14 @@ class CommandStore: ObservableObject {
         guard let content = pasteboard.string(forType: .string),
               !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
-        // 중복 체크
-        if db.clipboardExists(content) { return }
+        // 중복 체크 및 업데이트 (trim 기준)
+        if db.clipboardExistsAndUpdate(content) {
+            // 중복이면 카운트 증가 + 최상단 이동 완료
+            loadClipboard()
+            return
+        }
 
+        // 신규 항목 추가
         let item = ClipboardItem(content: content)
         db.addClipboard(item)
         loadClipboard()

@@ -121,6 +121,43 @@ class Database {
         // 마이그레이션: is_favorite 컬럼이 없으면 추가
         let addFavoriteColumn = "ALTER TABLE clipboard ADD COLUMN is_favorite INTEGER DEFAULT 0"
         sqlite3_exec(db, addFavoriteColumn, nil, nil, nil)
+
+        // 마이그레이션: 클립보드 카운트 기능 추가
+        let addCopyCountColumn = "ALTER TABLE clipboard ADD COLUMN copy_count INTEGER DEFAULT 1"
+        sqlite3_exec(db, addCopyCountColumn, nil, nil, nil)
+
+        let addFirstCopiedAtColumn = "ALTER TABLE clipboard ADD COLUMN first_copied_at TEXT"
+        sqlite3_exec(db, addFirstCopiedAtColumn, nil, nil, nil)
+
+        // 클립보드 복사 이력 테이블 생성
+        let createClipboardCopiesTable = """
+        CREATE TABLE IF NOT EXISTS clipboard_copies (
+            id TEXT PRIMARY KEY,
+            clipboard_id TEXT NOT NULL,
+            copied_at TEXT NOT NULL
+        )
+        """
+        executeStatements(createClipboardCopiesTable)
+
+        let createClipboardCopiesIndex = "CREATE INDEX IF NOT EXISTS idx_clipboard_copies_clipboard_id ON clipboard_copies(clipboard_id)"
+        sqlite3_exec(db, createClipboardCopiesIndex, nil, nil, nil)
+
+        // 마이그레이션: 히스토리 카운트 기능 추가
+        let addFirstExecutedAtColumn = "ALTER TABLE history ADD COLUMN first_executed_at TEXT"
+        sqlite3_exec(db, addFirstExecutedAtColumn, nil, nil, nil)
+
+        // 히스토리 실행 이력 테이블 생성
+        let createHistoryExecutionsTable = """
+        CREATE TABLE IF NOT EXISTS history_executions (
+            id TEXT PRIMARY KEY,
+            history_id TEXT NOT NULL,
+            executed_at TEXT NOT NULL
+        )
+        """
+        executeStatements(createHistoryExecutionsTable)
+
+        let createHistoryExecutionsIndex = "CREATE INDEX IF NOT EXISTS idx_history_executions_history_id ON history_executions(history_id)"
+        sqlite3_exec(db, createHistoryExecutionsIndex, nil, nil, nil)
     }
 
     private func executeStatements(_ sql: String) {
@@ -348,8 +385,8 @@ class Database {
 
     func addHistory(_ item: HistoryItem) {
         let sql = """
-        INSERT INTO history (id, timestamp, title, command, type, output, count, end_timestamp, command_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO history (id, timestamp, title, command, type, output, count, end_timestamp, command_id, first_executed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         var stmt: OpaquePointer?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
@@ -373,6 +410,11 @@ class Database {
                 sqlite3_bind_text(stmt, 9, cmdId.uuidString, -1, SQLITE_TRANSIENT)
             } else {
                 sqlite3_bind_null(stmt, 9)
+            }
+            if let firstExec = item.firstExecutedAt {
+                sqlite3_bind_text(stmt, 10, ISO8601DateFormatter().string(from: firstExec), -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 10)
             }
             sqlite3_step(stmt)
         }
@@ -523,11 +565,13 @@ class Database {
         let count = Int(sqlite3_column_int(stmt, 6))
         let endTsStr = sqlite3_column_text(stmt, 7).map { String(cString: $0) }
         let cmdIdStr = sqlite3_column_text(stmt, 8).map { String(cString: $0) }
+        let firstExecStr = sqlite3_column_text(stmt, 9).map { String(cString: $0) }
 
         let endTimestamp = endTsStr.flatMap { ISO8601DateFormatter().date(from: $0) }
         let commandId = cmdIdStr.flatMap { UUID(uuidString: $0) }
+        let firstExecutedAt = firstExecStr.flatMap { ISO8601DateFormatter().date(from: $0) }
 
-        return HistoryItem(
+        var item = HistoryItem(
             id: id,
             timestamp: timestamp,
             title: title,
@@ -538,10 +582,71 @@ class Database {
             endTimestamp: endTimestamp,
             commandId: commandId
         )
+        item.firstExecutedAt = firstExecutedAt
+        return item
+    }
+
+    /// 히스토리 중복 확인 및 업데이트 (title + command + type 기준)
+    /// 중복이 있으면 count 증가, timestamp 갱신, 실행이력 추가 후 true 반환
+    /// 중복이 없으면 false 반환
+    func historyExistsAndUpdate(title: String, command: String, type: HistoryType) -> Bool {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let selectSql = "SELECT id, count FROM history WHERE trim(title) = ? AND trim(command) = ? AND type = ? LIMIT 1"
+        var stmt: OpaquePointer?
+        var historyId: String?
+        var currentCount = 0
+
+        if sqlite3_prepare_v2(db, selectSql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, trimmedTitle, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, trimmedCommand, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 3, type.rawValue, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let idStr = sqlite3_column_text(stmt, 0) {
+                    historyId = String(cString: idStr)
+                }
+                currentCount = Int(sqlite3_column_int(stmt, 1))
+            }
+        }
+        sqlite3_finalize(stmt)
+
+        guard let id = historyId else {
+            return false
+        }
+
+        // 카운트 증가 및 타임스탬프 갱신 (최상단 이동)
+        let updateSql = "UPDATE history SET count = ?, timestamp = ? WHERE id = ?"
+        var updateStmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, updateSql, -1, &updateStmt, nil) == SQLITE_OK {
+            sqlite3_bind_int(updateStmt, 1, Int32(currentCount + 1))
+            sqlite3_bind_text(updateStmt, 2, ISO8601DateFormatter().string(from: Date()), -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(updateStmt, 3, id, -1, SQLITE_TRANSIENT)
+            sqlite3_step(updateStmt)
+        }
+        sqlite3_finalize(updateStmt)
+
+        // 실행 이력 추가
+        addHistoryExecution(historyId: id, executedAt: Date())
+
+        return true
+    }
+
+    func addHistoryExecution(historyId: String, executedAt: Date) {
+        let sql = "INSERT INTO history_executions (id, history_id, executed_at) VALUES (?, ?, ?)"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, UUID().uuidString, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, historyId, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 3, ISO8601DateFormatter().string(from: executedAt), -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
     }
 
     func clearHistory() {
         executeStatements("DELETE FROM history")
+        executeStatements("DELETE FROM history_executions")
     }
 
     func getHistoryCount() -> Int {
@@ -560,13 +665,19 @@ class Database {
     // MARK: - Clipboard
 
     func addClipboard(_ item: ClipboardItem) {
-        let sql = "INSERT INTO clipboard (id, timestamp, content, is_favorite) VALUES (?, ?, ?, ?)"
+        let sql = "INSERT INTO clipboard (id, timestamp, content, is_favorite, copy_count, first_copied_at) VALUES (?, ?, ?, ?, ?, ?)"
         var stmt: OpaquePointer?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
             sqlite3_bind_text(stmt, 1, item.id.uuidString, -1, SQLITE_TRANSIENT)
             sqlite3_bind_text(stmt, 2, ISO8601DateFormatter().string(from: item.timestamp), -1, SQLITE_TRANSIENT)
             sqlite3_bind_text(stmt, 3, item.content, -1, SQLITE_TRANSIENT)
             sqlite3_bind_int(stmt, 4, item.isFavorite ? 1 : 0)
+            sqlite3_bind_int(stmt, 5, Int32(item.copyCount))
+            if let firstCopiedAt = item.firstCopiedAt {
+                sqlite3_bind_text(stmt, 6, ISO8601DateFormatter().string(from: firstCopiedAt), -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 6)
+            }
             sqlite3_step(stmt)
         }
         sqlite3_finalize(stmt)
@@ -632,15 +743,67 @@ class Database {
     }
 
     func clipboardExists(_ content: String) -> Bool {
-        let sql = "SELECT 1 FROM clipboard WHERE content = ? LIMIT 1"
+        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sql = "SELECT 1 FROM clipboard WHERE trim(content) = ? LIMIT 1"
         var stmt: OpaquePointer?
         var exists = false
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            sqlite3_bind_text(stmt, 1, content, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 1, trimmedContent, -1, SQLITE_TRANSIENT)
             exists = sqlite3_step(stmt) == SQLITE_ROW
         }
         sqlite3_finalize(stmt)
         return exists
+    }
+
+    func clipboardExistsAndUpdate(_ content: String) -> Bool {
+        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let selectSql = "SELECT id, copy_count FROM clipboard WHERE trim(content) = ? LIMIT 1"
+        var stmt: OpaquePointer?
+        var clipboardId: String?
+        var currentCount = 0
+
+        if sqlite3_prepare_v2(db, selectSql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, trimmedContent, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let idStr = sqlite3_column_text(stmt, 0) {
+                    clipboardId = String(cString: idStr)
+                }
+                currentCount = Int(sqlite3_column_int(stmt, 1))
+            }
+        }
+        sqlite3_finalize(stmt)
+
+        guard let id = clipboardId else {
+            return false
+        }
+
+        // 카운트 증가 및 타임스탬프 갱신 (최상단 이동)
+        let updateSql = "UPDATE clipboard SET copy_count = ?, timestamp = ? WHERE id = ?"
+        var updateStmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, updateSql, -1, &updateStmt, nil) == SQLITE_OK {
+            sqlite3_bind_int(updateStmt, 1, Int32(currentCount + 1))
+            sqlite3_bind_text(updateStmt, 2, ISO8601DateFormatter().string(from: Date()), -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(updateStmt, 3, id, -1, SQLITE_TRANSIENT)
+            sqlite3_step(updateStmt)
+        }
+        sqlite3_finalize(updateStmt)
+
+        // 복사 이력 추가
+        addClipboardCopy(clipboardId: id, copiedAt: Date())
+
+        return true
+    }
+
+    func addClipboardCopy(clipboardId: String, copiedAt: Date) {
+        let sql = "INSERT INTO clipboard_copies (id, clipboard_id, copied_at) VALUES (?, ?, ?)"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, UUID().uuidString, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, clipboardId, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 3, ISO8601DateFormatter().string(from: copiedAt), -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
     }
 
     func deleteClipboard(_ id: UUID) {
@@ -663,11 +826,16 @@ class Database {
 
         let content = String(cString: contentPtr)
         let isFavorite = sqlite3_column_int(stmt, 3) != 0
-        return ClipboardItem(id: id, timestamp: timestamp, content: content, isFavorite: isFavorite)
+        let copyCount = Int(sqlite3_column_int(stmt, 4))
+        let firstCopiedAtStr = sqlite3_column_text(stmt, 5).map { String(cString: $0) }
+        let firstCopiedAt = firstCopiedAtStr.flatMap { ISO8601DateFormatter().date(from: $0) }
+
+        return ClipboardItem(id: id, timestamp: timestamp, content: content, isFavorite: isFavorite, copyCount: copyCount, firstCopiedAt: firstCopiedAt)
     }
 
     func clearClipboard() {
         executeStatements("DELETE FROM clipboard")
+        executeStatements("DELETE FROM clipboard_copies")
     }
 
     func getClipboardCount() -> Int {

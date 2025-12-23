@@ -205,6 +205,11 @@ struct ContentView: View {
                                             )
                                         Text(item.preview)
                                             .lineLimit(1)
+                                        if item.copyCount > 1 {
+                                            Text("(\(item.copyCount)회)")
+                                                .font(.caption)
+                                                .foregroundStyle(.orange)
+                                        }
                                     }
                                     Text(item.timestamp, format: .dateTime.month().day().hour().minute().second())
                                         .font(.caption)
