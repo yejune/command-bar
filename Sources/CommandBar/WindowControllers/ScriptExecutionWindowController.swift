@@ -1,16 +1,18 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Script Execution Window Controller (리사이즈 가능한 모달)
-class ScriptExecutionWindowController: NSWindowController, NSWindowDelegate {
-    private static var shared: ScriptExecutionWindowController?
-    private static var modalWindow: NSWindow?
+// MARK: - Script Execution Panel Controller (NSPanel + worksWhenModal 방식)
+class ScriptExecutionWindowController {
+    private static var panel: NSPanel?
+    private static var parentWindow: NSWindow?
+    private static var isShowing = false
 
     static func show(command: Command, store: CommandStore) {
-        if shared != nil {
-            modalWindow?.makeKeyAndOrderFront(nil)
-            return
-        }
+        guard !isShowing else { return }
+        guard let parent = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+
+        isShowing = true
+        parentWindow = parent
 
         // 파라미터 개수에 따라 초기 높이 계산
         let paramCount = command.parameterInfos.count
@@ -26,50 +28,67 @@ class ScriptExecutionWindowController: NSWindowController, NSWindowDelegate {
         )
 
         let hostingController = NSHostingController(rootView: contentView)
-        let window = NSWindow(contentViewController: hostingController)
+        let newPanel = NSPanel(contentViewController: hostingController)
 
-        window.title = command.title
-        window.styleMask = [.titled, .closable, .resizable]
-        window.setContentSize(NSSize(width: 450, height: initialHeight))
-        window.minSize = NSSize(width: 400, height: 150)
-        window.center()
-        window.level = .modalPanel
-        window.hidesOnDeactivate = false  // 포커스 잃어도 숨기지 않음
-        window.isReleasedWhenClosed = false
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.standardWindowButton(.zoomButton)?.isHidden = true
+        newPanel.title = command.title
+        newPanel.styleMask = [.titled, .closable, .resizable]
+        newPanel.setContentSize(NSSize(width: 450, height: initialHeight))
+        newPanel.minSize = NSSize(width: 400, height: 150)
+        newPanel.isReleasedWhenClosed = false
 
-        let controller = ScriptExecutionWindowController(window: window)
-        window.delegate = controller
-        shared = controller
-        modalWindow = window
+        // NSPanel 설정
+        newPanel.worksWhenModal = true
+        newPanel.level = .modalPanel
+        newPanel.hidesOnDeactivate = false
+
+        panel = newPanel
 
         // 자동 숨기기 방지
         Settings.shared.preventAutoHide = true
 
-        // 창 표시 후 모달 실행
-        window.makeKeyAndOrderFront(nil)
-        NSApp.runModal(for: window)
+        // 부모 창 클릭 차단
+        parent.ignoresMouseEvents = true
+
+        // 패널 닫힘 감지
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: newPanel,
+            queue: .main
+        ) { _ in
+            close()
+        }
+
+        // 패널 표시
+        newPanel.center()
+        newPanel.makeKeyAndOrderFront(nil)
     }
 
     static func expandWindow() {
-        guard let window = modalWindow else { return }
-        let currentFrame = window.frame
+        guard let window = panel else { return }
+        var frame = window.frame
         let newHeight: CGFloat = 400
-        let newY = currentFrame.origin.y - (newHeight - currentFrame.height)
-        let newFrame = NSRect(x: currentFrame.origin.x, y: newY, width: currentFrame.width, height: newHeight)
-        window.animator().setFrame(newFrame, display: true)
+        frame.size.height = newHeight
+        window.setFrame(frame, display: true, animate: true)
     }
 
     static func close() {
-        NSApp.stopModal()
-        modalWindow?.close()
-    }
+        guard isShowing else { return }
+        guard let currentPanel = panel else { return }
+        isShowing = false  // 먼저 플래그 해제하여 재진입 방지
 
-    func windowWillClose(_ notification: Notification) {
-        NSApp.stopModal()
+        // 알림 제거
+        NotificationCenter.default.removeObserver(self, name: NSWindow.willCloseNotification, object: currentPanel)
+
+        // 부모 창 복원
+        if let parent = parentWindow {
+            parent.ignoresMouseEvents = false
+        }
+
+        // 자동 숨기기 방지 해제
         Settings.shared.preventAutoHide = false
-        ScriptExecutionWindowController.shared = nil
-        ScriptExecutionWindowController.modalWindow = nil
+
+        currentPanel.close()
+        panel = nil
+        parentWindow = nil
     }
 }

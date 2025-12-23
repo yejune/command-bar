@@ -4,7 +4,7 @@ import AppKit
 /// API 환경 관리 창 (Paw 방식 테이블 뷰)
 struct EnvironmentManagerView: View {
     @ObservedObject var store: CommandStore
-    @Environment(\.dismiss) private var dismiss
+    var onClose: () -> Void
 
     @State private var editingEnvId: UUID?
     @State private var editingVarKey: String?
@@ -177,7 +177,7 @@ struct EnvironmentManagerView: View {
                 Spacer()
 
                 Button(L.buttonClose) {
-                    EnvironmentManagerWindowController.close()
+                    onClose()
                 }
                 .keyboardShortcut(.escape)
             }
@@ -437,55 +437,80 @@ struct EnvironmentManagerView: View {
     }
 }
 
-// MARK: - 환경 관리 창 컨트롤러 (리사이즈 가능한 모달)
+// MARK: - 환경 관리 패널 컨트롤러 (NSPanel + worksWhenModal 방식)
 
-class EnvironmentManagerWindowController: NSWindowController, NSWindowDelegate {
-    private static var shared: EnvironmentManagerWindowController?
-    private static var modalWindow: NSWindow?
+class EnvironmentManagerWindowController: NSWindowController {
+    private static var panel: NSPanel?
+    private static var isShowing = false
+    private static weak var parentWindow: NSWindow?
+    private static var originalParentIgnoresMouseEvents = false
 
     static func show(store: CommandStore) {
-        if shared != nil {
-            modalWindow?.makeKeyAndOrderFront(nil)
-            return
-        }
+        guard !isShowing else { return }
+        guard let parent = NSApp.keyWindow ?? NSApp.mainWindow else { return }
 
-        let contentView = EnvironmentManagerView(store: store)
+        isShowing = true
+        parentWindow = parent
+        originalParentIgnoresMouseEvents = parent.ignoresMouseEvents
+
+        let contentView = EnvironmentManagerView(store: store, onClose: {
+            close()
+        })
+
         let hostingController = NSHostingController(rootView: contentView)
+        let newPanel = NSPanel(contentViewController: hostingController)
+        newPanel.title = L.envManagerTitle
+        newPanel.styleMask = [.titled, .closable, .resizable]
+        newPanel.setContentSize(NSSize(width: 700, height: 500))
+        newPanel.minSize = NSSize(width: 500, height: 300)
+        newPanel.isReleasedWhenClosed = false
 
-        let window = NSWindow(contentViewController: hostingController)
-        window.title = L.envManagerTitle
-        window.styleMask = [.titled, .closable, .resizable]
-        window.setContentSize(NSSize(width: 700, height: 500))
-        window.minSize = NSSize(width: 500, height: 300)
-        window.center()
-        window.level = .modalPanel
-        window.hidesOnDeactivate = false  // 포커스 잃어도 숨기지 않음
-        window.isReleasedWhenClosed = false
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.standardWindowButton(.zoomButton)?.isHidden = true
+        // NSPanel 모달 설정
+        newPanel.worksWhenModal = true
+        newPanel.level = .modalPanel
+        newPanel.hidesOnDeactivate = false
 
-        let controller = EnvironmentManagerWindowController(window: window)
-        window.delegate = controller
-        shared = controller
-        modalWindow = window
+        panel = newPanel
+
+        // 부모 창 클릭 차단
+        parent.ignoresMouseEvents = true
 
         // 자동 숨기기 방지
         Settings.shared.preventAutoHide = true
 
-        // 창 표시 후 모달 실행
-        window.makeKeyAndOrderFront(nil)
-        NSApp.runModal(for: window)
+        // 패널을 키 윈도우로 만들고 표시
+        newPanel.makeKeyAndOrderFront(nil)
+
+        // 패널이 닫힐 때를 감지하기 위한 observer 설정
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: newPanel,
+            queue: .main
+        ) { _ in
+            close()
+        }
     }
 
     static func close() {
-        NSApp.stopModal()
-        modalWindow?.close()
-    }
+        guard isShowing else { return }
+        isShowing = false  // 먼저 플래그 해제하여 재진입 방지
 
-    func windowWillClose(_ notification: Notification) {
-        NSApp.stopModal()
+        // 노티피케이션 옵저버 제거
+        if let p = panel {
+            NotificationCenter.default.removeObserver(self, name: NSWindow.willCloseNotification, object: p)
+        }
+
+        // 부모 창 복원
+        if let parent = parentWindow {
+            parent.ignoresMouseEvents = originalParentIgnoresMouseEvents
+        }
+
+        // 자동 숨기기 방지 해제
         Settings.shared.preventAutoHide = false
-        EnvironmentManagerWindowController.shared = nil
-        EnvironmentManagerWindowController.modalWindow = nil
+
+        // 패널 닫기
+        panel?.close()
+        panel = nil
+        parentWindow = nil
     }
 }

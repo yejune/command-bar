@@ -1,16 +1,18 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Clipboard Detail Window Controller (리사이즈 가능한 모달)
-class ClipboardDetailWindowController: NSWindowController, NSWindowDelegate {
-    private static var shared: ClipboardDetailWindowController?
-    private static var modalWindow: NSWindow?
+// MARK: - Clipboard Detail Panel Controller (NSPanel + worksWhenModal 방식)
+class ClipboardDetailWindowController {
+    private static var panel: NSPanel?
+    private static var parentWindow: NSWindow?
+    private static var isShowing = false
 
     static func show(item: ClipboardItem, store: CommandStore, notesFolderName: String) {
-        if shared != nil {
-            modalWindow?.makeKeyAndOrderFront(nil)
-            return
-        }
+        guard !isShowing else { return }
+        guard let parent = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+
+        isShowing = true
+        parentWindow = parent
 
         let contentView = ClipboardDetailView(
             item: item,
@@ -20,41 +22,58 @@ class ClipboardDetailWindowController: NSWindowController, NSWindowDelegate {
         )
 
         let hostingController = NSHostingController(rootView: contentView)
-        let window = NSWindow(contentViewController: hostingController)
+        let newPanel = NSPanel(contentViewController: hostingController)
 
-        window.title = L.clipboardDetail
-        window.styleMask = [.titled, .closable, .resizable]
-        window.setContentSize(NSSize(width: 500, height: 400))
-        window.minSize = NSSize(width: 300, height: 200)
-        window.center()
-        window.level = .modalPanel
-        window.hidesOnDeactivate = false  // 포커스 잃어도 숨기지 않음
-        window.isReleasedWhenClosed = false
-        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        window.standardWindowButton(.zoomButton)?.isHidden = true
+        newPanel.title = L.clipboardDetail
+        newPanel.styleMask = [.titled, .closable, .resizable]
+        newPanel.setContentSize(NSSize(width: 500, height: 400))
+        newPanel.minSize = NSSize(width: 300, height: 200)
+        newPanel.isReleasedWhenClosed = false
 
-        let controller = ClipboardDetailWindowController(window: window)
-        window.delegate = controller
-        shared = controller
-        modalWindow = window
+        // NSPanel 설정
+        newPanel.worksWhenModal = true
+        newPanel.level = .modalPanel
+        newPanel.hidesOnDeactivate = false
+
+        panel = newPanel
 
         // 자동 숨기기 방지
         Settings.shared.preventAutoHide = true
 
-        // 창 표시 후 모달 실행
-        window.makeKeyAndOrderFront(nil)
-        NSApp.runModal(for: window)
+        // 부모 창 클릭 차단
+        parent.ignoresMouseEvents = true
+
+        // 패널 닫힘 감지
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: newPanel,
+            queue: .main
+        ) { _ in
+            cleanup()
+        }
+
+        // 패널 표시
+        newPanel.center()
+        newPanel.makeKeyAndOrderFront(nil)
     }
 
     static func close() {
-        NSApp.stopModal()
-        modalWindow?.close()
+        panel?.close()
     }
 
-    func windowWillClose(_ notification: Notification) {
-        NSApp.stopModal()
+    private static func cleanup() {
+        // 부모 창 복원
+        if let parent = parentWindow {
+            parent.ignoresMouseEvents = false
+        }
+
+        // 자동 숨기기 방지 해제
         Settings.shared.preventAutoHide = false
-        ClipboardDetailWindowController.shared = nil
-        ClipboardDetailWindowController.modalWindow = nil
+
+        panel = nil
+        parentWindow = nil
+        isShowing = false
+
+        // Observer 제거는 필요 없음 (object가 nil이 되면 자동 제거됨)
     }
 }

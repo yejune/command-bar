@@ -361,47 +361,43 @@ class CommandStore: ObservableObject {
                 }
             }
         case .multipart:
-            do {
-                let boundary = UUID().uuidString
-                urlRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            let boundary = UUID().uuidString
+            urlRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
-                var body = Data()
+            var body = Data()
 
-                // 텍스트 파라미터 추가 (bodyData를 JSON으로 파싱)
-                if !processedCommand.bodyData.isEmpty {
-                    if let jsonData = processedCommand.bodyData.data(using: .utf8),
-                       let textParams = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
-                        for (key, value) in textParams {
-                            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-                            body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
-                            body.append("\(value)\r\n".data(using: .utf8)!)
-                        }
+            // 텍스트 파라미터 추가 (bodyData를 JSON으로 파싱)
+            if !processedCommand.bodyData.isEmpty {
+                if let jsonData = processedCommand.bodyData.data(using: .utf8),
+                   let textParams = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                    for (key, value) in textParams {
+                        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+                        body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
+                        body.append("\(value)\r\n".data(using: .utf8)!)
                     }
                 }
-
-                // 파일 파라미터 추가
-                for (key, filePath) in processedCommand.fileParams {
-                    let fileURL = URL(fileURLWithPath: filePath)
-                    let fileName = fileURL.lastPathComponent
-                    let mimeType = getMimeType(for: fileURL)
-
-                    guard let fileData = try? Data(contentsOf: fileURL) else {
-                        let error = NSError(domain: "CommandStore", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to read file: \(filePath)"])
-                        return (nil, nil, error)
-                    }
-
-                    body.append("--\(boundary)\r\n".data(using: .utf8)!)
-                    body.append("Content-Disposition: form-data; name=\"\(key)\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
-                    body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
-                    body.append(fileData)
-                    body.append("\r\n".data(using: .utf8)!)
-                }
-
-                body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-                urlRequest.httpBody = body
-            } catch {
-                return (nil, nil, error)
             }
+
+            // 파일 파라미터 추가
+            for (key, filePath) in processedCommand.fileParams {
+                let fileURL = URL(fileURLWithPath: filePath)
+                let fileName = fileURL.lastPathComponent
+                let mimeType = getMimeType(for: fileURL)
+
+                guard let fileData = try? Data(contentsOf: fileURL) else {
+                    let error = NSError(domain: "CommandStore", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to read file: \(filePath)"])
+                    return (nil, nil, error)
+                }
+
+                body.append("--\(boundary)\r\n".data(using: .utf8)!)
+                body.append("Content-Disposition: form-data; name=\"\(key)\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+                body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+                body.append(fileData)
+                body.append("\r\n".data(using: .utf8)!)
+            }
+
+            body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+            urlRequest.httpBody = body
         }
 
         // URLSession으로 실행
@@ -1195,8 +1191,6 @@ class CommandStore: ObservableObject {
             }
         } else {
             // 덮어쓰기: 기존 데이터 삭제
-            for cmd in commands {
-            }
             commands = imported.commands.map { cmd in
                 var c = cmd
                 c.isRunning = false
