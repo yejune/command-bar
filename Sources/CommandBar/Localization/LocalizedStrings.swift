@@ -282,4 +282,11 @@ struct LocalizedStrings: Codable {
     var envVariableName: String
     var envSelectEnvironment: String
     var envManage: String
+
+    // 사이드바 모드
+    var sidebarModeActive: String
+    var sidebarModeInactive: String
+    var accessibilityPermissionTitle: String
+    var accessibilityPermissionMessage: String
+    var accessibilityOpenSettings: String
 }

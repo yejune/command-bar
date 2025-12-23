@@ -55,7 +55,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard window.titlebarAccessoryViewControllers.isEmpty else { return }
 
         let accessoryView = NSHostingView(rootView: TitlebarButtonsView())
-        accessoryView.frame = NSRect(x: 0, y: 0, width: 70, height: 22)
+        accessoryView.frame = NSRect(x: 0, y: 0, width: 90, height: 22)
 
         let accessoryController = NSTitlebarAccessoryViewController()
         accessoryController.view = accessoryView
@@ -68,6 +68,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 // 타이틀바 버튼 뷰
 struct TitlebarButtonsView: View {
     @ObservedObject private var settings = Settings.shared
+    @State private var isSidebarMode = false
 
     var body: some View {
         HStack(spacing: 2) {
@@ -78,6 +79,14 @@ struct TitlebarButtonsView: View {
             }
             .buttonStyle(.borderless)
             .help(settings.autoHide ? L.settingsAutoHide + ": ON" : L.settingsAutoHide + ": OFF")
+
+            Button(action: { toggleSidebarMode() }) {
+                Image(systemName: isSidebarMode ? "rectangle.lefthalf.filled" : "rectangle.lefthalf.inset.filled")
+                    .font(.system(size: 11))
+                    .foregroundStyle(isSidebarMode ? .primary : .secondary)
+            }
+            .buttonStyle(.borderless)
+            .help(isSidebarMode ? L.sidebarModeActive : L.sidebarModeInactive)
 
             Button(action: { snapToLeft() }) {
                 Image(systemName: "sidebar.left")
@@ -96,6 +105,11 @@ struct TitlebarButtonsView: View {
             .help(L.snapToRight)
         }
         .padding(.horizontal, 4)
+    }
+
+    func toggleSidebarMode() {
+        SidebarModeManager.shared.toggleSidebarMode()
+        isSidebarMode = SidebarModeManager.shared.isSidebarModeActive
     }
 
     func snapToLeft() {

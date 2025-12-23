@@ -244,6 +244,12 @@ extension LocalizedStrings {
         envColor: "Color",
         envVariableName: "Variable Name",
         envSelectEnvironment: "Select Environment",
-        envManage: "Manage"
+        envManage: "Manage",
+
+        sidebarModeActive: "Sidebar Mode: Active",
+        sidebarModeInactive: "Sidebar Mode",
+        accessibilityPermissionTitle: "Accessibility Permission Required",
+        accessibilityPermissionMessage: "CommandBar needs accessibility permissions to use sidebar mode.\n\nPlease enable CommandBar in System Preferences > Security & Privacy > Accessibility.",
+        accessibilityOpenSettings: "Open Settings"
     )
 }

@@ -244,6 +244,12 @@ extension LocalizedStrings {
         envColor: "색상",
         envVariableName: "변수명",
         envSelectEnvironment: "환경 선택",
-        envManage: "환경 관리"
+        envManage: "환경 관리",
+
+        sidebarModeActive: "사이드바 모드: 활성",
+        sidebarModeInactive: "사이드바 모드",
+        accessibilityPermissionTitle: "손쉬운 사용 권한 필요",
+        accessibilityPermissionMessage: "사이드바 모드를 사용하려면 CommandBar에 손쉬운 사용 권한이 필요합니다.\n\n시스템 환경설정 > 보안 및 개인 정보 보호 > 손쉬운 사용에서 CommandBar를 체크해주세요.",
+        accessibilityOpenSettings: "설정 열기"
     )
 }

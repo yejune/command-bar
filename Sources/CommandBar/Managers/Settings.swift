@@ -420,4 +420,28 @@ class Settings: ObservableObject {
             hideWindow()
         }
     }
+
+    // MARK: - Sidebar Mode
+
+    private var autoHideBeforeSidebarKey: String { "autoHideBeforeSidebar" }
+
+    /// 사이드바 모드 활성화 시 자동 숨기기 비활성화
+    func disableAutoHideForSidebarMode() {
+        // 현재 자동 숨기기 상태 저장
+        db.setBoolSetting(autoHideBeforeSidebarKey, value: autoHide)
+
+        // 자동 숨기기 비활성화
+        if autoHide {
+            autoHide = false
+        }
+    }
+
+    /// 사이드바 모드 비활성화 시 자동 숨기기 복원
+    func restoreAutoHideAfterSidebarMode() {
+        // 이전 상태 복원
+        let previousAutoHide = db.getBoolSetting(autoHideBeforeSidebarKey, defaultValue: false)
+        if previousAutoHide && !autoHide {
+            autoHide = true
+        }
+    }
 }

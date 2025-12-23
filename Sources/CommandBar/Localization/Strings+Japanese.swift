@@ -244,7 +244,13 @@ extension LocalizedStrings {
         envColor: "色",
         envVariableName: "変数名",
         envSelectEnvironment: "環境を選択",
-        envManage: "管理"
+        envManage: "管理",
+
+        sidebarModeActive: "サイドバーモード：アクティブ",
+        sidebarModeInactive: "サイドバーモード",
+        accessibilityPermissionTitle: "アクセシビリティ権限が必要",
+        accessibilityPermissionMessage: "サイドバーモードを使用するには、CommandBarにアクセシビリティ権限が必要です。\n\nシステム環境設定 > セキュリティとプライバシー > アクセシビリティでCommandBarを有効にしてください。",
+        accessibilityOpenSettings: "設定を開く"
     )
 
     static func forLanguage(_ language: Language) -> LocalizedStrings {
