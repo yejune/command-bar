@@ -78,7 +78,9 @@ struct ContentView: View {
                         historySearchText = ""
                         historySearchDate = nil
                         store.loadHistory()
-                    }
+                    },
+                    showFavoritesOnly: .constant(false),
+                    hasFavorites: false
                 )
                 .onAppear { historyDateCounts = Database.shared.getHistoryDateCounts() }
                 Divider()
@@ -145,12 +147,6 @@ struct ContentView: View {
             } else if showingClipboard {
                 // 클립보드 보기
                 SubtitleBar(title: L.tabClipboard) {
-                    Button(action: { showClipboardFavoritesOnly.toggle() }) {
-                        Image(systemName: showClipboardFavoritesOnly ? "star.fill" : "star")
-                            .foregroundStyle(showClipboardFavoritesOnly ? .yellow : .secondary)
-                    }
-                    .buttonStyle(SmallHoverButtonStyle())
-
                     if !store.clipboardItems.isEmpty {
                         Button(L.buttonClear) {
                             store.clearClipboard()
@@ -171,7 +167,9 @@ struct ContentView: View {
                         clipboardSearchText = ""
                         clipboardSearchDate = nil
                         store.loadClipboard()
-                    }
+                    },
+                    showFavoritesOnly: $showClipboardFavoritesOnly,
+                    hasFavorites: true
                 )
                 .onAppear { clipboardDateCounts = Database.shared.getClipboardDateCounts() }
                 Divider()
@@ -794,6 +792,8 @@ struct SearchBarView: View {
     var dateCounts: [String: Int]
     var onSearch: () -> Void
     var onClear: () -> Void
+    @Binding var showFavoritesOnly: Bool
+    var hasFavorites: Bool = false
 
     @State private var showDatePicker = false
 
@@ -839,8 +839,20 @@ struct SearchBarView: View {
                 )
             }
 
-            if !searchText.isEmpty || searchDate != nil {
-                Button(action: onClear) {
+            if hasFavorites {
+                Button(action: { showFavoritesOnly.toggle() }) {
+                    Image(systemName: showFavoritesOnly ? "star.fill" : "star")
+                        .font(.caption)
+                        .foregroundStyle(showFavoritesOnly ? .yellow : .secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if !searchText.isEmpty || searchDate != nil || showFavoritesOnly {
+                Button(action: {
+                    showFavoritesOnly = false
+                    onClear()
+                }) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
                 }

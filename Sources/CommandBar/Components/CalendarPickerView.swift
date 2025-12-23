@@ -6,6 +6,7 @@ struct CalendarPickerView: View {
     let onSelect: (Date) -> Void
 
     @State private var displayedMonth: Date = Date()
+    @State private var cachedDays: [DayInfo] = []
 
     private let calendar = Calendar.current
     private let dateFormatter: DateFormatter = {
@@ -31,9 +32,13 @@ struct CalendarPickerView: View {
         return result
     }
 
-    private var daysInMonth: [DayInfo] {
-        guard let monthInterval = calendar.dateInterval(of: .month, for: displayedMonth),
-              let monthFirstWeekday = calendar.dateComponents([.weekday], from: monthInterval.start).weekday else {
+    private func buildDaysInMonth() -> [DayInfo] {
+        let components = calendar.dateComponents([.year, .month], from: displayedMonth)
+        guard let year = components.year,
+              let month = components.month,
+              let firstOfMonth = calendar.date(from: components),
+              let monthFirstWeekday = calendar.dateComponents([.weekday], from: firstOfMonth).weekday,
+              let range = calendar.range(of: .day, in: .month, for: displayedMonth) else {
             return []
         }
 
@@ -45,9 +50,12 @@ struct CalendarPickerView: View {
         }
 
         // Add days of the month
-        let range = calendar.range(of: .day, in: .month, for: displayedMonth)!
         for day in range {
-            if let date = calendar.date(bySetting: .day, value: day, of: displayedMonth) {
+            var dayComponents = DateComponents()
+            dayComponents.year = year
+            dayComponents.month = month
+            dayComponents.day = day
+            if let date = calendar.date(from: dayComponents) {
                 let dateString = dateFormatter.string(from: date)
                 let count = dateCounts[dateString] ?? 0
                 days.append(DayInfo(date: date, isCurrentMonth: true, count: count))
@@ -95,13 +103,13 @@ struct CalendarPickerView: View {
 
             // Calendar grid
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 4) {
-                ForEach(daysInMonth.indices, id: \.self) { index in
+                ForEach(cachedDays.indices, id: \.self) { index in
                     DayCell(
-                        dayInfo: daysInMonth[index],
-                        isSelected: isSelected(daysInMonth[index].date),
-                        isToday: isToday(daysInMonth[index].date),
+                        dayInfo: cachedDays[index],
+                        isSelected: isSelected(cachedDays[index].date),
+                        isToday: isToday(cachedDays[index].date),
                         onTap: {
-                            if let date = daysInMonth[index].date {
+                            if let date = cachedDays[index].date {
                                 onSelect(date)
                             }
                         }
@@ -111,6 +119,12 @@ struct CalendarPickerView: View {
         }
         .padding(12)
         .frame(width: 240)
+        .onAppear {
+            cachedDays = buildDaysInMonth()
+        }
+        .onChange(of: displayedMonth) { _, _ in
+            cachedDays = buildDaysInMonth()
+        }
     }
 
     private func previousMonth() {
