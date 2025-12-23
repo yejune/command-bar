@@ -19,6 +19,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        // 종료 전 창 복원 (숨겨진 상태면 펼치기)
+        if Settings.shared.isHidden {
+            Settings.shared.showWindow()
+        }
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
             for window in NSApp.windows {

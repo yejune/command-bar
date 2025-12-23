@@ -221,6 +221,19 @@ class Settings: ObservableObject {
     private func handleMouseEvent(_ event: NSEvent) {
         guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
 
+        // 모달이나 시트가 열려있으면 무시
+        if window.attachedSheet != nil { return }
+
+        // 다른 창이 열려있으면 무시
+        let otherWindows = NSApp.windows.filter {
+            $0.isVisible &&
+            $0 != window &&
+            $0.level == .normal &&
+            $0.className != "NSStatusBarWindow" &&
+            $0.className != "_NSPopoverWindow"
+        }
+        if !otherWindows.isEmpty { return }
+
         let mouseLocation = NSEvent.mouseLocation
         let windowFrame = window.frame
 
@@ -245,8 +258,14 @@ class Settings: ObservableObject {
         // 모달이나 시트가 열려있으면 숨기지 않음
         if window.attachedSheet != nil { return }
 
-        // 다른 창이 열려있으면 숨기지 않음 (메인 창 제외)
-        let otherWindows = NSApp.windows.filter { $0.isVisible && $0 != window && $0.canBecomeMain }
+        // 다른 창이 열려있으면 숨기지 않음 (메인 창, 상태바 메뉴 등 제외)
+        let otherWindows = NSApp.windows.filter {
+            $0.isVisible &&
+            $0 != window &&
+            $0.level == .normal &&
+            $0.className != "NSStatusBarWindow" &&
+            $0.className != "_NSPopoverWindow"
+        }
         if !otherWindows.isEmpty { return }
 
         let titlebarHeight: CGFloat = 28
