@@ -27,6 +27,11 @@ class ClipboardDetailWindowController: NSWindowController, NSWindowDelegate {
         window.setContentSize(NSSize(width: 500, height: 400))
         window.minSize = NSSize(width: 300, height: 200)
         window.center()
+        window.level = .modalPanel
+        window.hidesOnDeactivate = false  // 포커스 잃어도 숨기지 않음
+        window.isReleasedWhenClosed = false
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
 
         let controller = ClipboardDetailWindowController(window: window)
         window.delegate = controller
@@ -36,7 +41,8 @@ class ClipboardDetailWindowController: NSWindowController, NSWindowDelegate {
         // 자동 숨기기 방지
         Settings.shared.preventAutoHide = true
 
-        // 모달로 실행
+        // 창 표시 후 모달 실행
+        window.makeKeyAndOrderFront(nil)
         NSApp.runModal(for: window)
     }
 

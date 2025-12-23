@@ -36,6 +36,11 @@ class APIResponseWindowController: NSWindowController, NSWindowDelegate {
         window.setContentSize(NSSize(width: 600, height: 500))
         window.minSize = NSSize(width: 500, height: 400)
         window.center()
+        window.level = .modalPanel
+        window.hidesOnDeactivate = false  // 포커스 잃어도 숨기지 않음
+        window.isReleasedWhenClosed = false
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
 
         let controller = APIResponseWindowController(window: window)
         window.delegate = controller
@@ -45,7 +50,8 @@ class APIResponseWindowController: NSWindowController, NSWindowDelegate {
         // 자동 숨기기 방지
         Settings.shared.preventAutoHide = true
 
-        // 모달로 실행 (비동기로 실행하여 상태 업데이트 가능)
+        // 창 표시 후 모달 실행 (비동기로 실행하여 상태 업데이트 가능)
+        window.makeKeyAndOrderFront(nil)
         DispatchQueue.main.async {
             NSApp.runModal(for: window)
         }
