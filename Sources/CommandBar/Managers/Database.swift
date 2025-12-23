@@ -91,6 +91,12 @@ class Database {
             content TEXT NOT NULL
         );
 
+        -- 설정
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+
         -- 인덱스
         CREATE INDEX IF NOT EXISTS idx_commands_group ON commands(group_id);
         CREATE INDEX IF NOT EXISTS idx_commands_trash ON commands(is_in_trash);
@@ -554,6 +560,62 @@ class Database {
 
     func clearClipboard() {
         executeStatements("DELETE FROM clipboard")
+    }
+
+    // MARK: - Settings
+
+    func getSetting(_ key: String) -> String? {
+        let sql = "SELECT value FROM settings WHERE key = ?"
+        var stmt: OpaquePointer?
+        var value: String?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let ptr = sqlite3_column_text(stmt, 0) {
+                    value = String(cString: ptr)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return value
+    }
+
+    func setSetting(_ key: String, value: String) {
+        let sql = "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, value, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    func getBoolSetting(_ key: String, defaultValue: Bool = false) -> Bool {
+        guard let value = getSetting(key) else { return defaultValue }
+        return value == "true" || value == "1"
+    }
+
+    func setBoolSetting(_ key: String, value: Bool) {
+        setSetting(key, value: value ? "true" : "false")
+    }
+
+    func getDoubleSetting(_ key: String, defaultValue: Double = 0) -> Double {
+        guard let value = getSetting(key), let num = Double(value) else { return defaultValue }
+        return num
+    }
+
+    func setDoubleSetting(_ key: String, value: Double) {
+        setSetting(key, value: String(value))
+    }
+
+    func getIntSetting(_ key: String, defaultValue: Int = 0) -> Int {
+        guard let value = getSetting(key), let num = Int(value) else { return defaultValue }
+        return num
+    }
+
+    func setIntSetting(_ key: String, value: Int) {
+        setSetting(key, value: String(value))
     }
 
     // MARK: - Helpers

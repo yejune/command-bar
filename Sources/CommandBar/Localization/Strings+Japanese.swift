@@ -65,6 +65,7 @@ extension LocalizedStrings {
         settingsBackgroundOpacity: "背景の透明度",
         settingsMaxCount: "最大件数",
         settingsNotesFolderName: "メモフォルダ名",
+        settingsAutoHide: "自動非表示",
         settingsExportFile: "ファイル出力",
         settingsImportFile: "ファイル読込",
         settingsBackupNote: "コマンドのみバックアップされます",

@@ -85,6 +85,7 @@ struct LocalizedStrings: Codable {
     var settingsBackgroundOpacity: String
     var settingsMaxCount: String
     var settingsNotesFolderName: String
+    var settingsAutoHide: String
     var settingsExportFile: String
     var settingsImportFile: String
     var settingsBackupNote: String

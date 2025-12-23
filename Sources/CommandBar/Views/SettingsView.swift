@@ -63,6 +63,15 @@ struct SettingsView: View {
                             .frame(width: 40)
                     }
                     .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+                    HStack {
+                        Toggle(L.settingsAutoHide, isOn: $settings.autoHide)
+                        Spacer()
+                        TextField("", text: $settings.hideShortcut)
+                            .frame(width: 80)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(!settings.autoHide)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
                 } else if selectedTab == 1 {
                     // 클립보드 설정
                     HStack {
@@ -108,7 +117,7 @@ struct SettingsView: View {
                 }
                 Spacer()
             }
-            .frame(height: 90)
+            .frame(height: 115)
             .padding(12)
 
             Divider()

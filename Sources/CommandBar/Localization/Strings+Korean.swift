@@ -65,6 +65,7 @@ extension LocalizedStrings {
         settingsBackgroundOpacity: "배경 투명도",
         settingsMaxCount: "최대 개수",
         settingsNotesFolderName: "메모 폴더명",
+        settingsAutoHide: "자동 숨기기",
         settingsExportFile: "파일 내보내기",
         settingsImportFile: "파일 가져오기",
         settingsBackupNote: "명령 목록만 백업됩니다",

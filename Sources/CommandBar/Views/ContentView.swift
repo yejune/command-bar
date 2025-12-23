@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var store = CommandStore()
-    @StateObject private var settings = Settings()
+    @ObservedObject private var settings = Settings.shared
     @State private var showAddSheet = false
     @State private var showSettings = false
     @State private var showingTrash = false

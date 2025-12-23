@@ -65,6 +65,7 @@ extension LocalizedStrings {
         settingsBackgroundOpacity: "Background Opacity",
         settingsMaxCount: "Max Count",
         settingsNotesFolderName: "Notes Folder",
+        settingsAutoHide: "Auto Hide",
         settingsExportFile: "Export File",
         settingsImportFile: "Import File",
         settingsBackupNote: "Only commands are backed up",
