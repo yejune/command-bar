@@ -95,6 +95,11 @@ struct SettingsView: View {
                             }
                         }
                     }
+                    SettingDivider()
+                    SettingRow(label: L.settingsDoubleClickToRun) {
+                        Toggle("", isOn: $settings.doubleClickToRun)
+                            .labelsHidden()
+                    }
                 } else if selectedTab == 1 {
                     // 클립보드 설정
                     SettingRow(label: L.settingsNotesFolderName) {

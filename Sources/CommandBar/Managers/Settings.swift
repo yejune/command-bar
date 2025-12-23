@@ -54,6 +54,11 @@ class Settings: ObservableObject {
             db.setDoubleSetting("hideOpacity", value: hideOpacity)
         }
     }
+    @Published var doubleClickToRun: Bool {
+        didSet {
+            db.setBoolSetting("doubleClickToRun", value: doubleClickToRun)
+        }
+    }
 
     private var appearanceObserver: NSObjectProtocol?
     private var resizeObserver: NSObjectProtocol?
@@ -78,6 +83,7 @@ class Settings: ObservableObject {
         self.autoHide = db.getBoolSetting("autoHide", defaultValue: false)
         self.useHideOpacity = db.getBoolSetting("useHideOpacity", defaultValue: true)
         self.hideOpacity = db.getDoubleSetting("hideOpacity", defaultValue: 0.1)
+        self.doubleClickToRun = db.getBoolSetting("doubleClickToRun", defaultValue: true)
 
         // 시스템 테마 변경 감지
         appearanceObserver = DistributedNotificationCenter.default().addObserver(

@@ -69,6 +69,7 @@ extension LocalizedStrings {
         settingsNotesFolderName: "Notes Folder",
         settingsAutoHide: "Auto Hide",
         settingsHideOpacity: "Fade when hidden",
+        settingsDoubleClickToRun: "Double-click to run",
         shortcutConflict: "Shortcut registration failed",
         settingsExportFile: "Export File",
         settingsImportFile: "Import File",

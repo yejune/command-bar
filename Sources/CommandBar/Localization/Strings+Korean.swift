@@ -69,6 +69,7 @@ extension LocalizedStrings {
         settingsNotesFolderName: "메모 폴더명",
         settingsAutoHide: "자동 숨기기",
         settingsHideOpacity: "숨길 때 투명하게",
+        settingsDoubleClickToRun: "더블클릭 시 바로 실행",
         shortcutConflict: "단축키 등록 실패",
         settingsExportFile: "파일 내보내기",
         settingsImportFile: "파일 가져오기",

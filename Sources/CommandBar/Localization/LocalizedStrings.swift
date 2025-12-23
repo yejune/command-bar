@@ -89,6 +89,7 @@ struct LocalizedStrings: Codable {
     var settingsNotesFolderName: String
     var settingsAutoHide: String
     var settingsHideOpacity: String
+    var settingsDoubleClickToRun: String
     var shortcutConflict: String
     var settingsExportFile: String
     var settingsImportFile: String

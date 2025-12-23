@@ -379,7 +379,13 @@ struct ContentView: View {
                                         store.acknowledge(cmd)
                                     }
                                 },
-                                onDoubleTap: { handleRun(cmd) },
+                                onDoubleTap: {
+                                    if Settings.shared.doubleClickToRun {
+                                        handleRun(cmd)
+                                    } else {
+                                        editingCommand = cmd
+                                    }
+                                },
                                 onEdit: { editingCommand = cmd },
                                 onCopy: {
                                     store.duplicate(cmd)

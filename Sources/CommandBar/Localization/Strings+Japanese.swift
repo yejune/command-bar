@@ -69,6 +69,7 @@ extension LocalizedStrings {
         settingsNotesFolderName: "メモフォルダ名",
         settingsAutoHide: "自動非表示",
         settingsHideOpacity: "非表示時に透明化",
+        settingsDoubleClickToRun: "ダブルクリックで実行",
         shortcutConflict: "ショートカット登録失敗",
         settingsExportFile: "ファイル出力",
         settingsImportFile: "ファイル読込",
