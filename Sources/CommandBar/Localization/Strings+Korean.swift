@@ -38,6 +38,8 @@ extension LocalizedStrings {
         historyPermanentlyDeleted: "제거",
 
         buttonClose: "닫기",
+        snapToLeft: "왼쪽에 붙이기",
+        snapToRight: "오른쪽에 붙이기",
         buttonCancel: "취소",
         buttonConfirm: "확인",
         buttonSave: "저장",

@@ -38,6 +38,8 @@ extension LocalizedStrings {
         historyPermanentlyDeleted: "Removed",
 
         buttonClose: "Close",
+        snapToLeft: "Snap to Left",
+        snapToRight: "Snap to Right",
         buttonCancel: "Cancel",
         buttonConfirm: "OK",
         buttonSave: "Save",

@@ -38,6 +38,8 @@ extension LocalizedStrings {
         historyPermanentlyDeleted: "完全削除",
 
         buttonClose: "閉じる",
+        snapToLeft: "左に寄せる",
+        snapToRight: "右に寄せる",
         buttonCancel: "キャンセル",
         buttonConfirm: "確認",
         buttonSave: "保存",
