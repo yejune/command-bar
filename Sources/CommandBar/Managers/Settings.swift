@@ -7,6 +7,9 @@ class Settings: ObservableObject {
     static let shared = Settings()
     private let db = Database.shared
 
+    // 모달 창이 열려있을 때 자동 숨기기 방지
+    var preventAutoHide = false
+
     @Published var alwaysOnTop: Bool {
         didSet {
             db.setBoolSetting("alwaysOnTop", value: alwaysOnTop)
@@ -331,6 +334,9 @@ class Settings: ObservableObject {
     func hideWindow() {
         guard !isHidden, !isAnimating else { return }
         guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
+
+        // 모달 창이 열려있으면 숨기지 않음
+        if preventAutoHide { return }
 
         // 모달이나 시트가 열려있으면 숨기지 않음
         if window.attachedSheet != nil { return }

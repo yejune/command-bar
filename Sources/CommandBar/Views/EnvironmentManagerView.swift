@@ -441,6 +441,7 @@ struct EnvironmentManagerView: View {
 
 class EnvironmentManagerWindowController: NSWindowController {
     static var shared: EnvironmentManagerWindowController?
+    private static var parentWindow: NSWindow?
 
     static func show(store: CommandStore) {
         if let existing = shared {
@@ -456,19 +457,35 @@ class EnvironmentManagerWindowController: NSWindowController {
         window.styleMask = [.titled, .closable, .resizable]
         window.setContentSize(NSSize(width: 700, height: 500))
         window.center()
-        window.level = .floating  // 모달보다 위에 표시
+        window.level = .floating
 
         let controller = EnvironmentManagerWindowController(window: window)
         controller.showWindow(nil)
         shared = controller
 
-        // 창이 닫힐 때 참조 해제
+        // 부모 창을 모달처럼 비활성화
+        if let mainWindow = NSApp.mainWindow {
+            parentWindow = mainWindow
+            mainWindow.ignoresMouseEvents = true
+            mainWindow.alphaValue = 0.7
+        }
+
+        // 자동 숨기기 방지
+        Settings.shared.preventAutoHide = true
+
+        // 창이 닫힐 때 부모 창 복원
         NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: window,
             queue: .main
         ) { _ in
+            if let parent = parentWindow {
+                parent.ignoresMouseEvents = false
+                parent.alphaValue = 1.0
+            }
+            parentWindow = nil
             shared = nil
+            Settings.shared.preventAutoHide = false
         }
     }
 }
