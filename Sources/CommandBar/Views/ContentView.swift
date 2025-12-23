@@ -317,8 +317,14 @@ struct ContentView: View {
                 }
             } else {
                 // 일반 리스트
+                SubtitleBar(title: L.tabCommands) {
+                    Text("\(filteredItems.count)")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                Divider()
+                // 그룹 선택 바
                 HStack(spacing: 4) {
-                    // 그룹 선택 Picker
                     Picker("", selection: $selectedGroupId) {
                         Label {
                             Text("  \(L.groupAll)")
@@ -346,7 +352,6 @@ struct ContentView: View {
                     }
                     .buttonStyle(SmallHoverButtonStyle())
 
-                    // 그룹 편집 버튼 (전체 선택이 아닐 때만)
                     if let groupId = selectedGroupId,
                        let group = store.groups.first(where: { $0.id == groupId }) {
                         Button(action: { editingGroup = group }) {
@@ -356,13 +361,9 @@ struct ContentView: View {
                     }
 
                     Spacer()
-
-                    Text("\(filteredItems.count)")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
                 }
-                .frame(height: 22)
                 .padding(.horizontal, 12)
+                .padding(.vertical, 4)
                 Divider()
                 ScrollView {
                     LazyVStack(spacing: 4) {

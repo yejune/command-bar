@@ -33,4 +33,17 @@ func colorCircleImage(_ colorName: String, size: CGFloat = 10, leftShift: CGFloa
     default: nsColor = .systemGray
     }
     return Image(nsImage: NSImage.colorCircle(size: size, color: nsColor, leftShift: leftShift))
+        .renderingMode(.original)
+}
+
+func colorForName(_ name: String) -> Color {
+    switch name {
+    case "blue": return .blue
+    case "red": return .red
+    case "green": return .green
+    case "orange": return .orange
+    case "purple": return .purple
+    case "gray": return .gray
+    default: return .gray
+    }
 }
