@@ -242,8 +242,19 @@ class Settings: ObservableObject {
         }
         // 로컬 모니터 (앱 내부 이벤트) - 접힌 상태에서 클릭 또는 호버 시 펼치기
         localMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .mouseMoved, .mouseEntered]) { [weak self] event in
-            if self?.isHidden == true {
-                self?.showWindow()
+            guard let self = self, self.isHidden else { return event }
+
+            // 다른 창이 열려있으면 무시
+            guard let mainWindow = NSApp.windows.first(where: { $0.canBecomeMain }) else { return event }
+            let otherWindows = NSApp.windows.filter {
+                $0.isVisible &&
+                $0 != mainWindow &&
+                $0.level == .normal &&
+                $0.className != "NSStatusBarWindow" &&
+                $0.className != "_NSPopoverWindow"
+            }
+            if otherWindows.isEmpty {
+                self.showWindow()
             }
             return event
         }
