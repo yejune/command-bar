@@ -13,8 +13,19 @@ class CommandStore: ObservableObject {
     // 페이징 상태
     @Published var historyPage: Int = 0
     @Published var clipboardPage: Int = 0
-    @Published var hasMoreHistory: Bool = true
-    @Published var hasMoreClipboard: Bool = true
+    @Published var historyTotalCount: Int = 0
+    @Published var clipboardTotalCount: Int = 0
+
+    var historyTotalPages: Int {
+        let pageSize = Settings.shared.pageSize
+        return max(1, (historyTotalCount + pageSize - 1) / pageSize)
+    }
+    var clipboardTotalPages: Int {
+        let pageSize = Settings.shared.pageSize
+        return max(1, (clipboardTotalCount + pageSize - 1) / pageSize)
+    }
+    var hasMoreHistory: Bool { historyPage < historyTotalPages - 1 }
+    var hasMoreClipboard: Bool { clipboardPage < clipboardTotalPages - 1 }
 
     private var scheduleCheckTimer: Timer?
     private var backgroundCheckTimer: Timer?
@@ -154,8 +165,8 @@ class CommandStore: ObservableObject {
     func loadHistory() {
         let pageSize = Settings.shared.pageSize
         historyPage = 0
+        historyTotalCount = db.getHistoryCount()
         history = db.loadHistory(limit: pageSize, offset: 0)
-        hasMoreHistory = history.count >= pageSize
     }
 
     func loadMoreHistory() {
@@ -163,24 +174,19 @@ class CommandStore: ObservableObject {
         let pageSize = Settings.shared.pageSize
         historyPage += 1
         let newItems = db.loadHistory(limit: pageSize, offset: historyPage * pageSize)
-        if newItems.isEmpty {
-            hasMoreHistory = false
-        } else {
-            history.append(contentsOf: newItems)
-            hasMoreHistory = newItems.count >= pageSize
-        }
+        history.append(contentsOf: newItems)
     }
 
     func goToHistoryPage(_ page: Int) {
+        guard page >= 0 && page < historyTotalPages else { return }
         let pageSize = Settings.shared.pageSize
         historyPage = page
         history = db.loadHistory(limit: pageSize, offset: page * pageSize)
-        hasMoreHistory = history.count >= pageSize
     }
 
     func searchHistory(query: String, startDate: Date? = nil, endDate: Date? = nil) {
         historyPage = 0
-        hasMoreHistory = false
+        historyTotalCount = 0
         history = db.searchHistory(query: query, startDate: startDate, endDate: endDate)
     }
 
@@ -188,15 +194,15 @@ class CommandStore: ObservableObject {
         db.clearHistory()
         history.removeAll()
         historyPage = 0
-        hasMoreHistory = false
+        historyTotalCount = 0
     }
 
     // 클립보드 관련
     func loadClipboard() {
         let pageSize = Settings.shared.pageSize
         clipboardPage = 0
+        clipboardTotalCount = db.getClipboardCount()
         clipboardItems = db.loadClipboard(limit: pageSize, offset: 0)
-        hasMoreClipboard = clipboardItems.count >= pageSize
     }
 
     func loadMoreClipboard() {
@@ -204,24 +210,19 @@ class CommandStore: ObservableObject {
         let pageSize = Settings.shared.pageSize
         clipboardPage += 1
         let newItems = db.loadClipboard(limit: pageSize, offset: clipboardPage * pageSize)
-        if newItems.isEmpty {
-            hasMoreClipboard = false
-        } else {
-            clipboardItems.append(contentsOf: newItems)
-            hasMoreClipboard = newItems.count >= pageSize
-        }
+        clipboardItems.append(contentsOf: newItems)
     }
 
     func goToClipboardPage(_ page: Int) {
+        guard page >= 0 && page < clipboardTotalPages else { return }
         let pageSize = Settings.shared.pageSize
         clipboardPage = page
         clipboardItems = db.loadClipboard(limit: pageSize, offset: page * pageSize)
-        hasMoreClipboard = clipboardItems.count >= pageSize
     }
 
     func searchClipboard(query: String, startDate: Date? = nil, endDate: Date? = nil) {
         clipboardPage = 0
-        hasMoreClipboard = false
+        clipboardTotalCount = 0
         clipboardItems = db.searchClipboard(query: query, startDate: startDate, endDate: endDate)
     }
 
@@ -258,7 +259,7 @@ class CommandStore: ObservableObject {
         db.clearClipboard()
         clipboardItems.removeAll()
         clipboardPage = 0
-        hasMoreClipboard = false
+        clipboardTotalCount = 0
     }
 
     func registerClipboardAsCommand(_ item: ClipboardItem, asLast: Bool = true, groupId: UUID = CommandStore.defaultGroupId, terminalApp: TerminalApp = .iterm2) {

@@ -136,19 +136,17 @@ struct ContentView: View {
                                 }
                             }
                         }
-                        // 페이징 모드: 더 보기 버튼
-                        if !settings.useInfiniteScroll && store.hasMoreHistory {
-                            Button(action: { store.loadMoreHistory() }) {
-                                Text(L.buttonLoadMore)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 8)
-                            }
-                            .buttonStyle(.plain)
-                        }
                     }
                     .padding(8)
+
+                    // 페이징 모드: 페이지 네비게이션
+                    if !settings.useInfiniteScroll && store.historyTotalPages > 1 {
+                        PaginationView(
+                            currentPage: store.historyPage,
+                            totalPages: store.historyTotalPages,
+                            onPageChange: { store.goToHistoryPage($0) }
+                        )
+                    }
                 }
                 .background(Color.clear)
                 .overlay {
@@ -259,19 +257,17 @@ struct ContentView: View {
                                 }
                             }
                         }
-                        // 페이징 모드: 더 보기 버튼
-                        if !settings.useInfiniteScroll && !showClipboardFavoritesOnly && store.hasMoreClipboard {
-                            Button(action: { store.loadMoreClipboard() }) {
-                                Text(L.buttonLoadMore)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 8)
-                            }
-                            .buttonStyle(.plain)
-                        }
                     }
                     .padding(8)
+
+                    // 페이징 모드: 페이지 네비게이션
+                    if !settings.useInfiniteScroll && !showClipboardFavoritesOnly && store.clipboardTotalPages > 1 {
+                        PaginationView(
+                            currentPage: store.clipboardPage,
+                            totalPages: store.clipboardTotalPages,
+                            onPageChange: { store.goToClipboardPage($0) }
+                        )
+                    }
                 }
                 .background(Color.clear)
                 .overlay {

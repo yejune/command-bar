@@ -535,6 +535,19 @@ class Database {
         executeStatements("DELETE FROM history")
     }
 
+    func getHistoryCount() -> Int {
+        var count = 0
+        let sql = "SELECT COUNT(*) FROM history"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                count = Int(sqlite3_column_int(stmt, 0))
+            }
+        }
+        sqlite3_finalize(stmt)
+        return count
+    }
+
     // MARK: - Clipboard
 
     func addClipboard(_ item: ClipboardItem) {
@@ -646,6 +659,19 @@ class Database {
 
     func clearClipboard() {
         executeStatements("DELETE FROM clipboard")
+    }
+
+    func getClipboardCount() -> Int {
+        var count = 0
+        let sql = "SELECT COUNT(*) FROM clipboard"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                count = Int(sqlite3_column_int(stmt, 0))
+            }
+        }
+        sqlite3_finalize(stmt)
+        return count
     }
 
     func toggleClipboardFavorite(_ id: UUID) -> Bool {
