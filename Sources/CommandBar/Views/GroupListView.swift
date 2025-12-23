@@ -43,8 +43,8 @@ struct GroupListView: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
+        .frame(height: 22)
         .padding(.horizontal, 12)
-        .padding(.vertical, 4)
     }
 
     var groupListView: some View {
