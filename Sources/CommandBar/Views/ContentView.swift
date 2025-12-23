@@ -383,8 +383,8 @@ struct ContentView: View {
 
                     Spacer()
                 }
+                .frame(height: 24)
                 .padding(.horizontal, 12)
-                .padding(.vertical, 4)
                 Divider()
                 ScrollView {
                     LazyVStack(spacing: 4) {
@@ -860,8 +860,8 @@ struct SearchBarView: View {
                 .buttonStyle(.plain)
             }
         }
+        .frame(height: 24)
         .padding(.horizontal, 12)
-        .padding(.vertical, 4)
     }
 }
 
