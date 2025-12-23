@@ -100,13 +100,6 @@ struct SettingsView: View {
                         Toggle("", isOn: $settings.doubleClickToRun)
                             .labelsHidden()
                     }
-                } else if selectedTab == 1 {
-                    // 클립보드 설정
-                    SettingRow(label: L.settingsNotesFolderName) {
-                        TextField("", text: $settings.notesFolderName)
-                            .frame(width: 150)
-                            .textFieldStyle(.roundedBorder)
-                    }
                     SettingDivider()
                     SettingRow(label: L.settingsScrollMode) {
                         Picker("", selection: $settings.useInfiniteScroll) {
@@ -124,6 +117,13 @@ struct SettingsView: View {
                         }
                         .pickerStyle(.segmented)
                         .frame(width: 120)
+                    }
+                } else if selectedTab == 1 {
+                    // 클립보드 설정
+                    SettingRow(label: L.settingsNotesFolderName) {
+                        TextField("", text: $settings.notesFolderName)
+                            .frame(width: 150)
+                            .textFieldStyle(.roundedBorder)
                     }
                 } else if selectedTab == 2 {
                     // 백업 (가져오기/내보내기)
