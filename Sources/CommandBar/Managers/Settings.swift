@@ -224,10 +224,13 @@ class Settings: ObservableObject {
         if !otherWindows.isEmpty { return }
 
         let titlebarHeight: CGFloat = 28
+        let currentHeight = window.frame.height
 
-        // 현재 높이 저장 (펼쳐진 상태에서만)
-        if window.frame.height > titlebarHeight + 10 {
-            savedWindowHeight = window.frame.height
+        // 현재 높이 저장 (펼쳐진 상태에서만 - 최소 높이 300 이상)
+        if currentHeight >= 300 {
+            savedWindowHeight = currentHeight
+        } else if savedWindowHeight == 0 {
+            savedWindowHeight = 400  // 기본값
         }
 
         // 최소 높이 제한 임시 해제
@@ -264,14 +267,15 @@ class Settings: ObservableObject {
         // 원래 투명도로 복원
         let originalAlpha = useBackgroundOpacity ? backgroundOpacity : 1.0
 
+        isHidden = false
+
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2
             context.allowsImplicitAnimation = true
             window.animator().setFrame(newFrame, display: true)
             window.animator().alphaValue = originalAlpha
-        } completionHandler: { [weak self] in
+        } completionHandler: {
             window.minSize = NSSize(width: window.minSize.width, height: 300)
-            self?.isHidden = false
         }
     }
 
