@@ -39,6 +39,7 @@ extension LocalizedStrings {
 
         buttonClose: "Close",
         hideWindow: "Hide",
+        showWindow: "Show",
         snapToLeft: "Snap to Left",
         snapToRight: "Snap to Right",
         buttonCancel: "Cancel",

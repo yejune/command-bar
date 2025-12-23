@@ -39,6 +39,7 @@ extension LocalizedStrings {
 
         buttonClose: "閉じる",
         hideWindow: "非表示",
+        showWindow: "表示",
         snapToLeft: "左に寄せる",
         snapToRight: "右に寄せる",
         buttonCancel: "キャンセル",

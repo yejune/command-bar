@@ -54,7 +54,7 @@ class Settings: ObservableObject {
     private var appearanceObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
     private var hotKeyRef: EventHotKeyRef?
-    private var isHidden = false
+    @Published var isHidden = false
     private var savedWindowHeight: CGFloat = 0
     @Published var hotKeyRegistered = true
 
@@ -198,11 +198,20 @@ class Settings: ObservableObject {
         guard !isHidden else { return }
         guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
 
+        // 모달이나 시트가 열려있으면 숨기지 않음
+        if window.attachedSheet != nil { return }
+
+        // 다른 창이 열려있으면 숨기지 않음 (메인 창 제외)
+        let otherWindows = NSApp.windows.filter { $0.isVisible && $0 != window && $0.canBecomeMain }
+        if !otherWindows.isEmpty { return }
+
         // 현재 높이 저장
         savedWindowHeight = window.frame.height
 
-        // 타이틀바 높이만 남기기 (약 28px)
+        // 최소 높이 제한 임시 해제
         let titlebarHeight: CGFloat = 28
+        window.minSize = NSSize(width: window.minSize.width, height: titlebarHeight)
+
         var newFrame = window.frame
         newFrame.origin.y += window.frame.height - titlebarHeight
         newFrame.size.height = titlebarHeight
@@ -223,6 +232,9 @@ class Settings: ObservableObject {
         var newFrame = window.frame
         newFrame.origin.y -= savedWindowHeight - window.frame.height
         newFrame.size.height = savedWindowHeight
+
+        // 최소 높이 제한 복원
+        window.minSize = NSSize(width: window.minSize.width, height: 300)
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2

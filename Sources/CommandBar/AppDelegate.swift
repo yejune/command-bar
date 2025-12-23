@@ -44,15 +44,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 // 타이틀바 버튼 뷰
 struct TitlebarButtonsView: View {
+    @ObservedObject private var settings = Settings.shared
+
     var body: some View {
         HStack(spacing: 2) {
-            Button(action: { Settings.shared.hideWindow() }) {
-                Image(systemName: "eye.slash")
+            Button(action: { Settings.shared.toggleHide() }) {
+                Image(systemName: settings.isHidden ? "eye" : "eye.slash")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
-            .help(L.hideWindow)
+            .help(settings.isHidden ? L.showWindow : L.hideWindow)
 
             Button(action: { snapToLeft() }) {
                 Image(systemName: "sidebar.left")

@@ -39,6 +39,7 @@ extension LocalizedStrings {
 
         buttonClose: "닫기",
         hideWindow: "숨기기",
+        showWindow: "펼치기",
         snapToLeft: "왼쪽에 붙이기",
         snapToRight: "오른쪽에 붙이기",
         buttonCancel: "취소",
