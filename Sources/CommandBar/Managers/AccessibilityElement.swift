@@ -29,6 +29,73 @@ class AccessibilityElement {
         return nil
     }
 
+    /// 특정 앱의 첫 번째 윈도우 가져오기
+    static func getWindow(of app: NSRunningApplication) -> AccessibilityElement? {
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+
+        // focusedWindow 먼저 시도
+        var focusedWindow: CFTypeRef?
+        let focusResult = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
+        if focusResult == .success, let window = focusedWindow {
+            return AccessibilityElement(window as! AXUIElement)
+        }
+
+        // windows 배열에서 첫 번째 가져오기
+        var windowList: CFTypeRef?
+        let listResult = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowList)
+        if listResult == .success, let windows = windowList as? [AXUIElement], let firstWindow = windows.first {
+            return AccessibilityElement(firstWindow)
+        }
+
+        return nil
+    }
+
+    /// CommandBar가 아닌 가장 최근 활성 앱의 윈도우 가져오기
+    static func getMostRecentNonCommandBarWindow() -> AccessibilityElement? {
+        let myPid = ProcessInfo.processInfo.processIdentifier
+
+        // CGWindowListCopyWindowInfo로 창 순서대로 가져오기 (front to back)
+        guard let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else {
+            NSLog("[AccessibilityElement] Failed to get window list")
+            return nil
+        }
+
+        NSLog("[AccessibilityElement] Found %d windows on screen", windowList.count)
+
+        for windowInfo in windowList {
+            guard let ownerPid = windowInfo[kCGWindowOwnerPID as String] as? pid_t,
+                  ownerPid != myPid,
+                  let layer = windowInfo[kCGWindowLayer as String] as? Int,
+                  layer == 0 else { // layer 0 = normal windows
+                continue
+            }
+
+            let ownerName = windowInfo[kCGWindowOwnerName as String] as? String ?? "unknown"
+
+            // 해당 PID의 앱에서 윈도우 가져오기
+            let appElement = AXUIElementCreateApplication(ownerPid)
+            var focusedWindow: CFTypeRef?
+
+            // focusedWindow 먼저 시도
+            let focusResult = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
+            if focusResult == .success, let window = focusedWindow {
+                NSLog("[AccessibilityElement] Found focused window from: %@ (pid: %d)", ownerName, ownerPid)
+                return AccessibilityElement(window as! AXUIElement)
+            }
+
+            // windows 배열에서 첫 번째 시도
+            var windowListRef: CFTypeRef?
+            let listResult = AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowListRef)
+            if listResult == .success, let windows = windowListRef as? [AXUIElement], let firstWindow = windows.first {
+                NSLog("[AccessibilityElement] Found window from: %@ (pid: %d)", ownerName, ownerPid)
+                return AccessibilityElement(firstWindow)
+            }
+        }
+
+        NSLog("[AccessibilityElement] No suitable window found")
+        return nil
+    }
+
     /// 창의 현재 위치 가져오기 (AXUIElement 좌표계: 좌상단 원점)
     var position: CGPoint? {
         get {
@@ -47,7 +114,10 @@ class AccessibilityElement {
             guard let newValue = newValue else { return }
             var point = newValue
             if let axValue = AXValueCreate(.cgPoint, &point) {
-                AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, axValue)
+                let result = AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, axValue)
+                if result != .success {
+                    NSLog("[AccessibilityElement] Failed to set position: %d", result.rawValue)
+                }
             }
         }
     }
@@ -70,7 +140,10 @@ class AccessibilityElement {
             guard let newValue = newValue else { return }
             var size = newValue
             if let axValue = AXValueCreate(.cgSize, &size) {
-                AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, axValue)
+                let result = AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, axValue)
+                if result != .success {
+                    NSLog("[AccessibilityElement] Failed to set size: %d", result.rawValue)
+                }
             }
         }
     }
@@ -92,7 +165,11 @@ class AccessibilityElement {
 
     /// 창을 특정 프레임으로 설정 (애니메이션 없음)
     func setFrame(_ frame: CGRect) {
-        self.frame = frame
+        NSLog("[AccessibilityElement] setFrame called: %@", NSStringFromRect(NSRect(x: frame.origin.x, y: frame.origin.y, width: frame.width, height: frame.height)))
+        self.position = frame.origin
+        NSLog("[AccessibilityElement] position set result: %@", String(describing: self.position))
+        self.size = frame.size
+        NSLog("[AccessibilityElement] size set result: %@", String(describing: self.size))
     }
 
     /// 창을 특정 프레임으로 설정 (애니메이션 있음)
