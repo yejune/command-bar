@@ -71,6 +71,9 @@ class Settings: ObservableObject {
     private var savedWindowHeight: CGFloat = 0
     private var hideTimestamp: Date = .distantPast
 
+    // 저장된 창 프레임 (앱 시작 시 즉시 사용)
+    private(set) var storedWindowFrame: NSRect?
+
     init() {
         // UserDefaults에서 마이그레이션 (프로퍼티 초기화 전에 실행)
         Self.migrateFromUserDefaults(db: db)
@@ -84,6 +87,16 @@ class Settings: ObservableObject {
         self.useHideOpacity = db.getBoolSetting("useHideOpacity", defaultValue: true)
         self.hideOpacity = db.getDoubleSetting("hideOpacity", defaultValue: 0.1)
         self.doubleClickToRun = db.getBoolSetting("doubleClickToRun", defaultValue: true)
+
+        // 저장된 창 프레임 로드
+        let x = db.getDoubleSetting("windowX", defaultValue: -1)
+        let y = db.getDoubleSetting("windowY", defaultValue: -1)
+        let width = db.getDoubleSetting("windowWidth", defaultValue: 300)
+        let height = db.getDoubleSetting("windowHeight", defaultValue: 400)
+        if x >= 0 && y >= 0 && width >= 280 && height >= 300 {
+            self.storedWindowFrame = NSRect(x: x, y: y, width: width, height: height)
+            self.savedWindowHeight = CGFloat(height)
+        }
 
         // 시스템 테마 변경 감지
         appearanceObserver = DistributedNotificationCenter.default().addObserver(
@@ -126,8 +139,10 @@ class Settings: ObservableObject {
             self.saveWindowFrame(window.frame)
         }
 
-        // 저장된 창 위치/크기 복원
-        restoreWindowFrame()
+        // isRestoringFrame 해제 (앱 시작 후 0.5초간 프레임 저장 방지)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.isRestoringFrame = false
+        }
 
         // 자동 숨기기 적용
         if autoHide {
@@ -178,27 +193,6 @@ class Settings: ObservableObject {
         db.setDoubleSetting("windowY", value: Double(frame.origin.y))
         db.setDoubleSetting("windowWidth", value: Double(frame.width))
         db.setDoubleSetting("windowHeight", value: Double(frame.height))
-    }
-
-    private func restoreWindowFrame() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self = self else { return }
-            defer { self.isRestoringFrame = false }
-
-            guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
-
-            let x = self.db.getDoubleSetting("windowX", defaultValue: -1)
-            let y = self.db.getDoubleSetting("windowY", defaultValue: -1)
-            let width = self.db.getDoubleSetting("windowWidth", defaultValue: 300)
-            let height = self.db.getDoubleSetting("windowHeight", defaultValue: 400)
-
-            // 저장된 위치가 있으면 복원
-            if x >= 0 && y >= 0 && width >= 280 && height >= 300 {
-                let frame = NSRect(x: x, y: y, width: width, height: height)
-                window.setFrame(frame, display: true)
-                self.savedWindowHeight = CGFloat(height)
-            }
-        }
     }
 
     func applyAlwaysOnTop() {

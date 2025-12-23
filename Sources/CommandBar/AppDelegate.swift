@@ -7,11 +7,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    private var didRestoreFrame = false
+
     func applicationDidBecomeActive(_ notification: Notification) {
         for window in NSApp.windows where window.canBecomeMain {
             window.standardWindowButton(.zoomButton)?.isHidden = true
             window.minSize = NSSize(width: 280, height: 300)
             setupTitlebarButtons(for: window)
+
+            // 저장된 창 프레임 즉시 적용 (최초 1회)
+            if !didRestoreFrame, let frame = Settings.shared.storedWindowFrame {
+                window.setFrame(frame, display: false)
+                didRestoreFrame = true
+            }
         }
     }
 
