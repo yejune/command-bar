@@ -58,17 +58,20 @@ git checkout {branch:main|develop}       # Dropdown selection
 
 | Feature | Description |
 |---------|-------------|
-| **History** | Execution records with text/date search (max 100) |
-| **Clipboard** | Monitor clipboard with search (max 10,000), send to Apple Notes |
+| **History** | Execution records with calendar date picker, text search |
+| **Clipboard** | Auto-capture with favorites, calendar filter, send to Apple Notes |
 | **Groups** | Organize commands with colors, drag & drop reorder |
-| **Favorites** | Star icon toggle, filter with group |
+| **Favorites** | Star icon toggle for commands and clipboard items |
 | **Trash** | Deleted items recoverable |
+| **Pagination** | Infinite scroll or paging mode (30/50/100 items) |
 
 ### Window Features
 - Always on top option
 - Background opacity control
-- Auto-hide when focus lost (with opacity setting)
+- Auto-hide when focus lost (titlebar toggle button)
 - Window position/size remembered
+- Snap to left/right edge buttons
+- Double-click behavior setting (run vs edit)
 
 ### Multi-language
 - Korean, English, Japanese
