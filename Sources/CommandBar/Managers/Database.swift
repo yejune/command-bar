@@ -158,6 +158,51 @@ class Database {
 
         let createHistoryExecutionsIndex = "CREATE INDEX IF NOT EXISTS idx_history_executions_history_id ON history_executions(history_id)"
         sqlite3_exec(db, createHistoryExecutionsIndex, nil, nil, nil)
+
+        // short_ids 테이블 생성 (글로벌 유니크 짧은 ID)
+        let createShortIdsTable = """
+        CREATE TABLE IF NOT EXISTS short_ids (
+            short_id TEXT PRIMARY KEY,
+            full_id TEXT UNIQUE NOT NULL,
+            type TEXT NOT NULL
+        )
+        """
+        executeStatements(createShortIdsTable)
+
+        let createShortIdsIndex = "CREATE INDEX IF NOT EXISTS idx_short_ids_full_id ON short_ids(full_id)"
+        sqlite3_exec(db, createShortIdsIndex, nil, nil, nil)
+
+        // 기존 항목에 대해 short_id 마이그레이션
+        migrateShortIds()
+    }
+
+    private func migrateShortIds() {
+        // commands 테이블의 기존 항목에 short_id 부여
+        let commandsSql = "SELECT id FROM commands WHERE id NOT IN (SELECT full_id FROM short_ids WHERE type = 'command')"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, commandsSql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let idCStr = sqlite3_column_text(stmt, 0) {
+                    let fullId = String(cString: idCStr)
+                    let shortId = generateUniqueShortId()
+                    insertShortId(shortId: shortId, fullId: fullId, type: "command")
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+
+        // clipboard 테이블의 기존 항목에 short_id 부여
+        let clipboardSql = "SELECT id FROM clipboard WHERE id NOT IN (SELECT full_id FROM short_ids WHERE type = 'clipboard')"
+        if sqlite3_prepare_v2(db, clipboardSql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let idCStr = sqlite3_column_text(stmt, 0) {
+                    let fullId = String(cString: idCStr)
+                    let shortId = generateUniqueShortId()
+                    insertShortId(shortId: shortId, fullId: fullId, type: "clipboard")
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
     }
 
     private func executeStatements(_ sql: String) {
@@ -644,6 +689,25 @@ class Database {
         sqlite3_finalize(stmt)
     }
 
+    func getHistoryExecutions(historyId: String) -> [Date] {
+        var dates: [Date] = []
+        let sql = "SELECT executed_at FROM history_executions WHERE history_id = ? ORDER BY executed_at DESC"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, historyId, -1, SQLITE_TRANSIENT)
+            let formatter = ISO8601DateFormatter()
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let dateStr = sqlite3_column_text(stmt, 0) {
+                    if let date = formatter.date(from: String(cString: dateStr)) {
+                        dates.append(date)
+                    }
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return dates
+    }
+
     func clearHistory() {
         executeStatements("DELETE FROM history")
         executeStatements("DELETE FROM history_executions")
@@ -1046,6 +1110,152 @@ class Database {
         let appJsonExists = FileManager.default.fileExists(atPath: configDir.appendingPathComponent("app.json").path)
         let dbEmpty = loadCommands().isEmpty && loadGroups().isEmpty
         return appJsonExists && dbEmpty
+    }
+
+    // MARK: - Short IDs
+
+    /// 유니크한 8자 short_id 생성
+    func generateUniqueShortId(length: Int = 8) -> String {
+        let chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+        var shortId: String
+        repeat {
+            shortId = String((0..<length).map { _ in chars.randomElement()! })
+        } while shortIdExists(shortId)
+        return shortId
+    }
+
+    /// short_id 중복 체크
+    func shortIdExists(_ shortId: String) -> Bool {
+        let sql = "SELECT 1 FROM short_ids WHERE short_id = ? LIMIT 1"
+        var stmt: OpaquePointer?
+        var exists = false
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, shortId, -1, SQLITE_TRANSIENT)
+            exists = sqlite3_step(stmt) == SQLITE_ROW
+        }
+        sqlite3_finalize(stmt)
+        return exists
+    }
+
+    /// short_id 삽입
+    func insertShortId(shortId: String, fullId: String, type: String) {
+        let sql = "INSERT OR IGNORE INTO short_ids (short_id, full_id, type) VALUES (?, ?, ?)"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, shortId, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, fullId, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 3, type, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    /// full_id로 short_id 조회
+    func getShortId(fullId: String) -> String? {
+        let sql = "SELECT short_id FROM short_ids WHERE full_id = ?"
+        var stmt: OpaquePointer?
+        var shortId: String?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, fullId, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let cStr = sqlite3_column_text(stmt, 0) {
+                    shortId = String(cString: cStr)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return shortId
+    }
+
+    /// short_id로 full_id 조회
+    func getFullId(shortId: String) -> String? {
+        let sql = "SELECT full_id FROM short_ids WHERE short_id = ?"
+        var stmt: OpaquePointer?
+        var fullId: String?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, shortId, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let cStr = sqlite3_column_text(stmt, 0) {
+                    fullId = String(cString: cStr)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return fullId
+    }
+
+    /// short_id 수정 (커스텀 ID 설정)
+    func updateShortId(oldShortId: String, newShortId: String) -> Bool {
+        // 새 ID 중복 체크
+        if shortIdExists(newShortId) {
+            return false
+        }
+        let sql = "UPDATE short_ids SET short_id = ? WHERE short_id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, newShortId, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, oldShortId, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+        return true
+    }
+
+    /// short_id 삭제 (항목 삭제 시)
+    func deleteShortId(fullId: String) {
+        let sql = "DELETE FROM short_ids WHERE full_id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, fullId, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    /// 모든 short_id 목록 조회 (자동완성용)
+    func getAllShortIds() -> [(shortId: String, fullId: String, type: String)] {
+        var result: [(shortId: String, fullId: String, type: String)] = []
+        let sql = "SELECT short_id, full_id, type FROM short_ids"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let shortIdCStr = sqlite3_column_text(stmt, 0),
+                   let fullIdCStr = sqlite3_column_text(stmt, 1),
+                   let typeCStr = sqlite3_column_text(stmt, 2) {
+                    result.append((
+                        shortId: String(cString: shortIdCStr),
+                        fullId: String(cString: fullIdCStr),
+                        type: String(cString: typeCStr)
+                    ))
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
+    /// {uuid:xxx} 패턴을 {id:shortId}로 치환
+    func convertUuidToShortId(in text: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: "\\{uuid:([^}]+)\\}") else {
+            return text
+        }
+
+        var result = text
+        let range = NSRange(text.startIndex..., in: text)
+        let matches = regex.matches(in: text, range: range).reversed()
+
+        for match in matches {
+            guard let fullRange = Range(match.range, in: result),
+                  let uuidRange = Range(match.range(at: 1), in: result) else { continue }
+
+            let uuidString = String(result[uuidRange])
+            // UUID로 shortId 찾기
+            if let shortId = getShortId(fullId: uuidString) {
+                result.replaceSubrange(fullRange, with: "{id:\(shortId)}")
+            }
+        }
+
+        return result
     }
 }
 

@@ -4,13 +4,13 @@ import AppKit
 class SuggestionPopupController: NSViewController {
     private var popover: NSPopover?
     private var hostingView: NSHostingView<SuggestionListView>?
-    private var textField: NSTextField?
+    private var targetView: NSView?
     private var suggestions: [String] = []
     private var selectedIndex: Int = 0
     private var onSelect: ((String) -> Void)?
 
     func show(
-        relativeTo textField: NSTextField,
+        relativeTo view: NSView,
         suggestions: [String],
         onSelect: @escaping (String) -> Void
     ) {
@@ -19,7 +19,7 @@ class SuggestionPopupController: NSViewController {
             return
         }
 
-        self.textField = textField
+        self.targetView = view
         self.suggestions = suggestions
         self.selectedIndex = 0
         self.onSelect = onSelect
@@ -45,13 +45,13 @@ class SuggestionPopupController: NSViewController {
         let maxHeight: CGFloat = min(CGFloat(suggestions.count) * 24 + 8, 200)
         popover?.contentSize = NSSize(width: 200, height: maxHeight)
 
-        if let fieldWindow = textField.window,
-           let fieldView = textField.superview {
-            let fieldFrame = fieldView.convert(textField.frame, to: nil)
-            _ = fieldWindow.convertToScreen(fieldFrame)
-            let popoverRect = NSRect(x: 0, y: 0, width: textField.bounds.width, height: textField.bounds.height)
+        if let viewWindow = view.window,
+           let viewSuper = view.superview {
+            let viewFrame = viewSuper.convert(view.frame, to: nil)
+            _ = viewWindow.convertToScreen(viewFrame)
+            let popoverRect = NSRect(x: 0, y: 0, width: view.bounds.width, height: view.bounds.height)
 
-            popover?.show(relativeTo: popoverRect, of: textField, preferredEdge: .maxY)
+            popover?.show(relativeTo: popoverRect, of: view, preferredEdge: .maxY)
         }
     }
 
@@ -59,7 +59,7 @@ class SuggestionPopupController: NSViewController {
         popover?.close()
         popover = nil
         hostingView = nil
-        textField = nil
+        targetView = nil
         suggestions = []
         selectedIndex = 0
         onSelect = nil

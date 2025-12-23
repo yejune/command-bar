@@ -111,6 +111,7 @@ extension LocalizedStrings {
         historyNoHistory: "履歴がありません",
         historyOutput: "出力",
         historyTimes: "回",
+        historyExecutions: "実行履歴",
 
         searchPlaceholder: "検索...",
 
@@ -171,6 +172,7 @@ extension LocalizedStrings {
         contextMenuRun: "実行",
         contextMenuEdit: "編集",
         contextMenuCopy: "コピー",
+        contextMenuCopyId: "IDをコピー",
         helpSyntax: "基本文法",
         parameter: "パラメータ",
         timeAfter: "後",
@@ -243,6 +245,7 @@ extension LocalizedStrings {
         envName: "名前",
         envColor: "色",
         envVariableName: "変数名",
+        envTitle: "環境",
         envSelectEnvironment: "環境を選択",
         envManage: "管理",
 

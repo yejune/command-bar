@@ -111,6 +111,7 @@ extension LocalizedStrings {
         historyNoHistory: "기록이 없습니다",
         historyOutput: "출력",
         historyTimes: "회",
+        historyExecutions: "실행 이력",
 
         searchPlaceholder: "검색...",
 
@@ -171,6 +172,7 @@ extension LocalizedStrings {
         contextMenuRun: "실행",
         contextMenuEdit: "수정",
         contextMenuCopy: "복사",
+        contextMenuCopyId: "ID 복사",
         helpSyntax: "기본 문법",
         parameter: "파라미터",
         timeAfter: "후",
@@ -243,6 +245,7 @@ extension LocalizedStrings {
         envName: "이름",
         envColor: "색상",
         envVariableName: "변수명",
+        envTitle: "환경",
         envSelectEnvironment: "환경 선택",
         envManage: "환경 관리",
 

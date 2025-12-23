@@ -31,7 +31,8 @@ struct APIParameterInputView: View {
                                 set: { values[info.name] = $0 }
                             ),
                             placeholder: "",
-                            suggestions: store.allEnvironmentVariableNames
+                            suggestions: store.allEnvironmentVariableNames,
+                            idSuggestions: store.allIdSuggestions
                         )
                         .frame(height: 22)
                     } else {

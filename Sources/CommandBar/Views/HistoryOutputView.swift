@@ -4,6 +4,10 @@ struct HistoryOutputView: View {
     let item: HistoryItem
     let onClose: () -> Void
 
+    var executions: [Date] {
+        Database.shared.getHistoryExecutions(historyId: item.id.uuidString)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
@@ -45,6 +49,29 @@ struct HistoryOutputView: View {
                             .cornerRadius(6)
                     }
                     .frame(maxHeight: .infinity)
+                }
+
+                // 실행 이력
+                if executions.count > 1 {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(L.historyExecutions)(\(executions.count))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(executions, id: \.self) { date in
+                                    Text(date, format: .dateTime)
+                                        .font(.caption.monospaced())
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxHeight: 100)
+                        .padding(8)
+                        .background(Color.gray.opacity(0.1))
+                        .cornerRadius(6)
+                    }
                 }
             }
             .padding()

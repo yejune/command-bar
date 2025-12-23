@@ -57,17 +57,7 @@ struct ContentView: View {
 
             if showingHistory {
                 // 히스토리 보기
-                SubtitleBar(title: L.tabHistory) {
-                    if !store.history.isEmpty {
-                        Button(L.buttonClear) {
-                            store.clearHistory()
-                            historySearchText = ""
-                            historySearchDate = nil
-                        }
-                        .font(.caption)
-                        .buttonStyle(HoverButtonStyle())
-                    }
-                }
+                SubtitleBar(title: L.tabHistory) { }
                 Divider()
                 SearchBarView(
                     searchText: $historySearchText,
@@ -163,16 +153,12 @@ struct ContentView: View {
                 }
             } else if showingClipboard {
                 // 클립보드 보기
-                SubtitleBar(title: L.tabClipboard) {
-                    if !store.clipboardItems.isEmpty {
-                        Button(L.buttonClear) {
-                            store.clearClipboard()
-                            clipboardSearchText = ""
-                            clipboardSearchDate = nil
-                        }
-                        .font(.caption)
-                        .buttonStyle(HoverButtonStyle())
+                SubtitleBar(title: "\(L.tabClipboard)(\(store.clipboardTotalCount))") {
+                    Button(action: { showClipboardFavoritesOnly.toggle() }) {
+                        Image(systemName: showClipboardFavoritesOnly ? "star.fill" : "star")
+                            .foregroundStyle(showClipboardFavoritesOnly ? .yellow : .secondary)
                     }
+                    .buttonStyle(SmallHoverButtonStyle())
                 }
                 Divider()
                 SearchBarView(
@@ -185,8 +171,8 @@ struct ContentView: View {
                         clipboardSearchDate = nil
                         store.loadClipboard()
                     },
-                    showFavoritesOnly: $showClipboardFavoritesOnly,
-                    hasFavorites: true
+                    showFavoritesOnly: .constant(false),
+                    hasFavorites: false
                 )
                 .onAppear { clipboardDateCounts = Database.shared.getClipboardDateCounts() }
                 Divider()
@@ -196,13 +182,6 @@ struct ContentView: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     HStack(spacing: 4) {
-                                        Image(systemName: item.isFavorite ? "star.fill" : "star")
-                                            .foregroundStyle(item.isFavorite ? .yellow : .gray.opacity(0.4))
-                                            .font(.caption2)
-                                            .gesture(
-                                                DragGesture(minimumDistance: 0)
-                                                    .onEnded { _ in store.toggleClipboardFavorite(item) }
-                                            )
                                         Text(item.preview)
                                             .lineLimit(1)
                                         if item.copyCount > 1 {
@@ -237,6 +216,13 @@ struct ContentView: View {
                                     }
                                     .buttonStyle(SmallHoverButtonStyle())
                                     .help(L.clipboardSendToNotes)
+                                    Button(action: {
+                                        store.toggleClipboardFavorite(item)
+                                    }) {
+                                        Image(systemName: item.isFavorite ? "star.fill" : "star")
+                                            .foregroundStyle(item.isFavorite ? .yellow : .gray.opacity(0.4))
+                                    }
+                                    .buttonStyle(SmallHoverButtonStyle())
                                     Button(action: {
                                         store.removeClipboardItem(item)
                                     }) {
@@ -378,17 +364,25 @@ struct ContentView: View {
                 }
             } else {
                 // 일반 리스트
-                SubtitleBar(title: L.tabCommands) {
-                    Text("\(filteredItems.count)")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                SubtitleBar(title: "\(L.tabCommands)(\(filteredItems.count))") {
+                    Button(action: { showFavoritesOnly.toggle() }) {
+                        Image(systemName: showFavoritesOnly ? "star.fill" : "star")
+                            .foregroundStyle(showFavoritesOnly ? .yellow : .secondary)
+                    }
+                    .buttonStyle(SmallHoverButtonStyle())
                 }
                 Divider()
                 // 그룹 선택 바
-                HStack(spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(L.groupTitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, alignment: .leading)
+
                     Picker("", selection: $selectedGroupId) {
                         Label {
-                            Text("  \(L.groupAll)")
+                            let totalCount = store.commands.filter { !$0.isInTrash }.count
+                            Text("  \(L.groupAll)(\(totalCount))")
                         } icon: {
                             colorCircleImage("gray", size: 8, leftShift: 2)
                         }.tag(nil as UUID?)
@@ -397,7 +391,8 @@ struct ContentView: View {
 
                         ForEach(store.groups) { group in
                             Label {
-                                Text("  \(group.name)")
+                                let count = store.commands.filter { $0.groupId == group.id && !$0.isInTrash }.count
+                                Text("  \(group.name)(\(count))")
                             } icon: {
                                 colorCircleImage(group.color, size: 8, leftShift: 2)
                             }.tag(group.id as UUID?)
@@ -405,13 +400,7 @@ struct ContentView: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
-                    .padding(.leading, -4)
-
-                    Button(action: { showFavoritesOnly.toggle() }) {
-                        Image(systemName: showFavoritesOnly ? "star.fill" : "star")
-                            .foregroundStyle(showFavoritesOnly ? .yellow : .secondary)
-                    }
-                    .buttonStyle(SmallHoverButtonStyle())
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                     if let groupId = selectedGroupId,
                        let group = store.groups.first(where: { $0.id == groupId }) {
@@ -419,9 +408,12 @@ struct ContentView: View {
                             Image(systemName: "pencil.circle")
                         }
                         .buttonStyle(SmallHoverButtonStyle())
+                    } else {
+                        Button(action: { showAddGroupSheet = true }) {
+                            Image(systemName: "folder.badge.plus")
+                        }
+                        .buttonStyle(SmallHoverButtonStyle())
                     }
-
-                    Spacer()
                 }
                 .frame(height: 24)
                 .padding(.horizontal, 12)
@@ -430,9 +422,10 @@ struct ContentView: View {
                 if store.commands.contains(where: { $0.executionType == .api && !$0.isInTrash }) {
                     Divider()
                     HStack(spacing: 6) {
-                        Text(L.envSelectEnvironment)
+                        Text(L.envTitle)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .frame(width: 30, alignment: .leading)
 
                         Picker("", selection: Binding(
                             get: { store.activeEnvironmentId },
@@ -444,34 +437,30 @@ struct ContentView: View {
                                 }
                             }
                         )) {
-                            Text("-").tag(nil as UUID?)
+                            Label {
+                                Text("  -")
+                            } icon: {
+                                colorCircleImage("gray", size: 8, leftShift: 2)
+                            }.tag(nil as UUID?)
+
+                            Divider()
+
                             ForEach(store.environments) { env in
                                 Label {
-                                    Text(env.name)
+                                    Text("  \(env.name)")
                                 } icon: {
-                                    Circle()
-                                        .fill(colorFor(env.color))
-                                        .frame(width: 8, height: 8)
+                                    colorCircleImage(env.color, size: 8, leftShift: 2)
                                 }.tag(env.id as UUID?)
                             }
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
-                        .frame(maxWidth: 120)
-
-                        if let env = store.activeEnvironment {
-                            Circle()
-                                .fill(colorFor(env.color))
-                                .frame(width: 8, height: 8)
-                        }
-
-                        Spacer()
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
                         Button(action: {
                             EnvironmentManagerWindowController.show(store: store)
                         }) {
-                            Label(L.envManage, systemImage: "globe")
-                                .font(.caption)
+                            Image(systemName: "globe")
                         }
                         .buttonStyle(SmallHoverButtonStyle())
                     }

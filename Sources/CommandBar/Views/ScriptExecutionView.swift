@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ScriptExecutionView: View {
     let command: Command
@@ -21,12 +22,26 @@ struct ScriptExecutionView: View {
         return true
     }
 
+    var shortId: String {
+        Database.shared.getShortId(fullId: command.id.uuidString) ?? String(command.id.uuidString.prefix(8)).lowercased()
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // 상단 헤더
             VStack(alignment: .leading, spacing: 8) {
-                Text(command.title)
-                    .font(.headline)
+                HStack {
+                    Text(command.title)
+                        .font(.headline)
+                    Spacer()
+                    Button(action: copyId) {
+                        Text(shortId)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("ID 복사: {id:\(command.id.uuidString)}")
+                }
 
                 Text(executedCommand ?? command.command)
                     .font(.caption.monospaced())
@@ -52,7 +67,8 @@ struct ScriptExecutionView: View {
                                         set: { values[info.name] = $0 }
                                     ),
                                     placeholder: "",
-                                    suggestions: store.allEnvironmentVariableNames
+                                    suggestions: store.allEnvironmentVariableNames,
+                                    idSuggestions: store.allIdSuggestions
                                 )
                                 .frame(height: 22)
                             } else {
@@ -131,6 +147,13 @@ struct ScriptExecutionView: View {
             }
         }
         var finalCommand = command.commandWith(values: finalValues)
+
+        // {id:xxx} 체이닝 처리
+        finalCommand = store.resolveIdReferences(in: finalCommand)
+
+        // {var:xxx} 환경 변수 처리
+        finalCommand = store.resolveVarReferences(in: finalCommand)
+
         // 스마트 따옴표를 일반 따옴표로 변환
         finalCommand = finalCommand
             .replacingOccurrences(of: "\u{201C}", with: "\"")  // "
@@ -151,5 +174,11 @@ struct ScriptExecutionView: View {
                 commandId: command.id
             ))
         }
+    }
+
+    func copyId() {
+        let idString = "{id:\(shortId)}"
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(idString, forType: .string)
     }
 }

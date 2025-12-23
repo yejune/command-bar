@@ -104,6 +104,11 @@ struct RightClickMenu: NSViewRepresentable {
             copyItem.image = NSImage(systemSymbolName: "doc.on.doc", accessibilityDescription: nil)
             menu.addItem(copyItem)
 
+            let copyIdItem = NSMenuItem(title: L.contextMenuCopyId, action: #selector(copyIdAction), keyEquivalent: "")
+            copyIdItem.target = self
+            copyIdItem.image = NSImage(systemSymbolName: "number", accessibilityDescription: nil)
+            menu.addItem(copyIdItem)
+
             menu.addItem(NSMenuItem.separator())
 
             // Move to Group submenu
@@ -167,6 +172,13 @@ struct RightClickMenu: NSViewRepresentable {
         @objc func toggleFavoriteAction() { onToggleFavorite?() }
         @objc func editAction() { onEdit?() }
         @objc func copyAction() { onCopy?() }
+        @objc func copyIdAction() {
+            guard let cmd = cmd else { return }
+            let shortId = Database.shared.getShortId(fullId: cmd.id.uuidString) ?? String(cmd.id.uuidString.prefix(8))
+            let idString = "{id:\(shortId)}"
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(idString, forType: .string)
+        }
         @objc func deleteAction() { onDelete?() }
         @objc func moveToGroupAction(_ sender: NSMenuItem) {
             if let groupId = sender.representedObject as? UUID {

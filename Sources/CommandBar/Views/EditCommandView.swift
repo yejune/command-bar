@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct EditCommandView: View {
     @ObservedObject var store: CommandStore
@@ -30,6 +31,8 @@ struct EditCommandView: View {
     @State private var bodyData: String
     @State private var bodyParams: [KeyValuePair]
     @State private var fileParams: [KeyValuePair]
+    @State private var shortIdText: String
+    @State private var shortIdError: String?
 
     init(store: CommandStore, command: Command, onRun: ((Command) -> Void)? = nil) {
         self.store = store
@@ -65,6 +68,10 @@ struct EditCommandView: View {
         }
         _bodyParams = State(initialValue: initialBodyParams)
         _fileParams = State(initialValue: command.fileParams.map { KeyValuePair(key: $0.key, value: $0.value) })
+        // shortId 초기화
+        let existingShortId = Database.shared.getShortId(fullId: command.id.uuidString) ?? ""
+        _shortIdText = State(initialValue: existingShortId)
+        _shortIdError = State(initialValue: nil)
     }
 
     var isValid: Bool {
@@ -98,8 +105,18 @@ struct EditCommandView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(L.commandEditTitle)
-                .font(.headline)
+            HStack {
+                Text(L.commandEditTitle)
+                    .font(.headline)
+                Spacer()
+                Button(action: copyUUID) {
+                    Text(command.id.uuidString.prefix(8) + "...")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("UUID 복사: \(command.id.uuidString)")
+            }
 
             Divider()
 
@@ -109,6 +126,32 @@ struct EditCommandView: View {
                     .foregroundStyle(.secondary)
                 TextField("", text: $title)
                     .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Short ID")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    TextField("", text: $shortIdText)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 100)
+                        .onChange(of: shortIdText) { _, newValue in
+                            validateShortId(newValue)
+                        }
+                    Button(action: copyId) {
+                        Image(systemName: "doc.on.doc")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .help("ID 복사: {id:\(shortIdText)}")
+                    if let error = shortIdError {
+                        Text(error)
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                    }
+                    Spacer()
+                }
             }
 
             // 휴지통 아이템이 아닐 때만 그룹 선택 표시
@@ -218,8 +261,13 @@ struct EditCommandView: View {
                     Text(L.apiEndpoint)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    TextField("https://api.example.com/endpoint", text: $apiUrl)
-                        .textFieldStyle(.roundedBorder)
+                    AutocompleteTextField(
+                        text: $apiUrl,
+                        placeholder: "https://api.example.com/endpoint",
+                        suggestions: store.allEnvironmentVariableNames,
+                        idSuggestions: store.allIdSuggestions
+                    )
+                    .frame(height: 22)
                 }
 
                 // HTTP Method
@@ -254,11 +302,20 @@ struct EditCommandView: View {
                         VStack(spacing: 8) {
                             ForEach(headers.indices, id: \.self) { index in
                                 HStack(spacing: 8) {
-                                    TextField("Key", text: $headers[index].key)
-                                        .textFieldStyle(.roundedBorder)
-                                        .frame(width: 120)
-                                    TextField("Value", text: $headers[index].value)
-                                        .textFieldStyle(.roundedBorder)
+                                    AutocompleteTextField(
+                                        text: $headers[index].key,
+                                        placeholder: "Key",
+                                        suggestions: store.allEnvironmentVariableNames,
+                                        idSuggestions: store.allIdSuggestions
+                                    )
+                                    .frame(width: 120, height: 22)
+                                    AutocompleteTextField(
+                                        text: $headers[index].value,
+                                        placeholder: "Value",
+                                        suggestions: store.allEnvironmentVariableNames,
+                                        idSuggestions: store.allIdSuggestions
+                                    )
+                                    .frame(height: 22)
                                     Button(action: {
                                         headers.remove(at: index)
                                     }) {
@@ -290,11 +347,20 @@ struct EditCommandView: View {
                         VStack(spacing: 8) {
                             ForEach(queryParams.indices, id: \.self) { index in
                                 HStack(spacing: 8) {
-                                    TextField("Key", text: $queryParams[index].key)
-                                        .textFieldStyle(.roundedBorder)
-                                        .frame(width: 120)
-                                    TextField("Value", text: $queryParams[index].value)
-                                        .textFieldStyle(.roundedBorder)
+                                    AutocompleteTextField(
+                                        text: $queryParams[index].key,
+                                        placeholder: "Key",
+                                        suggestions: store.allEnvironmentVariableNames,
+                                        idSuggestions: store.allIdSuggestions
+                                    )
+                                    .frame(width: 120, height: 22)
+                                    AutocompleteTextField(
+                                        text: $queryParams[index].value,
+                                        placeholder: "Value",
+                                        suggestions: store.allEnvironmentVariableNames,
+                                        idSuggestions: store.allIdSuggestions
+                                    )
+                                    .frame(height: 22)
                                     Button(action: {
                                         queryParams.remove(at: index)
                                     }) {
@@ -329,11 +395,13 @@ struct EditCommandView: View {
                             Text(L.apiBodyData)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            TextEditor(text: $bodyData)
-                                .font(.body.monospaced())
-                                .frame(height: 100)
-                                .padding(4)
-                                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.gray.opacity(0.3)))
+                            AutocompleteTextEditor(
+                                text: $bodyData,
+                                suggestions: store.allEnvironmentVariableNames,
+                                idSuggestions: store.allIdSuggestions
+                            )
+                            .frame(height: 100)
+                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.gray.opacity(0.3)))
                         }
                     } else if bodyType == .formData {
                         VStack(alignment: .leading, spacing: 4) {
@@ -353,11 +421,20 @@ struct EditCommandView: View {
                                 VStack(spacing: 8) {
                                     ForEach(bodyParams.indices, id: \.self) { index in
                                         HStack(spacing: 8) {
-                                            TextField("Key", text: $bodyParams[index].key)
-                                                .textFieldStyle(.roundedBorder)
-                                                .frame(width: 120)
-                                            TextField("Value", text: $bodyParams[index].value)
-                                                .textFieldStyle(.roundedBorder)
+                                            AutocompleteTextField(
+                                                text: $bodyParams[index].key,
+                                                placeholder: "Key",
+                                                suggestions: store.allEnvironmentVariableNames,
+                                                idSuggestions: store.allIdSuggestions
+                                            )
+                                            .frame(width: 120, height: 22)
+                                            AutocompleteTextField(
+                                                text: $bodyParams[index].value,
+                                                placeholder: "Value",
+                                                suggestions: store.allEnvironmentVariableNames,
+                                                idSuggestions: store.allIdSuggestions
+                                            )
+                                            .frame(height: 22)
                                             Button(action: {
                                                 bodyParams.remove(at: index)
                                             }) {
@@ -389,11 +466,20 @@ struct EditCommandView: View {
                                 VStack(spacing: 8) {
                                     ForEach(bodyParams.indices, id: \.self) { index in
                                         HStack(spacing: 8) {
-                                            TextField("Key", text: $bodyParams[index].key)
-                                                .textFieldStyle(.roundedBorder)
-                                                .frame(width: 120)
-                                            TextField("Value", text: $bodyParams[index].value)
-                                                .textFieldStyle(.roundedBorder)
+                                            AutocompleteTextField(
+                                                text: $bodyParams[index].key,
+                                                placeholder: "Key",
+                                                suggestions: store.allEnvironmentVariableNames,
+                                                idSuggestions: store.allIdSuggestions
+                                            )
+                                            .frame(width: 120, height: 22)
+                                            AutocompleteTextField(
+                                                text: $bodyParams[index].value,
+                                                placeholder: "Value",
+                                                suggestions: store.allEnvironmentVariableNames,
+                                                idSuggestions: store.allIdSuggestions
+                                            )
+                                            .frame(height: 22)
                                             Button(action: {
                                                 bodyParams.remove(at: index)
                                             }) {
@@ -469,11 +555,13 @@ struct EditCommandView: View {
                     Text(L.commandInput)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    TextEditor(text: $commandText)
-                        .font(.body.monospaced())
-                        .frame(height: 80)
-                        .padding(4)
-                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.gray.opacity(0.3)))
+                    AutocompleteTextEditor(
+                        text: $commandText,
+                        suggestions: store.allEnvironmentVariableNames,
+                        idSuggestions: store.allIdSuggestions
+                    )
+                    .frame(height: 80)
+                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.gray.opacity(0.3)))
                     if executionType == .script {
                         Button(action: { showParamHelp = true }) {
                             Text(L.commandHelpText)
@@ -566,10 +654,11 @@ struct EditCommandView: View {
                         updated.fileParams = Dictionary(uniqueKeysWithValues: fileParams.map { ($0.key, $0.value) })
                     }
                     store.update(updated)
+                    saveShortId()
                     dismiss()
                 }
                 .buttonStyle(HoverTextButtonStyle())
-                .disabled(!isValid)
+                .disabled(!isValid || shortIdError != nil)
             }
         }
         .padding()
@@ -589,6 +678,95 @@ struct EditCommandView: View {
         case "gray": return .gray
         case "yellow": return .yellow
         default: return .blue
+        }
+    }
+
+    func copyId() {
+        let idString = "{id:\(shortIdText)}"
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(idString, forType: .string)
+    }
+
+    func copyUUID() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(command.id.uuidString, forType: .string)
+    }
+
+    func validateShortId(_ newValue: String) {
+        if newValue.isEmpty {
+            shortIdError = nil
+            return
+        }
+        // 현재 ID와 같으면 OK
+        let currentShortId = Database.shared.getShortId(fullId: command.id.uuidString) ?? ""
+        if newValue == currentShortId {
+            shortIdError = nil
+            return
+        }
+        // 중복 체크
+        if Database.shared.shortIdExists(newValue) {
+            shortIdError = "중복"
+        } else {
+            shortIdError = nil
+        }
+    }
+
+    func saveShortId() {
+        guard !shortIdText.isEmpty, shortIdError == nil else { return }
+        let currentShortId = Database.shared.getShortId(fullId: command.id.uuidString) ?? ""
+        if shortIdText != currentShortId && !currentShortId.isEmpty {
+            // shortId 업데이트
+            _ = Database.shared.updateShortId(oldShortId: currentShortId, newShortId: shortIdText)
+            // 모든 명령어에서 참조 치환
+            replaceShortIdReferences(from: currentShortId, to: shortIdText)
+        }
+    }
+
+    func replaceShortIdReferences(from oldId: String, to newId: String) {
+        let oldPattern = "{id:\(oldId)}"
+        let newPattern = "{id:\(newId)}"
+
+        for cmd in store.commands {
+            var updated = cmd
+            var changed = false
+
+            // command 텍스트
+            if updated.command.contains(oldPattern) {
+                updated.command = updated.command.replacingOccurrences(of: oldPattern, with: newPattern)
+                changed = true
+            }
+            // URL
+            if updated.url.contains(oldPattern) {
+                updated.url = updated.url.replacingOccurrences(of: oldPattern, with: newPattern)
+                changed = true
+            }
+            // Headers
+            var newHeaders: [String: String] = [:]
+            for (key, value) in updated.headers {
+                let newKey = key.replacingOccurrences(of: oldPattern, with: newPattern)
+                let newValue = value.replacingOccurrences(of: oldPattern, with: newPattern)
+                newHeaders[newKey] = newValue
+                if newKey != key || newValue != value { changed = true }
+            }
+            updated.headers = newHeaders
+            // Query Params
+            var newQueryParams: [String: String] = [:]
+            for (key, value) in updated.queryParams {
+                let newKey = key.replacingOccurrences(of: oldPattern, with: newPattern)
+                let newValue = value.replacingOccurrences(of: oldPattern, with: newPattern)
+                newQueryParams[newKey] = newValue
+                if newKey != key || newValue != value { changed = true }
+            }
+            updated.queryParams = newQueryParams
+            // Body Data
+            if updated.bodyData.contains(oldPattern) {
+                updated.bodyData = updated.bodyData.replacingOccurrences(of: oldPattern, with: newPattern)
+                changed = true
+            }
+
+            if changed {
+                store.update(updated)
+            }
         }
     }
 }

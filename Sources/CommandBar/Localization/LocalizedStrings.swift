@@ -135,6 +135,7 @@ struct LocalizedStrings: Codable {
     var historyNoHistory: String
     var historyOutput: String
     var historyTimes: String
+    var historyExecutions: String
 
     // 검색
     var searchPlaceholder: String
@@ -203,6 +204,7 @@ struct LocalizedStrings: Codable {
     var contextMenuRun: String
     var contextMenuEdit: String
     var contextMenuCopy: String
+    var contextMenuCopyId: String
     var helpSyntax: String
     var parameter: String
     var timeAfter: String
@@ -280,6 +282,7 @@ struct LocalizedStrings: Codable {
     var envName: String
     var envColor: String
     var envVariableName: String
+    var envTitle: String
     var envSelectEnvironment: String
     var envManage: String
 

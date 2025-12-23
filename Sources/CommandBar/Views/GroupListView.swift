@@ -30,7 +30,7 @@ struct GroupListView: View {
 
     var headerView: some View {
         HStack {
-            Text(L.groupTitle)
+            Text("\(L.groupTitle)(\(store.groups.count))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -38,10 +38,6 @@ struct GroupListView: View {
                 Image(systemName: "plus")
             }
             .buttonStyle(SmallHoverButtonStyle())
-
-            Text("\(store.groups.count)")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
         }
         .frame(height: 22)
         .padding(.horizontal, 12)

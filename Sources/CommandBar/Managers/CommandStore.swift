@@ -1221,4 +1221,177 @@ class CommandStore: ObservableObject {
         save()
         return true
     }
+
+    // MARK: - ID Suggestions for Autocomplete
+
+    /// 모든 항목의 shortId와 제목 목록 (자동완성용)
+    var allIdSuggestions: [(id: String, title: String)] {
+        let shortIds = db.getAllShortIds()
+        var result: [(id: String, title: String)] = []
+
+        for item in shortIds {
+            switch item.type {
+            case "command":
+                if let uuid = UUID(uuidString: item.fullId),
+                   let cmd = commands.first(where: { $0.id == uuid && !$0.isInTrash }) {
+                    result.append((id: item.shortId, title: cmd.title))
+                }
+            case "clipboard":
+                if let uuid = UUID(uuidString: item.fullId),
+                   let clip = clipboardItems.first(where: { $0.id == uuid }) {
+                    let preview = String(clip.content.prefix(30)).replacingOccurrences(of: "\n", with: " ")
+                    result.append((id: item.shortId, title: preview))
+                }
+            default:
+                break
+            }
+        }
+        return result
+    }
+
+    /// shortId로 full UUID 조회
+    func getFullId(shortId: String) -> UUID? {
+        if let fullIdStr = db.getFullId(shortId: shortId) {
+            return UUID(uuidString: fullIdStr)
+        }
+        return nil
+    }
+
+    /// full UUID로 shortId 조회
+    func getShortId(fullId: UUID) -> String? {
+        return db.getShortId(fullId: fullId.uuidString)
+    }
+
+    /// 새 항목에 대한 shortId 생성 및 등록
+    func registerShortId(for fullId: UUID, type: String) -> String {
+        // 이미 등록되어 있으면 기존 shortId 반환
+        if let existing = db.getShortId(fullId: fullId.uuidString) {
+            return existing
+        }
+        let shortId = db.generateUniqueShortId()
+        db.insertShortId(shortId: shortId, fullId: fullId.uuidString, type: type)
+        return shortId
+    }
+
+    // MARK: - ID Chaining
+
+    /// 문자열에서 {id:xxx} 또는 {id:xxx|path} 참조를 처리하여 값으로 치환
+    func resolveIdReferences(in text: String) -> String {
+        // {id:xxx} 또는 {id:xxx|path} 패턴
+        guard let regex = try? NSRegularExpression(pattern: "\\{id:([^}|]+)(?:\\|([^}]+))?\\}") else {
+            return text
+        }
+
+        var result = text
+        let range = NSRange(text.startIndex..., in: text)
+        let matches = regex.matches(in: text, range: range).reversed()  // 뒤에서부터 치환
+
+        for match in matches {
+            guard let fullRange = Range(match.range, in: result),
+                  let shortIdRange = Range(match.range(at: 1), in: result) else { continue }
+
+            let shortId = String(result[shortIdRange])
+            let jsonPath: String?
+            if match.numberOfRanges > 2, let pathRange = Range(match.range(at: 2), in: result) {
+                jsonPath = String(result[pathRange])
+            } else {
+                jsonPath = nil
+            }
+
+            if let value = getValueFromId(shortId: shortId, jsonPath: jsonPath) {
+                result.replaceSubrange(fullRange, with: value)
+            }
+        }
+
+        return result
+    }
+
+    /// shortId로 값 조회 (Command의 lastOutput/lastResponse 또는 ClipboardItem의 content)
+    func getValueFromId(shortId: String, jsonPath: String?) -> String? {
+        guard let fullIdStr = db.getFullId(shortId: shortId),
+              let fullId = UUID(uuidString: fullIdStr) else { return nil }
+
+        // Command에서 찾기
+        if let cmd = commands.first(where: { $0.id == fullId }) {
+            let response: String?
+            if cmd.executionType == .api {
+                response = cmd.lastResponse
+            } else {
+                response = cmd.lastOutput
+            }
+
+            guard let resp = response else { return nil }
+
+            // jsonPath가 있으면 JSON에서 값 추출
+            if let path = jsonPath, !path.isEmpty {
+                return extractValueFromJSON(resp, path: path)
+            }
+            return resp
+        }
+
+        // ClipboardItem에서 찾기
+        if let clip = clipboardItems.first(where: { $0.id == fullId }) {
+            // jsonPath가 있으면 JSON에서 값 추출 시도
+            if let path = jsonPath, !path.isEmpty {
+                return extractValueFromJSON(clip.content, path: path)
+            }
+            return clip.content
+        }
+
+        return nil
+    }
+
+    /// JSON 문자열에서 경로로 값 추출
+    private func extractValueFromJSON(_ jsonString: String, path: String) -> String? {
+        guard let data = jsonString.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) else { return nil }
+
+        let components = path.split(separator: ".").map { String($0) }
+        var current: Any = json
+
+        for component in components {
+            if let dict = current as? [String: Any], let next = dict[component] {
+                current = next
+            } else if let arr = current as? [Any], let index = Int(component), index < arr.count {
+                current = arr[index]
+            } else {
+                return nil
+            }
+        }
+
+        if let str = current as? String {
+            return str
+        } else if let num = current as? NSNumber {
+            return num.stringValue
+        } else if let bool = current as? Bool {
+            return bool ? "true" : "false"
+        }
+        return nil
+    }
+
+    /// 문자열에서 {var:xxx} 참조를 환경 변수 값으로 치환
+    func resolveVarReferences(in text: String) -> String {
+        guard let env = activeEnvironment else { return text }
+
+        // {var:xxx} 패턴
+        guard let regex = try? NSRegularExpression(pattern: "\\{var:([^}]+)\\}") else {
+            return text
+        }
+
+        var result = text
+        let range = NSRange(text.startIndex..., in: text)
+        let matches = regex.matches(in: text, range: range).reversed()
+
+        for match in matches {
+            guard let fullRange = Range(match.range, in: result),
+                  let varNameRange = Range(match.range(at: 1), in: result) else { continue }
+
+            let varName = String(result[varNameRange])
+            if let value = env.variables[varName] {
+                result.replaceSubrange(fullRange, with: value)
+            }
+        }
+
+        return result
+    }
 }

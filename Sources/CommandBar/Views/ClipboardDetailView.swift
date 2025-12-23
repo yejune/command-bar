@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ClipboardDetailView: View {
     let item: ClipboardItem
@@ -7,11 +8,25 @@ struct ClipboardDetailView: View {
     let onClose: () -> Void
     @State private var showRegisterSheet = false
 
+    var shortId: String {
+        Database.shared.getShortId(fullId: item.id.uuidString) ?? String(item.id.uuidString.prefix(8)).lowercased()
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(L.clipboardContent)
-                    .font(.headline)
+                HStack {
+                    Text(L.clipboardContent)
+                        .font(.headline)
+                    Spacer()
+                    Button(action: copyId) {
+                        Text(shortId)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("ID 복사: {id:\(item.id.uuidString)}")
+                }
                 Text(item.timestamp, format: .dateTime)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -58,5 +73,11 @@ struct ClipboardDetailView: View {
         .sheet(isPresented: $showRegisterSheet) {
             RegisterClipboardSheet(store: store, item: item, onComplete: onClose)
         }
+    }
+
+    func copyId() {
+        let idString = "{id:\(shortId)}"
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(idString, forType: .string)
     }
 }

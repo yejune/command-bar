@@ -111,6 +111,7 @@ extension LocalizedStrings {
         historyNoHistory: "No history",
         historyOutput: "Output",
         historyTimes: "times",
+        historyExecutions: "Executions",
 
         searchPlaceholder: "Search...",
 
@@ -171,6 +172,7 @@ extension LocalizedStrings {
         contextMenuRun: "Run",
         contextMenuEdit: "Edit",
         contextMenuCopy: "Copy",
+        contextMenuCopyId: "Copy ID",
         helpSyntax: "Basic Syntax",
         parameter: "Parameter",
         timeAfter: "later",
@@ -243,6 +245,7 @@ extension LocalizedStrings {
         envName: "Name",
         envColor: "Color",
         envVariableName: "Variable Name",
+        envTitle: "Env",
         envSelectEnvironment: "Select Environment",
         envManage: "Manage",
 
