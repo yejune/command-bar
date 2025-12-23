@@ -203,6 +203,7 @@ extension LocalizedStrings {
         apiExecute: "실행",
         apiLastExecuted: "마지막 실행",
         apiNoResponse: "응답 없음",
+        apiLoading: "요청 중...",
         apiAddNew: "새 API 요청",
         apiResponseHeaders: "응답 헤더",
         apiResponseBody: "응답 바디",

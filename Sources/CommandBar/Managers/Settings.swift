@@ -37,6 +37,8 @@ class Settings: ObservableObject {
         }
     }
 
+    private var appearanceObserver: NSObjectProtocol?
+
     init() {
         self.alwaysOnTop = UserDefaults.standard.bool(forKey: "alwaysOnTop")
         let saved = UserDefaults.standard.integer(forKey: "maxHistoryCount")
@@ -47,6 +49,21 @@ class Settings: ObservableObject {
         self.notesFolderName = UserDefaults.standard.string(forKey: "notesFolderName") ?? "클립보드 메모"
         let savedClipboardCount = UserDefaults.standard.integer(forKey: "maxClipboardCount")
         self.maxClipboardCount = savedClipboardCount > 0 ? savedClipboardCount : 10000
+
+        // 시스템 테마 변경 감지
+        appearanceObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applyBackgroundOpacity()
+        }
+    }
+
+    deinit {
+        if let observer = appearanceObserver {
+            DistributedNotificationCenter.default().removeObserver(observer)
+        }
     }
 
     func applyAlwaysOnTop() {

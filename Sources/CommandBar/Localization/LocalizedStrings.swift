@@ -238,6 +238,7 @@ struct LocalizedStrings: Codable {
     var apiExecute: String
     var apiLastExecuted: String
     var apiNoResponse: String
+    var apiLoading: String
     var apiAddNew: String
     var apiResponseHeaders: String
     var apiResponseBody: String

@@ -1,19 +1,51 @@
 import SwiftUI
 import AppKit
 
+// MARK: - API Response State
+class APIResponseState: ObservableObject {
+    @Published var isLoading: Bool = true
+    @Published var statusCode: Int = 0
+    @Published var headers: [String: String] = [:]
+    @Published var responseBody: String = ""
+    @Published var executionTime: TimeInterval = 0
+    @Published var elapsedTime: TimeInterval = 0
+
+    private var timer: Timer?
+    private var startTime: Date?
+
+    func startTimer() {
+        startTime = Date()
+        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self = self, let start = self.startTime else { return }
+            self.elapsedTime = Date().timeIntervalSince(start)
+        }
+    }
+
+    func update(statusCode: Int, headers: [String: String], responseBody: String, executionTime: TimeInterval) {
+        timer?.invalidate()
+        timer = nil
+        self.statusCode = statusCode
+        self.headers = headers
+        self.responseBody = responseBody
+        self.executionTime = executionTime
+        self.isLoading = false
+    }
+
+    deinit {
+        timer?.invalidate()
+    }
+}
+
 struct APIResponseView: View {
     let method: String
     let url: String
-    let statusCode: Int
-    let headers: [String: String]
-    let responseBody: String
-    let executionTime: TimeInterval
+    @ObservedObject var state: APIResponseState
     let onClose: () -> Void
 
     @State private var isHeadersExpanded = false
 
     var statusColor: Color {
-        switch statusCode {
+        switch state.statusCode {
         case 200..<300:
             return .green
         case 300..<400:
@@ -28,14 +60,13 @@ struct APIResponseView: View {
     }
 
     var formattedBody: String {
-        // JSON인 경우 포맷팅 시도
-        if let jsonData = responseBody.data(using: .utf8),
+        if let jsonData = state.responseBody.data(using: .utf8),
            let jsonObject = try? JSONSerialization.jsonObject(with: jsonData),
            let prettyData = try? JSONSerialization.data(withJSONObject: jsonObject, options: [.prettyPrinted, .sortedKeys]),
            let prettyString = String(data: prettyData, encoding: .utf8) {
             return prettyString
         }
-        return responseBody
+        return state.responseBody
     }
 
     var body: some View {
@@ -65,122 +96,144 @@ struct APIResponseView: View {
                     Text(L.apiExecutionTime + ":")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(String(format: "%.2f", executionTime * 1000) + "ms")
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
+                    if state.isLoading {
+                        Text(String(format: "%.1fs", state.elapsedTime))
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.orange)
+                    } else {
+                        Text(String(format: "%.2f", state.executionTime * 1000) + "ms")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .padding()
 
             Divider()
 
-            // 상태 코드
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Text(L.apiStatusCode + ":")
+            if state.isLoading {
+                // 로딩 중: 스피너만 표시
+                VStack {
+                    Spacer()
+                    ProgressView()
+                    Text(L.apiLoading)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(statusColor)
-                            .frame(width: 8, height: 8)
-
-                        Text("\(statusCode)")
-                            .font(.system(.body, design: .monospaced))
-                            .fontWeight(.semibold)
-                            .foregroundStyle(statusColor)
-
-                        Text(statusCodeDescription)
+                        .padding(.top, 8)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                // 완료: 상태코드/헤더/바디 표시
+                // 상태 코드
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Text(L.apiStatusCode + ":")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(statusColor)
+                                .frame(width: 8, height: 8)
+
+                            Text("\(state.statusCode)")
+                                .font(.system(.body, design: .monospaced))
+                                .fontWeight(.semibold)
+                                .foregroundStyle(statusColor)
+
+                            Text(statusCodeDescription)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-
-            Divider()
-
-            // 응답 헤더 (접을 수 있는 섹션)
-            VStack(alignment: .leading, spacing: 0) {
-                Button(action: { isHeadersExpanded.toggle() }) {
-                    HStack {
-                        Image(systemName: isHeadersExpanded ? "chevron.down" : "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        Text(L.apiResponseHeaders)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        Text("(\(headers.count))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        Spacer()
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
                 .padding(.horizontal)
                 .padding(.vertical, 8)
 
-                if isHeadersExpanded {
-                    VStack(alignment: .leading, spacing: 4) {
-                        if headers.isEmpty {
-                            Text(L.apiNoResponse)
+                Divider()
+
+                // 응답 헤더
+                VStack(alignment: .leading, spacing: 0) {
+                    Button(action: { isHeadersExpanded.toggle() }) {
+                        HStack {
+                            Image(systemName: isHeadersExpanded ? "chevron.down" : "chevron.right")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .padding(.horizontal)
-                                .padding(.vertical, 4)
-                        } else {
-                            ForEach(Array(headers.keys.sorted()), id: \.self) { key in
-                                HStack(alignment: .top, spacing: 8) {
-                                    Text(key + ":")
-                                        .font(.system(.caption, design: .monospaced))
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 150, alignment: .leading)
 
-                                    Text(headers[key] ?? "")
-                                        .font(.system(.caption, design: .monospaced))
-                                        .textSelection(.enabled)
+                            Text(L.apiResponseHeaders)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Text("(\(state.headers.count))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+
+                    if isHeadersExpanded {
+                        VStack(alignment: .leading, spacing: 4) {
+                            if state.headers.isEmpty {
+                                Text(L.apiNoResponse)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal)
+                                    .padding(.vertical, 4)
+                            } else {
+                                ForEach(Array(state.headers.keys.sorted()), id: \.self) { key in
+                                    HStack(alignment: .top, spacing: 8) {
+                                        Text(key + ":")
+                                            .font(.system(.caption, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                            .fixedSize(horizontal: true, vertical: false)
+
+                                        Text(state.headers[key] ?? "")
+                                            .font(.system(.caption, design: .monospaced))
+                                            .textSelection(.enabled)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .padding(.horizontal)
+                                    .padding(.vertical, 2)
                                 }
-                                .padding(.horizontal)
-                                .padding(.vertical, 2)
                             }
                         }
+                        .padding(.bottom, 8)
                     }
-                    .padding(.bottom, 8)
                 }
-            }
 
-            Divider()
+                Divider()
 
-            // 응답 바디
-            VStack(alignment: .leading, spacing: 4) {
-                Text(L.apiResponseBody)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal)
-                    .padding(.top, 8)
-
-                if responseBody.isEmpty {
-                    Text(L.apiNoResponse)
+                // 응답 바디
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L.apiResponseBody)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .padding()
-                } else {
-                    OutputTextView(text: formattedBody)
-                        .padding(8)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.gray.opacity(0.1))
-                        .cornerRadius(6)
                         .padding(.horizontal)
+                        .padding(.top, 8)
+
+                    if state.responseBody.isEmpty {
+                        Text(L.apiNoResponse)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding()
+                    } else {
+                        OutputTextView(text: formattedBody)
+                            .padding(8)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(6)
+                            .padding(.horizontal)
+                    }
                 }
+                .frame(maxHeight: .infinity)
+                .padding(.bottom, 8)
             }
-            .frame(maxHeight: .infinity)
-            .padding(.bottom, 8)
 
             Divider()
 
@@ -190,7 +243,7 @@ struct APIResponseView: View {
                     copyResponseToClipboard()
                 }
                 .buttonStyle(HoverTextButtonStyle())
-                .disabled(responseBody.isEmpty)
+                .disabled(state.isLoading || state.responseBody.isEmpty)
 
                 Spacer()
 
@@ -202,10 +255,15 @@ struct APIResponseView: View {
             .padding()
         }
         .frame(minWidth: 500, minHeight: 400)
+        .onAppear {
+            if state.isLoading {
+                state.startTimer()
+            }
+        }
     }
 
     var statusCodeDescription: String {
-        switch statusCode {
+        switch state.statusCode {
         case 200: return "OK"
         case 201: return "Created"
         case 204: return "No Content"
@@ -223,6 +281,6 @@ struct APIResponseView: View {
     func copyResponseToClipboard() {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(responseBody, forType: .string)
+        pasteboard.setString(state.responseBody, forType: .string)
     }
 }

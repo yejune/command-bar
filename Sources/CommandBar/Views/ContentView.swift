@@ -568,6 +568,14 @@ struct ContentView: View {
     }
 
     func executeAPICommand(_ cmd: Command) {
+        // 먼저 로딩 창 표시
+        let state = APIResponseWindowController.showLoading(
+            requestId: cmd.id,
+            method: cmd.httpMethod.rawValue,
+            url: cmd.url,
+            title: cmd.title
+        )
+
         Task {
             let startTime = Date()
             let result = await store.executeAPICommand(cmd)
@@ -592,17 +600,13 @@ struct ContentView: View {
                 responseBody = "Error: \(error.localizedDescription)"
             }
 
-            // Show response window
+            // 응답으로 state 업데이트
             await MainActor.run {
-                APIResponseWindowController.show(
-                    requestId: cmd.id,
-                    method: cmd.httpMethod.rawValue,
-                    url: cmd.url,
+                state.update(
                     statusCode: statusCode,
                     headers: headers,
                     responseBody: responseBody,
-                    executionTime: executionTime,
-                    title: cmd.title
+                    executionTime: executionTime
                 )
             }
         }

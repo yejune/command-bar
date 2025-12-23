@@ -4,29 +4,26 @@ import AppKit
 // MARK: - API Response Window Controller
 class APIResponseWindowController {
     static var activeWindows: [UUID: NSWindow] = [:]
+    static var activeStates: [UUID: APIResponseState] = [:]
 
-    static func show(
+    static func showLoading(
         requestId: UUID,
         method: String,
         url: String,
-        statusCode: Int,
-        headers: [String: String],
-        responseBody: String,
-        executionTime: TimeInterval,
         title: String
-    ) {
+    ) -> APIResponseState {
         if let existingWindow = activeWindows[requestId] {
             existingWindow.makeKeyAndOrderFront(nil)
-            return
+            return activeStates[requestId] ?? APIResponseState()
         }
+
+        let state = APIResponseState()
+        activeStates[requestId] = state
 
         let contentView = APIResponseView(
             method: method,
             url: url,
-            statusCode: statusCode,
-            headers: headers,
-            responseBody: responseBody,
-            executionTime: executionTime,
+            state: state,
             onClose: { closeWindow(for: requestId) }
         )
 
@@ -59,16 +56,20 @@ class APIResponseWindowController {
             queue: .main
         ) { _ in
             activeWindows.removeValue(forKey: requestId)
+            activeStates.removeValue(forKey: requestId)
         }
 
         activeWindows[requestId] = window
         window.makeKeyAndOrderFront(nil)
+
+        return state
     }
 
     static func closeWindow(for requestId: UUID) {
         if let window = activeWindows[requestId] {
             window.close()
             activeWindows.removeValue(forKey: requestId)
+            activeStates.removeValue(forKey: requestId)
         }
     }
 }
