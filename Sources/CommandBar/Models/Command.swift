@@ -163,6 +163,138 @@ extension Command {
     }
 }
 
+// 환경 변수 관련 extension
+extension Command {
+    /// {{변수}} 형태의 환경 변수 이름 목록 추출
+    var environmentVariableNames: [String] {
+        guard let regex = try? NSRegularExpression(pattern: "\\{\\{([a-zA-Z_가-힣][a-zA-Z0-9_가-힣]*)\\}\\}") else { return [] }
+        var result: [String] = []
+        var seenNames: Set<String> = []
+
+        // URL, headers, queryParams, bodyData에서 추출
+        let sources = [url, bodyData] + headers.values + queryParams.values
+
+        for source in sources {
+            let range = NSRange(source.startIndex..., in: source)
+            let matches = regex.matches(in: source, range: range)
+            for match in matches {
+                if let r = Range(match.range(at: 1), in: source) {
+                    let name = String(source[r])
+                    if !seenNames.contains(name) {
+                        seenNames.insert(name)
+                        result.append(name)
+                    }
+                }
+            }
+        }
+
+        return result
+    }
+
+    /// API 체이닝 참조 정보 (uuid:path 형태)
+    struct APIChainReference {
+        let fullMatch: String       // 전체 매칭 문자열
+        let commandId: UUID         // 참조할 명령 ID
+        let jsonPath: String?       // JSON 경로 (선택적)
+    }
+
+    /// {uuid:xxx} 또는 {uuid:xxx|path} 형태의 API 체이닝 참조 추출
+    var apiChainReferences: [APIChainReference] {
+        // {uuid:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx} 또는 {uuid:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx|path}
+        guard let regex = try? NSRegularExpression(pattern: "\\{uuid:([a-fA-F0-9\\-]{36})(?:\\|([^}]+))?\\}") else { return [] }
+        var result: [APIChainReference] = []
+
+        let sources = [url, bodyData] + headers.values + queryParams.values
+
+        for source in sources {
+            let range = NSRange(source.startIndex..., in: source)
+            let matches = regex.matches(in: source, range: range)
+            for match in matches {
+                if let fullRange = Range(match.range, in: source),
+                   let uuidRange = Range(match.range(at: 1), in: source),
+                   let uuid = UUID(uuidString: String(source[uuidRange])) {
+                    let fullMatch = String(source[fullRange])
+                    let jsonPath: String?
+                    if match.numberOfRanges > 2,
+                       let pathRange = Range(match.range(at: 2), in: source) {
+                        jsonPath = String(source[pathRange])
+                    } else {
+                        jsonPath = nil
+                    }
+                    result.append(APIChainReference(fullMatch: fullMatch, commandId: uuid, jsonPath: jsonPath))
+                }
+            }
+        }
+
+        return result
+    }
+
+    /// 환경 변수 치환
+    func withEnvironmentVariables(_ variables: [String: String]) -> Command {
+        var result = self
+
+        // URL 치환
+        var newUrl = url
+        for (key, value) in variables {
+            newUrl = newUrl.replacingOccurrences(of: "{{\(key)}}", with: value)
+        }
+        result.url = newUrl
+
+        // headers 치환
+        var newHeaders = headers
+        for (headerKey, headerValue) in headers {
+            var newValue = headerValue
+            for (key, value) in variables {
+                newValue = newValue.replacingOccurrences(of: "{{\(key)}}", with: value)
+            }
+            newHeaders[headerKey] = newValue
+        }
+        result.headers = newHeaders
+
+        // queryParams 치환
+        var newQueryParams = queryParams
+        for (paramKey, paramValue) in queryParams {
+            var newValue = paramValue
+            for (key, value) in variables {
+                newValue = newValue.replacingOccurrences(of: "{{\(key)}}", with: value)
+            }
+            newQueryParams[paramKey] = newValue
+        }
+        result.queryParams = newQueryParams
+
+        // bodyData 치환
+        var newBodyData = bodyData
+        for (key, value) in variables {
+            newBodyData = newBodyData.replacingOccurrences(of: "{{\(key)}}", with: value)
+        }
+        result.bodyData = newBodyData
+
+        return result
+    }
+
+    /// API 체이닝 참조 치환
+    func withAPIChainValues(_ resolver: (UUID, String?) -> String?) -> Command {
+        var result = self
+
+        for ref in apiChainReferences {
+            guard let value = resolver(ref.commandId, ref.jsonPath) else { continue }
+
+            result.url = result.url.replacingOccurrences(of: ref.fullMatch, with: value)
+            result.bodyData = result.bodyData.replacingOccurrences(of: ref.fullMatch, with: value)
+
+            for (key, headerValue) in result.headers {
+                result.headers[key] = headerValue.replacingOccurrences(of: ref.fullMatch, with: value)
+            }
+
+            for (key, paramValue) in result.queryParams {
+                result.queryParams[key] = paramValue.replacingOccurrences(of: ref.fullMatch, with: value)
+            }
+        }
+
+        return result
+    }
+}
+
 // API 파라미터 관련 extension
 extension Command {
     var apiParameterInfos: [ParameterInfo] {

@@ -10,6 +10,10 @@ class CommandStore: ObservableObject {
     @Published var history: [HistoryItem] = []
     @Published var clipboardItems: [ClipboardItem] = []
 
+    // API 환경 관리
+    @Published var environments: [APIEnvironment] = []
+    @Published var activeEnvironmentId: UUID? = nil
+
     // 페이징 상태
     @Published var historyPage: Int = 0
     @Published var clipboardPage: Int = 0
@@ -48,6 +52,7 @@ class CommandStore: ObservableObject {
         load()
         loadHistory()
         loadClipboard()
+        loadEnvironments()
         startBackgroundChecker()
         startScheduleChecker()
         startClipboardMonitor()
@@ -304,10 +309,21 @@ class CommandStore: ObservableObject {
     }
 
     func executeAPICommand(_ command: Command) async -> (data: Data?, response: URLResponse?, error: Error?) {
+        // 환경 변수 치환
+        var processedCommand = command
+        if let env = activeEnvironment {
+            processedCommand = processedCommand.withEnvironmentVariables(env.variables)
+        }
+
+        // API 체이닝 참조 치환
+        processedCommand = processedCommand.withAPIChainValues { [weak self] commandId, jsonPath in
+            self?.getValueFromAPIResponse(commandId: commandId, jsonPath: jsonPath)
+        }
+
         // URL 생성 (queryParams 적용)
-        var urlComponents = URLComponents(string: command.url)
-        if !command.queryParams.isEmpty {
-            urlComponents?.queryItems = command.queryParams.map { URLQueryItem(name: $0.key, value: $0.value) }
+        var urlComponents = URLComponents(string: processedCommand.url)
+        if !processedCommand.queryParams.isEmpty {
+            urlComponents?.queryItems = processedCommand.queryParams.map { URLQueryItem(name: $0.key, value: $0.value) }
         }
 
         guard let finalURL = urlComponents?.url else {
@@ -319,28 +335,28 @@ class CommandStore: ObservableObject {
         var urlRequest = URLRequest(url: finalURL)
 
         // httpMethod 설정
-        urlRequest.httpMethod = command.httpMethod.rawValue
+        urlRequest.httpMethod = processedCommand.httpMethod.rawValue
 
         // headers 적용
-        for (key, value) in command.headers {
+        for (key, value) in processedCommand.headers {
             urlRequest.setValue(value, forHTTPHeaderField: key)
         }
 
         // body 설정 (bodyType에 따라)
-        switch command.bodyType {
+        switch processedCommand.bodyType {
         case .none:
             break
         case .json:
-            if !command.bodyData.isEmpty {
-                urlRequest.httpBody = command.bodyData.data(using: .utf8)
-                if command.headers["Content-Type"] == nil {
+            if !processedCommand.bodyData.isEmpty {
+                urlRequest.httpBody = processedCommand.bodyData.data(using: .utf8)
+                if processedCommand.headers["Content-Type"] == nil {
                     urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 }
             }
         case .formData:
-            if !command.bodyData.isEmpty {
-                urlRequest.httpBody = command.bodyData.data(using: .utf8)
-                if command.headers["Content-Type"] == nil {
+            if !processedCommand.bodyData.isEmpty {
+                urlRequest.httpBody = processedCommand.bodyData.data(using: .utf8)
+                if processedCommand.headers["Content-Type"] == nil {
                     urlRequest.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
                 }
             }
@@ -352,8 +368,8 @@ class CommandStore: ObservableObject {
                 var body = Data()
 
                 // 텍스트 파라미터 추가 (bodyData를 JSON으로 파싱)
-                if !command.bodyData.isEmpty {
-                    if let jsonData = command.bodyData.data(using: .utf8),
+                if !processedCommand.bodyData.isEmpty {
+                    if let jsonData = processedCommand.bodyData.data(using: .utf8),
                        let textParams = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
                         for (key, value) in textParams {
                             body.append("--\(boundary)\r\n".data(using: .utf8)!)
@@ -364,7 +380,7 @@ class CommandStore: ObservableObject {
                 }
 
                 // 파일 파라미터 추가
-                for (key, filePath) in command.fileParams {
+                for (key, filePath) in processedCommand.fileParams {
                     let fileURL = URL(fileURLWithPath: filePath)
                     let fileName = fileURL.lastPathComponent
                     let mimeType = getMimeType(for: fileURL)
@@ -960,6 +976,167 @@ class CommandStore: ObservableObject {
             groups.insert(defaultGroup, at: 0)
             save()
         }
+    }
+
+    // MARK: - 환경 관리
+
+    var activeEnvironment: APIEnvironment? {
+        guard let id = activeEnvironmentId else { return nil }
+        return environments.first { $0.id == id }
+    }
+
+    /// 모든 환경 변수 이름 목록 (자동완성용)
+    var allEnvironmentVariableNames: [String] {
+        var names = Set<String>()
+        for env in environments {
+            for key in env.variables.keys {
+                names.insert(key)
+            }
+        }
+        return names.sorted()
+    }
+
+    func loadEnvironments() {
+        environments = db.loadEnvironments()
+        // 활성 환경 ID 로드
+        if let idStr = db.getSetting("activeEnvironmentId"),
+           let id = UUID(uuidString: idStr) {
+            activeEnvironmentId = id
+        }
+    }
+
+    func saveEnvironments() {
+        db.saveEnvironments(environments)
+        // 활성 환경 ID 저장
+        if let id = activeEnvironmentId {
+            db.setSetting("activeEnvironmentId", value: id.uuidString)
+        } else {
+            db.setSetting("activeEnvironmentId", value: "")
+        }
+    }
+
+    func addEnvironment(_ env: APIEnvironment) {
+        environments.append(env)
+        saveEnvironments()
+    }
+
+    func updateEnvironment(_ env: APIEnvironment) {
+        if let i = environments.firstIndex(where: { $0.id == env.id }) {
+            environments[i] = env
+            saveEnvironments()
+        }
+    }
+
+    func deleteEnvironment(_ env: APIEnvironment) {
+        environments.removeAll { $0.id == env.id }
+        if activeEnvironmentId == env.id {
+            activeEnvironmentId = nil
+        }
+        saveEnvironments()
+    }
+
+    func setActiveEnvironment(_ env: APIEnvironment?) {
+        activeEnvironmentId = env?.id
+        saveEnvironments()
+    }
+
+    /// 환경 데이터 내보내기
+    func exportEnvironments() -> Data? {
+        let exportData = EnvironmentExportData(
+            environments: environments,
+            variableGroups: []
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return try? encoder.encode(exportData)
+    }
+
+    /// 환경 데이터 가져오기
+    func importEnvironments(_ data: Data, merge: Bool) -> Bool {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let imported = try? decoder.decode(EnvironmentExportData.self, from: data) else {
+            return false
+        }
+
+        if merge {
+            // 병합: 기존 ID와 겹치면 새 ID 부여
+            let existingIds = Set(environments.map { $0.id })
+            for var env in imported.environments {
+                if existingIds.contains(env.id) {
+                    env.id = UUID()
+                }
+                environments.append(env)
+            }
+        } else {
+            // 덮어쓰기
+            environments = imported.environments
+            activeEnvironmentId = nil
+        }
+
+        saveEnvironments()
+        return true
+    }
+
+    /// 다른 API 응답에서 값 추출 (API 체이닝)
+    func getValueFromAPIResponse(commandId: UUID, jsonPath: String?) -> String? {
+        guard let cmd = commands.first(where: { $0.id == commandId }),
+              let response = cmd.lastResponse else {
+            return nil
+        }
+
+        // jsonPath가 없으면 전체 응답 반환
+        guard let path = jsonPath, !path.isEmpty else {
+            return response
+        }
+
+        // JSON 파싱 후 경로 추출
+        guard let data = response.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) else {
+            return nil
+        }
+
+        return extractValueFromJSON(json, path: path)
+    }
+
+    private func extractValueFromJSON(_ json: Any, path: String) -> String? {
+        let components = path.split(separator: ".").map { String($0) }
+        var current: Any = json
+
+        for component in components {
+            // 배열 인덱스 처리 (예: items[0])
+            if let match = component.range(of: #"\[(\d+)\]$"#, options: .regularExpression) {
+                let key = String(component[..<match.lowerBound])
+                let indexStr = String(component[match]).dropFirst().dropLast()
+                guard let index = Int(indexStr) else { return nil }
+
+                if !key.isEmpty {
+                    guard let dict = current as? [String: Any],
+                          let next = dict[key] else { return nil }
+                    current = next
+                }
+
+                guard let array = current as? [Any],
+                      index < array.count else { return nil }
+                current = array[index]
+            } else {
+                guard let dict = current as? [String: Any],
+                      let next = dict[component] else { return nil }
+                current = next
+            }
+        }
+
+        // 최종 값을 문자열로 변환
+        if let str = current as? String {
+            return str
+        } else if let num = current as? NSNumber {
+            return num.stringValue
+        } else if let data = try? JSONSerialization.data(withJSONObject: current),
+                  let str = String(data: data, encoding: .utf8) {
+            return str
+        }
+        return nil
     }
 
     // MARK: - Multipart Helper

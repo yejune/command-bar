@@ -98,6 +98,15 @@ class Database {
             value TEXT NOT NULL
         );
 
+        -- API 환경
+        CREATE TABLE IF NOT EXISTS environments (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            color TEXT NOT NULL DEFAULT 'blue',
+            variables TEXT NOT NULL DEFAULT '{}',
+            sort_order INTEGER DEFAULT 0
+        );
+
         -- 인덱스
         CREATE INDEX IF NOT EXISTS idx_commands_group ON commands(group_id);
         CREATE INDEX IF NOT EXISTS idx_commands_trash ON commands(is_in_trash);
@@ -782,6 +791,84 @@ class Database {
         guard let data = str.data(using: .utf8),
               let dict = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
         return dict
+    }
+
+    // MARK: - Environments
+
+    func saveEnvironments(_ environments: [APIEnvironment]) {
+        executeStatements("DELETE FROM environments")
+        for (index, env) in environments.enumerated() {
+            let sql = """
+            INSERT INTO environments (id, name, color, variables, sort_order)
+            VALUES (?, ?, ?, ?, ?)
+            """
+            var stmt: OpaquePointer?
+            if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+                sqlite3_bind_text(stmt, 1, env.id.uuidString, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(stmt, 2, env.name, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(stmt, 3, env.color, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(stmt, 4, encodeDict(env.variables), -1, SQLITE_TRANSIENT)
+                sqlite3_bind_int(stmt, 5, Int32(index))
+                sqlite3_step(stmt)
+            }
+            sqlite3_finalize(stmt)
+        }
+    }
+
+    func loadEnvironments() -> [APIEnvironment] {
+        var environments: [APIEnvironment] = []
+        let sql = "SELECT id, name, color, variables, sort_order FROM environments ORDER BY sort_order"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let idStr = sqlite3_column_text(stmt, 0),
+                   let namePtr = sqlite3_column_text(stmt, 1),
+                   let colorPtr = sqlite3_column_text(stmt, 2),
+                   let variablesPtr = sqlite3_column_text(stmt, 3),
+                   let id = UUID(uuidString: String(cString: idStr)) {
+                    let name = String(cString: namePtr)
+                    let color = String(cString: colorPtr)
+                    let variablesStr = String(cString: variablesPtr)
+                    let order = Int(sqlite3_column_int(stmt, 4))
+                    environments.append(APIEnvironment(
+                        id: id,
+                        name: name,
+                        color: color,
+                        variables: decodeDict(variablesStr),
+                        order: order
+                    ))
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return environments
+    }
+
+    func insertEnvironment(_ env: APIEnvironment) {
+        let sql = """
+        INSERT OR REPLACE INTO environments (id, name, color, variables, sort_order)
+        VALUES (?, ?, ?, ?, ?)
+        """
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, env.id.uuidString, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, env.name, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 3, env.color, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 4, encodeDict(env.variables), -1, SQLITE_TRANSIENT)
+            sqlite3_bind_int(stmt, 5, Int32(env.order))
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    func deleteEnvironment(_ id: UUID) {
+        let sql = "DELETE FROM environments WHERE id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id.uuidString, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
     }
 
     // MARK: - Migration

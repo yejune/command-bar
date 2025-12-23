@@ -224,6 +224,26 @@ extension LocalizedStrings {
         apiResponseBody: "Response Body",
         apiExecutionTime: "Execution Time",
         apiRequestInfo: "Request Info",
-        apiCopyResponse: "Copy Response"
+        apiCopyResponse: "Copy Response",
+
+        envManagerTitle: "Environment Manager",
+        envAddEnvironment: "Add Environment",
+        envAddVariable: "Add Variable",
+        envExport: "Export",
+        envImport: "Import",
+        envNoEnvironments: "No environments",
+        envAddFirst: "Add First Environment",
+        envNoVariables: "No variables",
+        envAddFirstVariable: "Add First Variable",
+        envVariable: "Variable",
+        envActiveEnvironment: "Active:",
+        envClear: "Clear",
+        envEdit: "Edit",
+        envDelete: "Delete",
+        envName: "Name",
+        envColor: "Color",
+        envVariableName: "Variable Name",
+        envSelectEnvironment: "Select Environment",
+        envManage: "Manage"
     )
 }

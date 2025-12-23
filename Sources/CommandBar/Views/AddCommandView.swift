@@ -28,6 +28,7 @@ struct AddCommandView: View {
     @State private var bodyData = ""
     @State private var bodyParams: [KeyValuePair] = []
     @State private var fileParams: [KeyValuePair] = []
+    @State private var showEnvironmentManager = false
 
     var isValid: Bool {
         if title.isEmpty { return false }
@@ -148,6 +149,31 @@ struct AddCommandView: View {
                     }
                 }
             } else if executionType == .api {
+                // 환경 관리 버튼
+                HStack {
+                    if let env = store.activeEnvironment {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(colorFor(env.color))
+                                .frame(width: 8, height: 8)
+                            Text(env.name)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Text(L.envSelectEnvironment)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(action: { showEnvironmentManager = true }) {
+                        Label(L.envManage, systemImage: "globe")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+
                 // API URL
                 VStack(alignment: .leading, spacing: 4) {
                     Text("URL")
@@ -513,6 +539,22 @@ struct AddCommandView: View {
         .frame(width: 450)
         .sheet(isPresented: $showParamHelp) {
             ParameterHelpView()
+        }
+        .sheet(isPresented: $showEnvironmentManager) {
+            EnvironmentManagerView(store: store)
+        }
+    }
+
+    func colorFor(_ name: String) -> Color {
+        switch name {
+        case "blue": return .blue
+        case "red": return .red
+        case "green": return .green
+        case "orange": return .orange
+        case "purple": return .purple
+        case "gray": return .gray
+        case "yellow": return .yellow
+        default: return .blue
         }
     }
 }
