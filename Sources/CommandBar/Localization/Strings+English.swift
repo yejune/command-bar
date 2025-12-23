@@ -66,6 +66,7 @@ extension LocalizedStrings {
         settingsMaxCount: "Max Count",
         settingsNotesFolderName: "Notes Folder",
         settingsAutoHide: "Auto Hide",
+        shortcutConflict: "Shortcut registration failed",
         settingsExportFile: "Export File",
         settingsImportFile: "Import File",
         settingsBackupNote: "Only commands are backed up",

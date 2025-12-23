@@ -66,6 +66,7 @@ extension LocalizedStrings {
         settingsMaxCount: "最大件数",
         settingsNotesFolderName: "メモフォルダ名",
         settingsAutoHide: "自動非表示",
+        shortcutConflict: "ショートカット登録失敗",
         settingsExportFile: "ファイル出力",
         settingsImportFile: "ファイル読込",
         settingsBackupNote: "コマンドのみバックアップされます",

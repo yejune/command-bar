@@ -47,6 +47,7 @@ class Settings: ObservableObject {
     private var mouseMonitor: Any?
     private var hotKeyRef: EventHotKeyRef?
     private var isHidden = false
+    @Published var hotKeyRegistered = true
 
     init() {
         // UserDefaults에서 마이그레이션 (프로퍼티 초기화 전에 실행)
@@ -257,7 +258,10 @@ class Settings: ObservableObject {
         unregisterHotKey()
 
         // 간단한 단축키 파싱 (⌘⇧H 형태)
-        guard let (keyCode, modifiers) = parseShortcut(hideShortcut) else { return }
+        guard let (keyCode, modifiers) = parseShortcut(hideShortcut) else {
+            hotKeyRegistered = false
+            return
+        }
 
         var hotKeyID = EventHotKeyID()
         hotKeyID.signature = OSType(0x434D4442) // "CMDB"
@@ -273,6 +277,7 @@ class Settings: ObservableObject {
         )
 
         if status == noErr {
+            hotKeyRegistered = true
             // 핫키 이벤트 핸들러 설치
             var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
             InstallEventHandler(GetEventDispatcherTarget(), { (_, event, _) -> OSStatus in
@@ -286,6 +291,8 @@ class Settings: ObservableObject {
                 }
                 return noErr
             }, 1, &eventType, nil, nil)
+        } else {
+            hotKeyRegistered = false
         }
     }
 

@@ -66,10 +66,16 @@ struct SettingsView: View {
                     HStack {
                         Toggle(L.settingsAutoHide, isOn: $settings.autoHide)
                         Spacer()
-                        TextField("", text: $settings.hideShortcut)
-                            .frame(width: 80)
-                            .textFieldStyle(.roundedBorder)
-                            .disabled(!settings.autoHide)
+                        HStack(spacing: 4) {
+                            ShortcutRecorderView(shortcut: $settings.hideShortcut)
+                                .frame(width: 80)
+                            if settings.autoHide && !settings.hotKeyRegistered {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(.orange)
+                                    .help(L.shortcutConflict)
+                            }
+                        }
+                        .disabled(!settings.autoHide)
                     }
                     .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
                 } else if selectedTab == 1 {
@@ -300,5 +306,130 @@ struct SettingsView: View {
                 showAlert = true
             }
         }
+    }
+}
+
+// 단축키 입력 캡처 뷰
+struct ShortcutRecorderView: NSViewRepresentable {
+    @Binding var shortcut: String
+
+    func makeNSView(context: Context) -> ShortcutRecorderNSView {
+        let view = ShortcutRecorderNSView()
+        view.shortcut = shortcut
+        view.onShortcutChange = { newShortcut in
+            shortcut = newShortcut
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: ShortcutRecorderNSView, context: Context) {
+        nsView.shortcut = shortcut
+    }
+}
+
+class ShortcutRecorderNSView: NSView {
+    var shortcut: String = "" {
+        didSet {
+            textField.stringValue = shortcut
+        }
+    }
+    var onShortcutChange: ((String) -> Void)?
+    private var isRecording = false
+
+    private lazy var textField: NSTextField = {
+        let tf = NSTextField()
+        tf.isEditable = false
+        tf.isSelectable = false
+        tf.isBezeled = true
+        tf.bezelStyle = .roundedBezel
+        tf.alignment = .center
+        tf.font = .systemFont(ofSize: 12)
+        return tf
+    }()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setup()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setup()
+    }
+
+    private func setup() {
+        addSubview(textField)
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            textField.leadingAnchor.constraint(equalTo: leadingAnchor),
+            textField.trailingAnchor.constraint(equalTo: trailingAnchor),
+            textField.topAnchor.constraint(equalTo: topAnchor),
+            textField.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        isRecording = true
+        textField.stringValue = "..."
+        textField.textColor = .secondaryLabelColor
+    }
+
+    override func keyDown(with event: NSEvent) {
+        guard isRecording else {
+            super.keyDown(with: event)
+            return
+        }
+
+        let modifiers = event.modifierFlags.intersection([.command, .option, .shift, .control])
+
+        // 수정자 키만 누른 경우 무시
+        guard modifiers.isEmpty == false else {
+            super.keyDown(with: event)
+            return
+        }
+
+        // ESC 키 = 취소
+        if event.keyCode == 53 {
+            isRecording = false
+            textField.stringValue = shortcut
+            textField.textColor = .labelColor
+            return
+        }
+
+        // 단축키 문자열 생성
+        var parts: [String] = []
+        if modifiers.contains(.control) { parts.append("⌃") }
+        if modifiers.contains(.option) { parts.append("⌥") }
+        if modifiers.contains(.shift) { parts.append("⇧") }
+        if modifiers.contains(.command) { parts.append("⌘") }
+
+        // 키 문자 추가
+        if let chars = event.charactersIgnoringModifiers?.uppercased(), !chars.isEmpty {
+            let char = chars.first!
+            // 알파벳과 숫자만 허용
+            if char.isLetter || char.isNumber {
+                parts.append(String(char))
+
+                let newShortcut = parts.joined()
+                shortcut = newShortcut
+                onShortcutChange?(newShortcut)
+
+                isRecording = false
+                textField.stringValue = newShortcut
+                textField.textColor = .labelColor
+            }
+        }
+    }
+
+    override func resignFirstResponder() -> Bool {
+        if isRecording {
+            isRecording = false
+            textField.stringValue = shortcut
+            textField.textColor = .labelColor
+        }
+        return super.resignFirstResponder()
     }
 }
