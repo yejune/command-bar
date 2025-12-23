@@ -691,6 +691,12 @@ class CommandStore: ObservableObject {
         }
     }
 
+    func toggleClipboardFavorite(_ item: ClipboardItem) {
+        if let index = clipboardItems.firstIndex(where: { $0.id == item.id }) {
+            clipboardItems[index].isFavorite = db.toggleClipboardFavorite(item.id)
+        }
+    }
+
     func run(_ cmd: Command) {
         switch cmd.executionType {
         case .terminal:

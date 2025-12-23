@@ -29,6 +29,7 @@ struct ContentView: View {
     @State private var clipboardSearchText = ""
     @State private var clipboardSearchDate: Date? = nil
     @State private var clipboardDateCounts: [String: Int] = [:]
+    @State private var showClipboardFavoritesOnly = false
 
     var hasActiveIndicator: Bool {
         store.activeItems.contains { cmd in
@@ -42,6 +43,13 @@ struct ContentView: View {
             return items.filter { $0.isFavorite }
         }
         return items
+    }
+
+    var filteredClipboard: [ClipboardItem] {
+        if showClipboardFavoritesOnly {
+            return store.clipboardItems.filter { $0.isFavorite }
+        }
+        return store.clipboardItems
     }
 
     var body: some View {
@@ -137,6 +145,12 @@ struct ContentView: View {
             } else if showingClipboard {
                 // 클립보드 보기
                 SubtitleBar(title: L.tabClipboard) {
+                    Button(action: { showClipboardFavoritesOnly.toggle() }) {
+                        Image(systemName: showClipboardFavoritesOnly ? "star.fill" : "star")
+                            .foregroundStyle(showClipboardFavoritesOnly ? .yellow : .secondary)
+                    }
+                    .buttonStyle(SmallHoverButtonStyle())
+
                     if !store.clipboardItems.isEmpty {
                         Button(L.buttonClear) {
                             store.clearClipboard()
@@ -163,11 +177,20 @@ struct ContentView: View {
                 Divider()
                 ScrollView {
                     LazyVStack(spacing: 4) {
-                        ForEach(store.clipboardItems) { item in
+                        ForEach(filteredClipboard) { item in
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.preview)
-                                        .lineLimit(2)
+                                    HStack(spacing: 4) {
+                                        Image(systemName: item.isFavorite ? "star.fill" : "star")
+                                            .foregroundStyle(item.isFavorite ? .yellow : .gray.opacity(0.4))
+                                            .font(.caption2)
+                                            .gesture(
+                                                DragGesture(minimumDistance: 0)
+                                                    .onEnded { _ in store.toggleClipboardFavorite(item) }
+                                            )
+                                        Text(item.preview)
+                                            .lineLimit(2)
+                                    }
                                     Text(item.timestamp, format: .dateTime.month().day().hour().minute().second())
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
@@ -215,7 +238,7 @@ struct ContentView: View {
                 }
                 .background(Color.clear)
                 .overlay {
-                    if store.clipboardItems.isEmpty {
+                    if filteredClipboard.isEmpty {
                         VStack(spacing: 8) {
                             Image(systemName: "doc.on.clipboard")
                                 .font(.title2)
@@ -774,19 +797,6 @@ struct SearchBarView: View {
 
     @State private var showDatePicker = false
 
-    private let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
-
-    private var sortedDates: [(date: Date, count: Int)] {
-        dateCounts.compactMap { (key, count) -> (Date, Int)? in
-            guard let date = dateFormatter.date(from: key) else { return nil }
-            return (date, count)
-        }.sorted { $0.date > $1.date }
-    }
-
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "magnifyingglass")
@@ -818,46 +828,15 @@ struct SearchBarView: View {
             }
             .buttonStyle(.plain)
             .popover(isPresented: $showDatePicker, arrowEdge: .bottom) {
-                VStack(alignment: .leading, spacing: 4) {
-                    if sortedDates.isEmpty {
-                        Text("기록 없음")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding()
-                    } else {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 2) {
-                                ForEach(sortedDates, id: \.date) { item in
-                                    Button(action: {
-                                        searchDate = item.date
-                                        showDatePicker = false
-                                        onSearch()
-                                    }) {
-                                        HStack {
-                                            Text(item.date, format: .dateTime.month().day().weekday())
-                                                .font(.caption)
-                                            Spacer()
-                                            Text("\(item.count)")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(
-                                            Calendar.current.isDate(item.date, inSameDayAs: searchDate ?? Date.distantPast)
-                                                ? Color.accentColor.opacity(0.2)
-                                                : Color.clear
-                                        )
-                                        .cornerRadius(4)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        .frame(width: 160, height: min(CGFloat(sortedDates.count) * 26, 200))
+                CalendarPickerView(
+                    selectedDate: $searchDate,
+                    dateCounts: dateCounts,
+                    onSelect: { date in
+                        searchDate = date
+                        showDatePicker = false
+                        onSearch()
                     }
-                }
-                .padding(8)
+                )
             }
 
             if !searchText.isEmpty || searchDate != nil {

@@ -88,7 +88,8 @@ class Database {
         CREATE TABLE IF NOT EXISTS clipboard (
             id TEXT PRIMARY KEY,
             timestamp TEXT NOT NULL,
-            content TEXT NOT NULL
+            content TEXT NOT NULL,
+            is_favorite INTEGER DEFAULT 0
         );
 
         -- 설정
@@ -107,6 +108,10 @@ class Database {
         """
 
         executeStatements(createSQL)
+
+        // 마이그레이션: is_favorite 컬럼이 없으면 추가
+        let addFavoriteColumn = "ALTER TABLE clipboard ADD COLUMN is_favorite INTEGER DEFAULT 0"
+        sqlite3_exec(db, addFavoriteColumn, nil, nil, nil)
     }
 
     private func executeStatements(_ sql: String) {
@@ -533,12 +538,13 @@ class Database {
     // MARK: - Clipboard
 
     func addClipboard(_ item: ClipboardItem) {
-        let sql = "INSERT INTO clipboard (id, timestamp, content) VALUES (?, ?, ?)"
+        let sql = "INSERT INTO clipboard (id, timestamp, content, is_favorite) VALUES (?, ?, ?, ?)"
         var stmt: OpaquePointer?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
             sqlite3_bind_text(stmt, 1, item.id.uuidString, -1, SQLITE_TRANSIENT)
             sqlite3_bind_text(stmt, 2, ISO8601DateFormatter().string(from: item.timestamp), -1, SQLITE_TRANSIENT)
             sqlite3_bind_text(stmt, 3, item.content, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_int(stmt, 4, item.isFavorite ? 1 : 0)
             sqlite3_step(stmt)
         }
         sqlite3_finalize(stmt)
@@ -634,11 +640,39 @@ class Database {
               let contentPtr = sqlite3_column_text(stmt, 2) else { return nil }
 
         let content = String(cString: contentPtr)
-        return ClipboardItem(id: id, timestamp: timestamp, content: content)
+        let isFavorite = sqlite3_column_int(stmt, 3) != 0
+        return ClipboardItem(id: id, timestamp: timestamp, content: content, isFavorite: isFavorite)
     }
 
     func clearClipboard() {
         executeStatements("DELETE FROM clipboard")
+    }
+
+    func toggleClipboardFavorite(_ id: UUID) -> Bool {
+        // 현재 값 읽기
+        var currentValue = false
+        let selectSQL = "SELECT is_favorite FROM clipboard WHERE id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, selectSQL, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id.uuidString, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                currentValue = sqlite3_column_int(stmt, 0) != 0
+            }
+        }
+        sqlite3_finalize(stmt)
+
+        // 토글
+        let newValue = !currentValue
+        let updateSQL = "UPDATE clipboard SET is_favorite = ? WHERE id = ?"
+        var updateStmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, updateSQL, -1, &updateStmt, nil) == SQLITE_OK {
+            sqlite3_bind_int(updateStmt, 1, newValue ? 1 : 0)
+            sqlite3_bind_text(updateStmt, 2, id.uuidString, -1, SQLITE_TRANSIENT)
+            sqlite3_step(updateStmt)
+        }
+        sqlite3_finalize(updateStmt)
+
+        return newValue
     }
 
     // MARK: - Settings
