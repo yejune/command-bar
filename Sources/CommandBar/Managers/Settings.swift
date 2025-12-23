@@ -219,6 +219,7 @@ class Settings: ObservableObject {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2
             window.animator().setFrame(newFrame, display: true)
+            window.animator().alphaValue = 0.1
         }
 
         isHidden = true
@@ -236,9 +237,13 @@ class Settings: ObservableObject {
         // 최소 높이 제한 복원
         window.minSize = NSSize(width: window.minSize.width, height: 300)
 
+        // 원래 투명도로 복원
+        let originalAlpha = useBackgroundOpacity ? backgroundOpacity : 1.0
+
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2
             window.animator().setFrame(newFrame, display: true)
+            window.animator().alphaValue = originalAlpha
         }
 
         isHidden = false
