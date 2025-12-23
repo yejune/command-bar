@@ -402,6 +402,40 @@ class Database {
         return items
     }
 
+    func getHistoryDateCounts() -> [String: Int] {
+        var counts: [String: Int] = [:]
+        let sql = "SELECT date(timestamp) as dt, COUNT(*) as cnt FROM history GROUP BY dt ORDER BY dt DESC LIMIT 60"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let datePtr = sqlite3_column_text(stmt, 0) {
+                    let dateStr = String(cString: datePtr)
+                    let count = Int(sqlite3_column_int(stmt, 1))
+                    counts[dateStr] = count
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return counts
+    }
+
+    func getClipboardDateCounts() -> [String: Int] {
+        var counts: [String: Int] = [:]
+        let sql = "SELECT date(timestamp) as dt, COUNT(*) as cnt FROM clipboard GROUP BY dt ORDER BY dt DESC LIMIT 60"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let datePtr = sqlite3_column_text(stmt, 0) {
+                    let dateStr = String(cString: datePtr)
+                    let count = Int(sqlite3_column_int(stmt, 1))
+                    counts[dateStr] = count
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return counts
+    }
+
     func searchHistory(query: String, startDate: Date? = nil, endDate: Date? = nil, limit: Int = 100) -> [HistoryItem] {
         var items: [HistoryItem] = []
         var conditions: [String] = []

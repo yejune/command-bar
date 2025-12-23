@@ -25,8 +25,10 @@ struct ContentView: View {
     // 검색 상태
     @State private var historySearchText = ""
     @State private var historySearchDate: Date? = nil
+    @State private var historyDateCounts: [String: Int] = [:]
     @State private var clipboardSearchText = ""
     @State private var clipboardSearchDate: Date? = nil
+    @State private var clipboardDateCounts: [String: Int] = [:]
 
     var hasActiveIndicator: Bool {
         store.activeItems.contains { cmd in
@@ -69,6 +71,7 @@ struct ContentView: View {
                 SearchBarView(
                     searchText: $historySearchText,
                     searchDate: $historySearchDate,
+                    dateCounts: historyDateCounts,
                     onSearch: { performHistorySearch() },
                     onClear: {
                         historySearchText = ""
@@ -76,6 +79,7 @@ struct ContentView: View {
                         store.loadHistory()
                     }
                 )
+                .onAppear { historyDateCounts = Database.shared.getHistoryDateCounts() }
                 Divider()
                 ScrollView {
                     LazyVStack(spacing: 4) {
@@ -161,6 +165,7 @@ struct ContentView: View {
                 SearchBarView(
                     searchText: $clipboardSearchText,
                     searchDate: $clipboardSearchDate,
+                    dateCounts: clipboardDateCounts,
                     onSearch: { performClipboardSearch() },
                     onClear: {
                         clipboardSearchText = ""
@@ -168,6 +173,7 @@ struct ContentView: View {
                         store.loadClipboard()
                     }
                 )
+                .onAppear { clipboardDateCounts = Database.shared.getClipboardDateCounts() }
                 Divider()
                 ScrollView {
                     LazyVStack(spacing: 4) {
@@ -768,11 +774,24 @@ struct ContentView: View {
 struct SearchBarView: View {
     @Binding var searchText: String
     @Binding var searchDate: Date?
+    var dateCounts: [String: Int]
     var onSearch: () -> Void
     var onClear: () -> Void
 
     @State private var showDatePicker = false
-    @State private var tempDate = Date()
+
+    private let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    private var sortedDates: [(date: Date, count: Int)] {
+        dateCounts.compactMap { (key, count) -> (Date, Int)? in
+            guard let date = dateFormatter.date(from: key) else { return nil }
+            return (date, count)
+        }.sorted { $0.date > $1.date }
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -797,7 +816,6 @@ struct SearchBarView: View {
             }
 
             Button(action: {
-                tempDate = searchDate ?? Date()
                 showDatePicker.toggle()
             }) {
                 Image(systemName: "calendar")
@@ -806,25 +824,44 @@ struct SearchBarView: View {
             }
             .buttonStyle(.plain)
             .popover(isPresented: $showDatePicker, arrowEdge: .bottom) {
-                VStack(spacing: 8) {
-                    DatePicker("", selection: $tempDate, displayedComponents: .date)
-                        .datePickerStyle(.graphical)
-                        .labelsHidden()
-                        .frame(width: 220)
-
-                    HStack {
-                        Button(L.buttonCancel) {
-                            showDatePicker = false
+                VStack(alignment: .leading, spacing: 4) {
+                    if sortedDates.isEmpty {
+                        Text("기록 없음")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding()
+                    } else {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(sortedDates, id: \.date) { item in
+                                    Button(action: {
+                                        searchDate = item.date
+                                        showDatePicker = false
+                                        onSearch()
+                                    }) {
+                                        HStack {
+                                            Text(item.date, format: .dateTime.month().day().weekday())
+                                                .font(.caption)
+                                            Spacer()
+                                            Text("\(item.count)")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            Calendar.current.isDate(item.date, inSameDayAs: searchDate ?? Date.distantPast)
+                                                ? Color.accentColor.opacity(0.2)
+                                                : Color.clear
+                                        )
+                                        .cornerRadius(4)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
                         }
-                        Spacer()
-                        Button(L.buttonConfirm) {
-                            searchDate = tempDate
-                            showDatePicker = false
-                            onSearch()
-                        }
-                        .buttonStyle(.borderedProminent)
+                        .frame(width: 160, height: min(CGFloat(sortedDates.count) * 26, 200))
                     }
-                    .padding(.horizontal, 8)
                 }
                 .padding(8)
             }
