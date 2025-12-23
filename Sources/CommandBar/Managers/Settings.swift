@@ -44,6 +44,11 @@ class Settings: ObservableObject {
             applyAutoHide()
         }
     }
+    @Published var useHideOpacity: Bool {
+        didSet {
+            db.setBoolSetting("useHideOpacity", value: useHideOpacity)
+        }
+    }
     @Published var hideShortcut: String {
         didSet {
             db.setSetting("hideShortcut", value: hideShortcut)
@@ -72,6 +77,7 @@ class Settings: ObservableObject {
         self.backgroundOpacity = db.getDoubleSetting("backgroundOpacity", defaultValue: 0.8)
         self.notesFolderName = db.getSetting("notesFolderName") ?? "클립보드 메모"
         self.autoHide = db.getBoolSetting("autoHide", defaultValue: false)
+        self.useHideOpacity = db.getBoolSetting("useHideOpacity", defaultValue: true)
         self.hideShortcut = db.getSetting("hideShortcut") ?? "⌘⇧H"
 
         // 시스템 테마 변경 감지
@@ -258,10 +264,12 @@ class Settings: ObservableObject {
         newFrame.size.height = titlebarHeight
 
         isAnimating = true
-        NSAnimationContext.runAnimationGroup { context in
+        NSAnimationContext.runAnimationGroup { [weak self] context in
             context.duration = 0.2
             window.animator().setFrame(newFrame, display: true)
-            window.animator().alphaValue = 0.1
+            if self?.useHideOpacity == true {
+                window.animator().alphaValue = 0.1
+            }
         } completionHandler: { [weak self] in
             self?.isAnimating = false
         }
@@ -284,17 +292,18 @@ class Settings: ObservableObject {
         newFrame.origin.y -= savedWindowHeight - window.frame.height
         newFrame.size.height = savedWindowHeight
 
-        // 원래 투명도로 복원
-        let originalAlpha = useBackgroundOpacity ? backgroundOpacity : 1.0
-
         isHidden = false
         isAnimating = true
 
-        NSAnimationContext.runAnimationGroup { context in
+        NSAnimationContext.runAnimationGroup { [weak self] context in
             context.duration = 0.2
             context.allowsImplicitAnimation = true
             window.animator().setFrame(newFrame, display: true)
-            window.animator().alphaValue = originalAlpha
+            // 투명도 복원 (숨기기 투명도 사용 시에만)
+            if self?.useHideOpacity == true {
+                let originalAlpha = (self?.useBackgroundOpacity == true) ? (self?.backgroundOpacity ?? 1.0) : 1.0
+                window.animator().alphaValue = originalAlpha
+            }
         } completionHandler: { [weak self] in
             window.minSize = NSSize(width: window.minSize.width, height: 300)
             self?.isAnimating = false

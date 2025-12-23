@@ -33,7 +33,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard window.titlebarAccessoryViewControllers.isEmpty else { return }
 
         let accessoryView = NSHostingView(rootView: TitlebarButtonsView())
-        accessoryView.frame = NSRect(x: 0, y: 0, width: 70, height: 22)
+        accessoryView.frame = NSRect(x: 0, y: 0, width: 50, height: 22)
 
         let accessoryController = NSTitlebarAccessoryViewController()
         accessoryController.view = accessoryView
@@ -45,18 +45,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 // 타이틀바 버튼 뷰
 struct TitlebarButtonsView: View {
-    @ObservedObject private var settings = Settings.shared
-
     var body: some View {
         HStack(spacing: 2) {
-            Button(action: { Settings.shared.toggleHide() }) {
-                Image(systemName: settings.isHidden ? "eye" : "eye.slash")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.borderless)
-            .help(settings.isHidden ? L.showWindow : L.hideWindow)
-
             Button(action: { snapToLeft() }) {
                 Image(systemName: "sidebar.left")
                     .font(.system(size: 11))

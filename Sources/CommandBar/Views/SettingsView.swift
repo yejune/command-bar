@@ -91,6 +91,12 @@ struct SettingsView: View {
                             }
                         }
                     }
+                    if settings.autoHide {
+                        SettingRow(label: L.settingsHideOpacity) {
+                            Toggle("", isOn: $settings.useHideOpacity)
+                                .labelsHidden()
+                        }
+                    }
                 } else if selectedTab == 1 {
                     // 클립보드 설정
                     SettingRow(label: L.settingsNotesFolderName) {
@@ -385,15 +391,29 @@ class ShortcutRecorderNSView: NSView {
         startRecording()
     }
 
+    override func keyDown(with event: NSEvent) {
+        if isRecording {
+            _ = handleKeyEvent(event)
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+
     private func startRecording() {
         isRecording = true
         textField.stringValue = "..."
         textField.textColor = .secondaryLabelColor
 
-        // 로컬 이벤트 모니터 시작
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+        // First responder 설정
+        window?.makeFirstResponder(self)
+
+        // 로컬 이벤트 모니터 시작 (keyDown + flagsChanged)
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
             guard let self = self, self.isRecording else { return event }
-            return self.handleKeyEvent(event) ? nil : event
+            if event.type == .keyDown {
+                return self.handleKeyEvent(event) ? nil : event
+            }
+            return event
         }
     }
 
