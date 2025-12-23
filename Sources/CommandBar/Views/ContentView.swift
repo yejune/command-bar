@@ -49,11 +49,7 @@ struct ContentView: View {
 
             if showingHistory {
                 // 히스토리 보기
-                HStack {
-                    Text(L.tabHistory)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
+                SubtitleBar(title: L.tabHistory) {
                     if !store.history.isEmpty {
                         Button(L.buttonClear) {
                             store.clearHistory()
@@ -64,10 +60,7 @@ struct ContentView: View {
                         .buttonStyle(HoverButtonStyle())
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-
-                // 검색 바
+                Divider()
                 SearchBarView(
                     searchText: $historySearchText,
                     searchDate: $historySearchDate,
@@ -143,11 +136,7 @@ struct ContentView: View {
                 }
             } else if showingClipboard {
                 // 클립보드 보기
-                HStack {
-                    Text(L.tabClipboard)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
+                SubtitleBar(title: L.tabClipboard) {
                     if !store.clipboardItems.isEmpty {
                         Button(L.buttonClear) {
                             store.clearClipboard()
@@ -158,10 +147,7 @@ struct ContentView: View {
                         .buttonStyle(HoverButtonStyle())
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-
-                // 검색 바
+                Divider()
                 SearchBarView(
                     searchText: $clipboardSearchText,
                     searchDate: $clipboardSearchDate,
@@ -245,11 +231,7 @@ struct ContentView: View {
                 GroupListView(store: store)
             } else if showingTrash {
                 // 휴지통 보기
-                HStack {
-                    Text(L.tabTrash)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
+                SubtitleBar(title: L.tabTrash) {
                     if !store.trashItems.isEmpty {
                         Button(L.trashEmpty) {
                             store.emptyTrash()
@@ -258,8 +240,6 @@ struct ContentView: View {
                         .buttonStyle(HoverButtonStyle())
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
                 Divider()
                 ScrollView {
                     LazyVStack(spacing: 4) {
@@ -381,8 +361,8 @@ struct ContentView: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
+                .frame(height: 22)
                 .padding(.horizontal, 12)
-                .padding(.vertical, 4)
                 Divider()
                 ScrollView {
                     LazyVStack(spacing: 4) {
@@ -876,5 +856,24 @@ struct SearchBarView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Subtitle Bar
+
+struct SubtitleBar<Content: View>: View {
+    let title: String
+    @ViewBuilder let trailing: Content
+
+    var body: some View {
+        HStack {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            trailing
+        }
+        .frame(height: 22)
+        .padding(.horizontal, 12)
     }
 }
