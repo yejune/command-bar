@@ -151,7 +151,7 @@ struct CommandRowView: View {
                 if cmd.executionType == .schedule {
                     HStack(spacing: 4) {
                         if let date = cmd.scheduleDate {
-                            Text(date, format: .dateTime.month().day().hour().minute())
+                            Text(date, format: .dateTime.month().day().weekday().hour().minute())
                         }
                         if cmd.repeatType != .none {
                             Text("(\(cmd.repeatType.rawValue))")

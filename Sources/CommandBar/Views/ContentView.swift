@@ -232,7 +232,7 @@ struct ContentView: View {
                                     Text(cmd.title)
                                     if cmd.executionType == .schedule {
                                         if let date = cmd.scheduleDate {
-                                            Text(date, format: .dateTime.month().day().hour().minute())
+                                            Text(date, format: .dateTime.month().day().weekday().hour().minute())
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
                                         }
