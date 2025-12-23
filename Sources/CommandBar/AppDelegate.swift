@@ -27,6 +27,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // 독 아이콘 클릭 시 숨겨진 창 펼치기
+        if Settings.shared.isHidden {
+            Settings.shared.showWindow()
+        }
         if !flag {
             for window in NSApp.windows {
                 window.makeKeyAndOrderFront(self)
