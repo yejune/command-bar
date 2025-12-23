@@ -62,6 +62,7 @@ class Settings: ObservableObject {
     private var localMouseMonitor: Any?
     @Published var isHidden = false
     private var isAnimating = false
+    private var isRestoringFrame = true  // 시작 시 프레임 저장 방지
     private var savedWindowHeight: CGFloat = 0
     private var hideTimestamp: Date = .distantPast
 
@@ -94,6 +95,7 @@ class Settings: ObservableObject {
             queue: .main
         ) { [weak self] notification in
             guard let self = self,
+                  !self.isRestoringFrame,
                   !self.isHidden,
                   !self.isAnimating,
                   let window = notification.object as? NSWindow,
@@ -110,6 +112,7 @@ class Settings: ObservableObject {
             queue: .main
         ) { [weak self] notification in
             guard let self = self,
+                  !self.isRestoringFrame,
                   !self.isHidden,
                   !self.isAnimating,
                   let window = notification.object as? NSWindow,
@@ -172,7 +175,10 @@ class Settings: ObservableObject {
     }
 
     private func restoreWindowFrame() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self else { return }
+            defer { self.isRestoringFrame = false }
+
             guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
 
             let x = self.db.getDoubleSetting("windowX", defaultValue: -1)
