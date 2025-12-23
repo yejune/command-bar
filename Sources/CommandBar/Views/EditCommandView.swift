@@ -5,6 +5,7 @@ struct EditCommandView: View {
     @Environment(\.dismiss) private var dismiss
 
     let command: Command
+    var onRun: ((Command) -> Void)? = nil
     @State private var title: String
     @State private var commandText: String
     @State private var groupId: UUID
@@ -30,9 +31,10 @@ struct EditCommandView: View {
     @State private var bodyParams: [KeyValuePair]
     @State private var fileParams: [KeyValuePair]
 
-    init(store: CommandStore, command: Command) {
+    init(store: CommandStore, command: Command, onRun: ((Command) -> Void)? = nil) {
         self.store = store
         self.command = command
+        self.onRun = onRun
         _title = State(initialValue: command.title)
         _commandText = State(initialValue: command.command)
         _groupId = State(initialValue: command.groupId)
@@ -497,6 +499,13 @@ struct EditCommandView: View {
                 }
                 .buttonStyle(HoverTextButtonStyle())
                 Spacer()
+                if let onRun = onRun {
+                    Button(L.buttonRun) {
+                        onRun(command)
+                        dismiss()
+                    }
+                    .buttonStyle(HoverTextButtonStyle())
+                }
                 Button(L.buttonSave) {
                     var updated = command
                     updated.title = title

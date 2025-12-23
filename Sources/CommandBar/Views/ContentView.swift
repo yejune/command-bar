@@ -520,7 +520,7 @@ struct ContentView: View {
             SettingsView(settings: settings, store: store)
         }
         .sheet(item: $editingCommand) { cmd in
-            EditCommandView(store: store, command: cmd)
+            editSheet(for: cmd)
         }
         .sheet(isPresented: $showAddGroupSheet) {
             GroupEditSheet(store: store)
@@ -610,6 +610,13 @@ struct ContentView: View {
         } else {
             store.run(cmd)
         }
+    }
+
+    @ViewBuilder
+    func editSheet(for cmd: Command) -> some View {
+        EditCommandView(store: store, command: cmd, onRun: { command in
+            self.handleRun(command)
+        })
     }
 
     func executeAPIWithParameters(_ cmd: Command, values: [String: String]) {
