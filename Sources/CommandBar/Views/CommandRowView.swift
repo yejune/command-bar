@@ -234,14 +234,17 @@ struct CommandRowView: View {
         switch repeatType {
         case .none:
             formatter.dateFormat = "M월 d일 E HH:mm"
+            return formatter.string(from: date)
         case .daily:
             formatter.dateFormat = "HH:mm"
+            return L.repeatDaily + ": " + formatter.string(from: date)
         case .weekly:
             formatter.dateFormat = "E HH:mm"
+            return L.repeatWeekly + ": " + formatter.string(from: date)
         case .monthly:
             formatter.dateFormat = "d일 HH:mm"
+            return L.repeatMonthly + ": " + formatter.string(from: date)
         }
-        return formatter.string(from: date)
     }
 
     func formatRemaining(_ seconds: Int) -> String {
