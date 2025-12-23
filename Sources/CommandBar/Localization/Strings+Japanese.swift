@@ -224,7 +224,27 @@ extension LocalizedStrings {
         apiResponseBody: "レスポンスボディ",
         apiExecutionTime: "実行時間",
         apiRequestInfo: "リクエスト情報",
-        apiCopyResponse: "レスポンスをコピー"
+        apiCopyResponse: "レスポンスをコピー",
+
+        envManagerTitle: "環境管理",
+        envAddEnvironment: "環境追加",
+        envAddVariable: "変数追加",
+        envExport: "エクスポート",
+        envImport: "インポート",
+        envNoEnvironments: "環境がありません",
+        envAddFirst: "最初の環境を追加",
+        envNoVariables: "変数がありません",
+        envAddFirstVariable: "最初の変数を追加",
+        envVariable: "変数",
+        envActiveEnvironment: "アクティブ:",
+        envClear: "クリア",
+        envEdit: "編集",
+        envDelete: "削除",
+        envName: "名前",
+        envColor: "色",
+        envVariableName: "変数名",
+        envSelectEnvironment: "環境を選択",
+        envManage: "管理"
     )
 
     static func forLanguage(_ language: Language) -> LocalizedStrings {

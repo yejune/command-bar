@@ -261,4 +261,25 @@ struct LocalizedStrings: Codable {
     var apiExecutionTime: String
     var apiRequestInfo: String
     var apiCopyResponse: String
+
+    // API 환경
+    var envManagerTitle: String
+    var envAddEnvironment: String
+    var envAddVariable: String
+    var envExport: String
+    var envImport: String
+    var envNoEnvironments: String
+    var envAddFirst: String
+    var envNoVariables: String
+    var envAddFirstVariable: String
+    var envVariable: String
+    var envActiveEnvironment: String
+    var envClear: String
+    var envEdit: String
+    var envDelete: String
+    var envName: String
+    var envColor: String
+    var envVariableName: String
+    var envSelectEnvironment: String
+    var envManage: String
 }

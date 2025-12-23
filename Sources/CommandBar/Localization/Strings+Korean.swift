@@ -224,6 +224,26 @@ extension LocalizedStrings {
         apiResponseBody: "응답 바디",
         apiExecutionTime: "실행 시간",
         apiRequestInfo: "요청 정보",
-        apiCopyResponse: "응답 복사"
+        apiCopyResponse: "응답 복사",
+
+        envManagerTitle: "환경 관리",
+        envAddEnvironment: "환경 추가",
+        envAddVariable: "변수 추가",
+        envExport: "내보내기",
+        envImport: "가져오기",
+        envNoEnvironments: "환경이 없습니다",
+        envAddFirst: "첫 환경 추가",
+        envNoVariables: "변수가 없습니다",
+        envAddFirstVariable: "첫 변수 추가",
+        envVariable: "변수",
+        envActiveEnvironment: "활성 환경:",
+        envClear: "해제",
+        envEdit: "편집",
+        envDelete: "삭제",
+        envName: "이름",
+        envColor: "색상",
+        envVariableName: "변수명",
+        envSelectEnvironment: "환경 선택",
+        envManage: "환경 관리"
     )
 }

@@ -21,6 +21,7 @@ struct ContentView: View {
     @State private var restoringCommand: Command? = nil
     @State private var registeringClipboardItem: ClipboardItem? = nil
     @State private var apiCommandWithParameters: Command? = nil
+    @State private var showEnvironmentManager = false
 
     // 검색 상태
     @State private var historySearchText = ""
@@ -420,6 +421,58 @@ struct ContentView: View {
                 }
                 .frame(height: 24)
                 .padding(.horizontal, 12)
+
+                // 환경 선택 바 (API 명령이 있을 때만 표시)
+                if store.commands.contains(where: { $0.executionType == .api && !$0.isInTrash }) {
+                    Divider()
+                    HStack(spacing: 6) {
+                        Text(L.envSelectEnvironment)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Picker("", selection: Binding(
+                            get: { store.activeEnvironmentId },
+                            set: { newValue in
+                                if let id = newValue {
+                                    store.setActiveEnvironment(store.environments.first { $0.id == id })
+                                } else {
+                                    store.setActiveEnvironment(nil)
+                                }
+                            }
+                        )) {
+                            Text("-").tag(nil as UUID?)
+                            ForEach(store.environments) { env in
+                                Label {
+                                    Text(env.name)
+                                } icon: {
+                                    Circle()
+                                        .fill(colorFor(env.color))
+                                        .frame(width: 8, height: 8)
+                                }.tag(env.id as UUID?)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: 120)
+
+                        if let env = store.activeEnvironment {
+                            Circle()
+                                .fill(colorFor(env.color))
+                                .frame(width: 8, height: 8)
+                        }
+
+                        Spacer()
+
+                        Button(action: { showEnvironmentManager = true }) {
+                            Label(L.envManage, systemImage: "globe")
+                                .font(.caption)
+                        }
+                        .buttonStyle(SmallHoverButtonStyle())
+                    }
+                    .frame(height: 24)
+                    .padding(.horizontal, 12)
+                }
+
                 Divider()
                 ScrollView {
                     LazyVStack(spacing: 4) {
@@ -594,6 +647,9 @@ struct ContentView: View {
             APIParameterInputView(command: cmd, store: store) { values in
                 executeAPIWithParameters(cmd, values: values)
             }
+        }
+        .sheet(isPresented: $showEnvironmentManager) {
+            EnvironmentManagerView(store: store)
         }
         .onAppear {
             settings.applyAlwaysOnTop()
