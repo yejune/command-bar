@@ -456,6 +456,7 @@ class EnvironmentManagerWindowController: NSWindowController {
         window.styleMask = [.titled, .closable, .resizable]
         window.setContentSize(NSSize(width: 700, height: 500))
         window.center()
+        window.level = .floating  // 모달보다 위에 표시
 
         let controller = EnvironmentManagerWindowController(window: window)
         controller.showWindow(nil)
