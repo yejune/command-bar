@@ -7,7 +7,7 @@ struct CommandBarApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .frame(minWidth: 280, minHeight: 300)
+                .frame(minWidth: 280)
         }
         .windowStyle(.titleBar)
         .defaultSize(width: 300, height: 400)

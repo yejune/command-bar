@@ -8,8 +8,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
-        for window in NSApp.windows {
+        for window in NSApp.windows where window.canBecomeMain {
             window.standardWindowButton(.zoomButton)?.isHidden = true
+            window.minSize = NSSize(width: 280, height: 300)
             setupTitlebarButtons(for: window)
         }
     }

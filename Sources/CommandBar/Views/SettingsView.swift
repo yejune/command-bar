@@ -340,14 +340,17 @@ class ShortcutRecorderNSView: NSView {
     private var isRecording = false
     private var localMonitor: Any?
 
-    private lazy var textField: NSTextField = {
-        let tf = NSTextField()
+    private lazy var textField: ClickableTextField = {
+        let tf = ClickableTextField()
         tf.isEditable = false
         tf.isSelectable = false
         tf.isBezeled = true
         tf.bezelStyle = .roundedBezel
         tf.alignment = .center
         tf.font = .systemFont(ofSize: 12)
+        tf.onMouseDown = { [weak self] in
+            self?.startRecording()
+        }
         return tf
     }()
 
@@ -476,5 +479,14 @@ struct SettingDivider: View {
     var body: some View {
         Divider()
             .opacity(0.5)
+    }
+}
+
+// 클릭 가능한 텍스트필드
+class ClickableTextField: NSTextField {
+    var onMouseDown: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        onMouseDown?()
     }
 }
