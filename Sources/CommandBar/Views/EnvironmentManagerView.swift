@@ -177,7 +177,7 @@ struct EnvironmentManagerView: View {
                 Spacer()
 
                 Button(L.buttonClose) {
-                    dismiss()
+                    EnvironmentManagerWindowController.close()
                 }
                 .keyboardShortcut(.escape)
             }
@@ -437,15 +437,15 @@ struct EnvironmentManagerView: View {
     }
 }
 
-// MARK: - 환경 관리 창 컨트롤러
+// MARK: - 환경 관리 창 컨트롤러 (리사이즈 가능한 모달)
 
-class EnvironmentManagerWindowController: NSWindowController {
-    static var shared: EnvironmentManagerWindowController?
-    private static var parentWindow: NSWindow?
+class EnvironmentManagerWindowController: NSWindowController, NSWindowDelegate {
+    private static var shared: EnvironmentManagerWindowController?
+    private static var modalWindow: NSWindow?
 
     static func show(store: CommandStore) {
-        if let existing = shared {
-            existing.window?.makeKeyAndOrderFront(nil)
+        if shared != nil {
+            modalWindow?.makeKeyAndOrderFront(nil)
             return
         }
 
@@ -456,36 +456,30 @@ class EnvironmentManagerWindowController: NSWindowController {
         window.title = L.envManagerTitle
         window.styleMask = [.titled, .closable, .resizable]
         window.setContentSize(NSSize(width: 700, height: 500))
+        window.minSize = NSSize(width: 500, height: 300)
         window.center()
-        window.level = .floating
 
         let controller = EnvironmentManagerWindowController(window: window)
-        controller.showWindow(nil)
+        window.delegate = controller
         shared = controller
-
-        // 부모 창을 모달처럼 비활성화
-        if let mainWindow = NSApp.mainWindow {
-            parentWindow = mainWindow
-            mainWindow.ignoresMouseEvents = true
-            mainWindow.alphaValue = 0.7
-        }
+        modalWindow = window
 
         // 자동 숨기기 방지
         Settings.shared.preventAutoHide = true
 
-        // 창이 닫힐 때 부모 창 복원
-        NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification,
-            object: window,
-            queue: .main
-        ) { _ in
-            if let parent = parentWindow {
-                parent.ignoresMouseEvents = false
-                parent.alphaValue = 1.0
-            }
-            parentWindow = nil
-            shared = nil
-            Settings.shared.preventAutoHide = false
-        }
+        // 모달로 실행 (부모 창 자동 비활성화)
+        NSApp.runModal(for: window)
+    }
+
+    static func close() {
+        NSApp.stopModal()
+        modalWindow?.close()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        NSApp.stopModal()
+        Settings.shared.preventAutoHide = false
+        EnvironmentManagerWindowController.shared = nil
+        EnvironmentManagerWindowController.modalWindow = nil
     }
 }

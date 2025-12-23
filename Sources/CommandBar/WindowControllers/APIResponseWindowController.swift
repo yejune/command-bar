@@ -1,10 +1,11 @@
 import SwiftUI
 import AppKit
 
-// MARK: - API Response Window Controller
-class APIResponseWindowController {
-    static var activeWindows: [UUID: NSWindow] = [:]
-    static var activeStates: [UUID: APIResponseState] = [:]
+// MARK: - API Response Window Controller (리사이즈 가능한 모달)
+class APIResponseWindowController: NSWindowController, NSWindowDelegate {
+    private static var shared: APIResponseWindowController?
+    private static var modalWindow: NSWindow?
+    private static var currentState: APIResponseState?
 
     static func showLoading(
         requestId: UUID,
@@ -12,64 +13,56 @@ class APIResponseWindowController {
         url: String,
         title: String
     ) -> APIResponseState {
-        if let existingWindow = activeWindows[requestId] {
-            existingWindow.makeKeyAndOrderFront(nil)
-            return activeStates[requestId] ?? APIResponseState()
+        if shared != nil {
+            modalWindow?.makeKeyAndOrderFront(nil)
+            return currentState ?? APIResponseState()
         }
 
         let state = APIResponseState()
-        activeStates[requestId] = state
+        currentState = state
 
         let contentView = APIResponseView(
             method: method,
             url: url,
             state: state,
-            onClose: { closeWindow(for: requestId) }
+            onClose: { close() }
         )
 
         let hostingController = NSHostingController(rootView: contentView)
-        let panel = NSPanel(contentViewController: hostingController)
+        let window = NSWindow(contentViewController: hostingController)
 
-        panel.title = title
-        panel.styleMask = [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel]
-        panel.isFloatingPanel = true
-        panel.hidesOnDeactivate = false
-
-        let window = panel
+        window.title = title
+        window.styleMask = [.titled, .closable, .resizable]
         window.setContentSize(NSSize(width: 600, height: 500))
         window.minSize = NSSize(width: 500, height: 400)
+        window.center()
 
-        if let mainWindow = NSApp.mainWindow ?? NSApp.windows.first {
-            let mainFrame = mainWindow.frame
-            let x = mainFrame.midX - 300
-            let y = mainFrame.midY - 250
-            window.setFrameOrigin(NSPoint(x: x, y: y))
-        } else {
-            window.center()
+        let controller = APIResponseWindowController(window: window)
+        window.delegate = controller
+        shared = controller
+        modalWindow = window
+
+        // 자동 숨기기 방지
+        Settings.shared.preventAutoHide = true
+
+        // 모달로 실행 (비동기로 실행하여 상태 업데이트 가능)
+        DispatchQueue.main.async {
+            NSApp.runModal(for: window)
         }
-
-        window.level = .modalPanel
-        window.isReleasedWhenClosed = false
-        NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification,
-            object: window,
-            queue: .main
-        ) { _ in
-            activeWindows.removeValue(forKey: requestId)
-            activeStates.removeValue(forKey: requestId)
-        }
-
-        activeWindows[requestId] = window
-        window.makeKeyAndOrderFront(nil)
 
         return state
     }
 
-    static func closeWindow(for requestId: UUID) {
-        if let window = activeWindows[requestId] {
-            window.close()
-            activeWindows.removeValue(forKey: requestId)
-            activeStates.removeValue(forKey: requestId)
-        }
+    static func close() {
+        NSApp.stopModal()
+        modalWindow?.close()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        NSApp.stopModal()
+        Settings.shared.preventAutoHide = false
+        APIResponseWindowController.shared = nil
+        APIResponseWindowController.modalWindow = nil
+        APIResponseWindowController.currentState = nil
     }
 }

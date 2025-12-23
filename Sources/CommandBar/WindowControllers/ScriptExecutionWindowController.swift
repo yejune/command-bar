@@ -1,75 +1,53 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Script Execution Window Controller
-class ScriptExecutionWindowController {
-    static var activeWindows: [UUID: NSWindow] = [:]
+// MARK: - Script Execution Window Controller (리사이즈 가능한 모달)
+class ScriptExecutionWindowController: NSWindowController, NSWindowDelegate {
+    private static var shared: ScriptExecutionWindowController?
+    private static var modalWindow: NSWindow?
 
     static func show(command: Command, store: CommandStore) {
-        // 이미 열린 창이 있으면 앞으로 가져오기
-        if let existingWindow = activeWindows[command.id] {
-            existingWindow.makeKeyAndOrderFront(nil)
+        if shared != nil {
+            modalWindow?.makeKeyAndOrderFront(nil)
             return
         }
 
         // 파라미터 개수에 따라 초기 높이 계산
         let paramCount = command.parameterInfos.count
-        let baseHeight: CGFloat = 120  // 헤더 + 버튼
-        let paramHeight: CGFloat = CGFloat(paramCount) * 55  // 파라미터 당 높이
+        let baseHeight: CGFloat = 120
+        let paramHeight: CGFloat = CGFloat(paramCount) * 55
         let initialHeight: CGFloat = baseHeight + paramHeight
 
         let contentView = ScriptExecutionView(
             command: command,
             store: store,
-            onClose: {
-                closeWindow(for: command.id)
-            },
-            onExecutionStarted: {
-                expandWindow(for: command.id)
-            }
+            onClose: { close() },
+            onExecutionStarted: { expandWindow() }
         )
 
         let hostingController = NSHostingController(rootView: contentView)
-        let panel = NSPanel(contentViewController: hostingController)
+        let window = NSWindow(contentViewController: hostingController)
 
-        panel.title = command.title
-        panel.styleMask = [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel]
-        panel.isFloatingPanel = true
-        panel.hidesOnDeactivate = false
-
-        let window = panel
+        window.title = command.title
+        window.styleMask = [.titled, .closable, .resizable]
         window.setContentSize(NSSize(width: 450, height: initialHeight))
         window.minSize = NSSize(width: 400, height: 150)
+        window.center()
 
-        // 메인 창 기준으로 위치
-        if let mainWindow = NSApp.mainWindow ?? NSApp.windows.first {
-            let mainFrame = mainWindow.frame
-            let x = mainFrame.midX - 225
-            let y = mainFrame.midY - initialHeight / 2
-            window.setFrameOrigin(NSPoint(x: x, y: y))
-        } else {
-            window.center()
-        }
+        let controller = ScriptExecutionWindowController(window: window)
+        window.delegate = controller
+        shared = controller
+        modalWindow = window
 
-        // 모달처럼 항상 앞에 고정
-        window.level = .modalPanel
+        // 자동 숨기기 방지
+        Settings.shared.preventAutoHide = true
 
-        // 창 닫힐 때 정리
-        window.isReleasedWhenClosed = false
-        NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification,
-            object: window,
-            queue: .main
-        ) { _ in
-            activeWindows.removeValue(forKey: command.id)
-        }
-
-        activeWindows[command.id] = window
-        window.makeKeyAndOrderFront(nil)
+        // 모달로 실행
+        NSApp.runModal(for: window)
     }
 
-    static func expandWindow(for commandId: UUID) {
-        guard let window = activeWindows[commandId] else { return }
+    static func expandWindow() {
+        guard let window = modalWindow else { return }
         let currentFrame = window.frame
         let newHeight: CGFloat = 400
         let newY = currentFrame.origin.y - (newHeight - currentFrame.height)
@@ -77,10 +55,15 @@ class ScriptExecutionWindowController {
         window.animator().setFrame(newFrame, display: true)
     }
 
-    static func closeWindow(for commandId: UUID) {
-        if let window = activeWindows[commandId] {
-            window.close()
-            activeWindows.removeValue(forKey: commandId)
-        }
+    static func close() {
+        NSApp.stopModal()
+        modalWindow?.close()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        NSApp.stopModal()
+        Settings.shared.preventAutoHide = false
+        ScriptExecutionWindowController.shared = nil
+        ScriptExecutionWindowController.modalWindow = nil
     }
 }
