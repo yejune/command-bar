@@ -130,6 +130,9 @@ struct LocalizedStrings: Codable {
     var historyOutput: String
     var historyTimes: String
 
+    // 검색
+    var searchPlaceholder: String
+
     // 클립보드
     var clipboardTitle: String
     var clipboardNoItems: String

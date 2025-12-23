@@ -148,8 +148,8 @@ class CommandStore: ObservableObject {
         history = db.loadHistory(limit: 100, offset: 0)
     }
 
-    func searchHistory(query: String) -> [HistoryItem] {
-        return db.searchHistory(query: query)
+    func searchHistory(query: String, startDate: Date? = nil, endDate: Date? = nil) {
+        history = db.searchHistory(query: query, startDate: startDate, endDate: endDate)
     }
 
     func clearHistory() {
@@ -162,8 +162,8 @@ class CommandStore: ObservableObject {
         clipboardItems = db.loadClipboard(limit: 100, offset: 0)
     }
 
-    func searchClipboard(query: String) -> [ClipboardItem] {
-        return db.searchClipboard(query: query)
+    func searchClipboard(query: String, startDate: Date? = nil, endDate: Date? = nil) {
+        clipboardItems = db.searchClipboard(query: query, startDate: startDate, endDate: endDate)
     }
 
     func startClipboardMonitor() {

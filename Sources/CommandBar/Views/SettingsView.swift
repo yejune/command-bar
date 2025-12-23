@@ -77,24 +77,22 @@ struct SettingsView: View {
                     }
                     SettingDivider()
                     SettingRow(label: L.settingsAutoHide) {
-                        HStack(spacing: 8) {
-                            Toggle("", isOn: $settings.autoHide)
-                                .labelsHidden()
-                            if settings.autoHide {
-                                ShortcutRecorderView(shortcut: $settings.hideShortcut)
-                                    .frame(width: 80)
-                                if !settings.hotKeyRegistered {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundStyle(.orange)
-                                        .help(L.shortcutConflict)
-                                }
-                            }
-                        }
+                        Toggle("", isOn: $settings.autoHide)
+                            .labelsHidden()
                     }
                     if settings.autoHide {
                         SettingRow(label: L.settingsHideOpacity) {
-                            Toggle("", isOn: $settings.useHideOpacity)
-                                .labelsHidden()
+                            HStack(spacing: 8) {
+                                Toggle("", isOn: $settings.useHideOpacity)
+                                    .labelsHidden()
+                                if settings.useHideOpacity {
+                                    Slider(value: $settings.hideOpacity, in: 0.05...0.5, step: 0.05)
+                                        .frame(width: 100)
+                                    Text("\(Int(settings.hideOpacity * 100))%")
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 35)
+                                }
+                            }
                         }
                     }
                 } else if selectedTab == 1 {

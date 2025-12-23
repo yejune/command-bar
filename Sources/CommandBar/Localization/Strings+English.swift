@@ -106,6 +106,8 @@ extension LocalizedStrings {
         historyOutput: "Output",
         historyTimes: "times",
 
+        searchPlaceholder: "Search...",
+
         clipboardTitle: "Clipboard",
         clipboardNoItems: "Clipboard is empty",
         clipboardSendToNotes: "Send to Notes",

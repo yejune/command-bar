@@ -106,6 +106,8 @@ extension LocalizedStrings {
         historyOutput: "出力",
         historyTimes: "回",
 
+        searchPlaceholder: "検索...",
+
         clipboardTitle: "クリップボード",
         clipboardNoItems: "クリップボードは空です",
         clipboardSendToNotes: "メモに送信",

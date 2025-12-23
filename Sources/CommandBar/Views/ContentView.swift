@@ -22,6 +22,12 @@ struct ContentView: View {
     @State private var registeringClipboardItem: ClipboardItem? = nil
     @State private var apiCommandWithParameters: Command? = nil
 
+    // 검색 상태
+    @State private var historySearchText = ""
+    @State private var historySearchDate: Date? = nil
+    @State private var clipboardSearchText = ""
+    @State private var clipboardSearchDate: Date? = nil
+
     var hasActiveIndicator: Bool {
         store.activeItems.contains { cmd in
             cmd.isRunning || store.alertingCommandId == cmd.id
@@ -49,9 +55,48 @@ struct ContentView: View {
                     if !store.history.isEmpty {
                         Button(L.buttonClear) {
                             store.clearHistory()
+                            historySearchText = ""
+                            historySearchDate = nil
                         }
                         .font(.caption)
                         .buttonStyle(HoverButtonStyle())
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+
+                // 검색 바
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                    TextField(L.searchPlaceholder, text: $historySearchText)
+                        .textFieldStyle(.plain)
+                        .font(.caption)
+                        .onChange(of: historySearchText) { _, _ in
+                            performHistorySearch()
+                        }
+                    if historySearchDate != nil {
+                        Text(historySearchDate!, format: .dateTime.month().day())
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    DatePicker("", selection: Binding(
+                        get: { historySearchDate ?? Date() },
+                        set: { historySearchDate = $0; performHistorySearch() }
+                    ), displayedComponents: .date)
+                    .labelsHidden()
+                    .frame(width: 20)
+                    if !historySearchText.isEmpty || historySearchDate != nil {
+                        Button(action: {
+                            historySearchText = ""
+                            historySearchDate = nil
+                            store.loadHistory()
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 12)
@@ -127,9 +172,48 @@ struct ContentView: View {
                     if !store.clipboardItems.isEmpty {
                         Button(L.buttonClear) {
                             store.clearClipboard()
+                            clipboardSearchText = ""
+                            clipboardSearchDate = nil
                         }
                         .font(.caption)
                         .buttonStyle(HoverButtonStyle())
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+
+                // 검색 바
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                    TextField(L.searchPlaceholder, text: $clipboardSearchText)
+                        .textFieldStyle(.plain)
+                        .font(.caption)
+                        .onChange(of: clipboardSearchText) { _, _ in
+                            performClipboardSearch()
+                        }
+                    if clipboardSearchDate != nil {
+                        Text(clipboardSearchDate!, format: .dateTime.month().day())
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    DatePicker("", selection: Binding(
+                        get: { clipboardSearchDate ?? Date() },
+                        set: { clipboardSearchDate = $0; performClipboardSearch() }
+                    ), displayedComponents: .date)
+                    .labelsHidden()
+                    .frame(width: 20)
+                    if !clipboardSearchText.isEmpty || clipboardSearchDate != nil {
+                        Button(action: {
+                            clipboardSearchText = ""
+                            clipboardSearchDate = nil
+                            store.loadClipboard()
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal, 12)
@@ -705,6 +789,26 @@ struct ContentView: View {
         case "purple": return "🟣"
         case "gray": return "⚫"
         default: return "⚫"
+        }
+    }
+
+    func performHistorySearch() {
+        if historySearchText.isEmpty && historySearchDate == nil {
+            store.loadHistory()
+        } else {
+            let startDate = historySearchDate.map { Calendar.current.startOfDay(for: $0) }
+            let endDate = historySearchDate.map { Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: $0))! }
+            store.searchHistory(query: historySearchText, startDate: startDate, endDate: endDate)
+        }
+    }
+
+    func performClipboardSearch() {
+        if clipboardSearchText.isEmpty && clipboardSearchDate == nil {
+            store.loadClipboard()
+        } else {
+            let startDate = clipboardSearchDate.map { Calendar.current.startOfDay(for: $0) }
+            let endDate = clipboardSearchDate.map { Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: $0))! }
+            store.searchClipboard(query: clipboardSearchText, startDate: startDate, endDate: endDate)
         }
     }
 }

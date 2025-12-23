@@ -49,23 +49,21 @@ class Settings: ObservableObject {
             db.setBoolSetting("useHideOpacity", value: useHideOpacity)
         }
     }
-    @Published var hideShortcut: String {
+    @Published var hideOpacity: Double {
         didSet {
-            db.setSetting("hideShortcut", value: hideShortcut)
-            registerHotKey()
+            db.setDoubleSetting("hideOpacity", value: hideOpacity)
         }
     }
 
     private var appearanceObserver: NSObjectProtocol?
     private var resizeObserver: NSObjectProtocol?
+    private var moveObserver: NSObjectProtocol?
     private var mouseMonitor: Any?
     private var localMouseMonitor: Any?
-    private var hotKeyRef: EventHotKeyRef?
     @Published var isHidden = false
     private var isAnimating = false
     private var savedWindowHeight: CGFloat = 0
     private var hideTimestamp: Date = .distantPast
-    @Published var hotKeyRegistered = true
 
     init() {
         // UserDefaults에서 마이그레이션 (프로퍼티 초기화 전에 실행)
@@ -78,7 +76,7 @@ class Settings: ObservableObject {
         self.notesFolderName = db.getSetting("notesFolderName") ?? "클립보드 메모"
         self.autoHide = db.getBoolSetting("autoHide", defaultValue: false)
         self.useHideOpacity = db.getBoolSetting("useHideOpacity", defaultValue: true)
-        self.hideShortcut = db.getSetting("hideShortcut") ?? "⌘⇧H"
+        self.hideOpacity = db.getDoubleSetting("hideOpacity", defaultValue: 0.1)
 
         // 시스템 테마 변경 감지
         appearanceObserver = DistributedNotificationCenter.default().addObserver(
@@ -102,10 +100,25 @@ class Settings: ObservableObject {
                   window.canBecomeMain,
                   window.frame.height >= 100 else { return }
             self.savedWindowHeight = window.frame.height
+            self.saveWindowFrame(window.frame)
         }
 
-        // 단축키 등록
-        registerHotKey()
+        // 창 이동 감지
+        moveObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didMoveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self,
+                  !self.isHidden,
+                  !self.isAnimating,
+                  let window = notification.object as? NSWindow,
+                  window.canBecomeMain else { return }
+            self.saveWindowFrame(window.frame)
+        }
+
+        // 저장된 창 위치/크기 복원
+        restoreWindowFrame()
 
         // 자동 숨기기 적용
         if autoHide {
@@ -141,10 +154,39 @@ class Settings: ObservableObject {
         if let observer = resizeObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        if let observer = moveObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
         if let monitor = mouseMonitor {
             NSEvent.removeMonitor(monitor)
         }
-        unregisterHotKey()
+    }
+
+    // MARK: - Window Frame
+
+    private func saveWindowFrame(_ frame: NSRect) {
+        db.setDoubleSetting("windowX", value: Double(frame.origin.x))
+        db.setDoubleSetting("windowY", value: Double(frame.origin.y))
+        db.setDoubleSetting("windowWidth", value: Double(frame.width))
+        db.setDoubleSetting("windowHeight", value: Double(frame.height))
+    }
+
+    private func restoreWindowFrame() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            guard let window = NSApp.windows.first(where: { $0.canBecomeMain }) else { return }
+
+            let x = self.db.getDoubleSetting("windowX", defaultValue: -1)
+            let y = self.db.getDoubleSetting("windowY", defaultValue: -1)
+            let width = self.db.getDoubleSetting("windowWidth", defaultValue: 300)
+            let height = self.db.getDoubleSetting("windowHeight", defaultValue: 400)
+
+            // 저장된 위치가 있으면 복원
+            if x >= 0 && y >= 0 && width >= 280 && height >= 300 {
+                let frame = NSRect(x: x, y: y, width: width, height: height)
+                window.setFrame(frame, display: true)
+                self.savedWindowHeight = CGFloat(height)
+            }
+        }
     }
 
     func applyAlwaysOnTop() {
@@ -287,7 +329,7 @@ class Settings: ObservableObject {
             context.duration = 0.2
             window.animator().setFrame(newFrame, display: true)
             if self?.useHideOpacity == true {
-                window.animator().alphaValue = 0.1
+                window.animator().alphaValue = self?.hideOpacity ?? 0.1
             }
         } completionHandler: { [weak self] in
             self?.isAnimating = false
@@ -335,87 +377,5 @@ class Settings: ObservableObject {
         } else {
             hideWindow()
         }
-    }
-
-    // MARK: - Hot Key
-
-    private func registerHotKey() {
-        unregisterHotKey()
-
-        // 간단한 단축키 파싱 (⌘⇧H 형태)
-        guard let (keyCode, modifiers) = parseShortcut(hideShortcut) else {
-            hotKeyRegistered = false
-            return
-        }
-
-        var hotKeyID = EventHotKeyID()
-        hotKeyID.signature = OSType(0x434D4442) // "CMDB"
-        hotKeyID.id = 1
-
-        let status = RegisterEventHotKey(
-            UInt32(keyCode),
-            UInt32(modifiers),
-            hotKeyID,
-            GetEventDispatcherTarget(),
-            0,
-            &hotKeyRef
-        )
-
-        if status == noErr {
-            hotKeyRegistered = true
-            // 핫키 이벤트 핸들러 설치
-            var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-            InstallEventHandler(GetEventDispatcherTarget(), { (_, event, _) -> OSStatus in
-                var hotKeyID = EventHotKeyID()
-                GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, MemoryLayout<EventHotKeyID>.size, nil, &hotKeyID)
-
-                if hotKeyID.id == 1 {
-                    DispatchQueue.main.async {
-                        Settings.shared.toggleHide()
-                    }
-                }
-                return noErr
-            }, 1, &eventType, nil, nil)
-        } else {
-            hotKeyRegistered = false
-        }
-    }
-
-    private func unregisterHotKey() {
-        if let ref = hotKeyRef {
-            UnregisterEventHotKey(ref)
-            hotKeyRef = nil
-        }
-    }
-
-    private func parseShortcut(_ shortcut: String) -> (keyCode: Int, modifiers: Int)? {
-        var modifiers: Int = 0
-        var keyChar: Character?
-
-        for char in shortcut {
-            switch char {
-            case "⌘": modifiers |= cmdKey
-            case "⇧": modifiers |= shiftKey
-            case "⌥": modifiers |= optionKey
-            case "⌃": modifiers |= controlKey
-            default: keyChar = char
-            }
-        }
-
-        guard let key = keyChar else { return nil }
-
-        // 간단한 키 코드 매핑
-        let keyCodeMap: [Character: Int] = [
-            "A": kVK_ANSI_A, "B": kVK_ANSI_B, "C": kVK_ANSI_C, "D": kVK_ANSI_D,
-            "E": kVK_ANSI_E, "F": kVK_ANSI_F, "G": kVK_ANSI_G, "H": kVK_ANSI_H,
-            "I": kVK_ANSI_I, "J": kVK_ANSI_J, "K": kVK_ANSI_K, "L": kVK_ANSI_L,
-            "M": kVK_ANSI_M, "N": kVK_ANSI_N, "O": kVK_ANSI_O, "P": kVK_ANSI_P,
-            "Q": kVK_ANSI_Q, "R": kVK_ANSI_R, "S": kVK_ANSI_S, "T": kVK_ANSI_T,
-            "U": kVK_ANSI_U, "V": kVK_ANSI_V, "W": kVK_ANSI_W, "X": kVK_ANSI_X,
-            "Y": kVK_ANSI_Y, "Z": kVK_ANSI_Z
-        ]
-
-        guard let keyCode = keyCodeMap[Character(key.uppercased())] else { return nil }
-        return (keyCode, modifiers)
     }
 }

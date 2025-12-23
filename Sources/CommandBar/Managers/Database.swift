@@ -402,19 +402,40 @@ class Database {
         return items
     }
 
-    func searchHistory(query: String, limit: Int = 100) -> [HistoryItem] {
+    func searchHistory(query: String, startDate: Date? = nil, endDate: Date? = nil, limit: Int = 100) -> [HistoryItem] {
         var items: [HistoryItem] = []
-        let sql = """
-        SELECT * FROM history
-        WHERE title LIKE ? OR command LIKE ?
-        ORDER BY timestamp DESC LIMIT ?
-        """
+        var conditions: [String] = []
+        var params: [Any] = []
+
+        if !query.isEmpty {
+            conditions.append("(title LIKE ? OR command LIKE ?)")
+            let pattern = "%\(query)%"
+            params.append(pattern)
+            params.append(pattern)
+        }
+        if let start = startDate {
+            conditions.append("timestamp >= ?")
+            params.append(ISO8601DateFormatter().string(from: start))
+        }
+        if let end = endDate {
+            conditions.append("timestamp <= ?")
+            params.append(ISO8601DateFormatter().string(from: end))
+        }
+
+        let whereClause = conditions.isEmpty ? "" : "WHERE " + conditions.joined(separator: " AND ")
+        let sql = "SELECT * FROM history \(whereClause) ORDER BY timestamp DESC LIMIT ?"
+
         var stmt: OpaquePointer?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            let pattern = "%\(query)%"
-            sqlite3_bind_text(stmt, 1, pattern, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_text(stmt, 2, pattern, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_int(stmt, 3, Int32(limit))
+            var idx: Int32 = 1
+            for param in params {
+                if let str = param as? String {
+                    sqlite3_bind_text(stmt, idx, str, -1, SQLITE_TRANSIENT)
+                }
+                idx += 1
+            }
+            sqlite3_bind_int(stmt, idx, Int32(limit))
+
             while sqlite3_step(stmt) == SQLITE_ROW {
                 if let item = parseHistoryItem(stmt) {
                     items.append(item)
@@ -506,14 +527,38 @@ class Database {
         return items
     }
 
-    func searchClipboard(query: String, limit: Int = 100) -> [ClipboardItem] {
+    func searchClipboard(query: String, startDate: Date? = nil, endDate: Date? = nil, limit: Int = 100) -> [ClipboardItem] {
         var items: [ClipboardItem] = []
-        let sql = "SELECT * FROM clipboard WHERE content LIKE ? ORDER BY timestamp DESC LIMIT ?"
+        var conditions: [String] = []
+        var params: [Any] = []
+
+        if !query.isEmpty {
+            conditions.append("content LIKE ?")
+            params.append("%\(query)%")
+        }
+        if let start = startDate {
+            conditions.append("timestamp >= ?")
+            params.append(ISO8601DateFormatter().string(from: start))
+        }
+        if let end = endDate {
+            conditions.append("timestamp <= ?")
+            params.append(ISO8601DateFormatter().string(from: end))
+        }
+
+        let whereClause = conditions.isEmpty ? "" : "WHERE " + conditions.joined(separator: " AND ")
+        let sql = "SELECT * FROM clipboard \(whereClause) ORDER BY timestamp DESC LIMIT ?"
+
         var stmt: OpaquePointer?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            let pattern = "%\(query)%"
-            sqlite3_bind_text(stmt, 1, pattern, -1, SQLITE_TRANSIENT)
-            sqlite3_bind_int(stmt, 2, Int32(limit))
+            var idx: Int32 = 1
+            for param in params {
+                if let str = param as? String {
+                    sqlite3_bind_text(stmt, idx, str, -1, SQLITE_TRANSIENT)
+                }
+                idx += 1
+            }
+            sqlite3_bind_int(stmt, idx, Int32(limit))
+
             while sqlite3_step(stmt) == SQLITE_ROW {
                 if let item = parseClipboardItem(stmt) {
                     items.append(item)

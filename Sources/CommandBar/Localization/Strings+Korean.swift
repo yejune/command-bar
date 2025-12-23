@@ -106,6 +106,8 @@ extension LocalizedStrings {
         historyOutput: "출력",
         historyTimes: "회",
 
+        searchPlaceholder: "검색...",
+
         clipboardTitle: "클립보드",
         clipboardNoItems: "클립보드가 비어있습니다",
         clipboardSendToNotes: "메모로 보내기",
