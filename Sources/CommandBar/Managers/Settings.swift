@@ -256,14 +256,14 @@ class Settings: ObservableObject {
             // 시트가 열려있으면 무시
             if mainWindow.attachedSheet != nil { return event }
 
-            // 다른 일반 창이 열려있으면 무시
+            // 다른 창이 열려있으면 무시 (모달, 패널 포함)
             let hasOtherWindow = NSApp.windows.contains {
                 $0.isVisible &&
                 $0 != mainWindow &&
-                $0.level == .normal &&
                 !$0.className.contains("StatusBar") &&
                 !$0.className.contains("Popover") &&
-                $0.frame.width > 50  // 작은 유틸리티 창 제외
+                !$0.className.contains("_NSFullScreenTransition") &&
+                $0.frame.width > 50
             }
             if !hasOtherWindow {
                 self.showWindow()
@@ -289,13 +289,13 @@ class Settings: ObservableObject {
         // 모달이나 시트가 열려있으면 무시
         if window.attachedSheet != nil { return }
 
-        // 다른 창이 열려있으면 무시
+        // 다른 창이 열려있으면 무시 (모달, 패널 포함)
         let hasOtherWindow = NSApp.windows.contains {
             $0.isVisible &&
             $0 != window &&
-            $0.level == .normal &&
             !$0.className.contains("StatusBar") &&
             !$0.className.contains("Popover") &&
+            !$0.className.contains("_NSFullScreenTransition") &&
             $0.frame.width > 50
         }
         if hasOtherWindow { return }
@@ -324,13 +324,13 @@ class Settings: ObservableObject {
         // 모달이나 시트가 열려있으면 숨기지 않음
         if window.attachedSheet != nil { return }
 
-        // 다른 창이 열려있으면 숨기지 않음
+        // 다른 창이 열려있으면 숨기지 않음 (모달, 패널 포함)
         let hasOtherWindow = NSApp.windows.contains {
             $0.isVisible &&
             $0 != window &&
-            $0.level == .normal &&
             !$0.className.contains("StatusBar") &&
             !$0.className.contains("Popover") &&
+            !$0.className.contains("_NSFullScreenTransition") &&
             $0.frame.width > 50
         }
         if hasOtherWindow { return }
