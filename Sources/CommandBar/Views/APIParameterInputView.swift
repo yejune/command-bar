@@ -25,11 +25,15 @@ struct APIParameterInputView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if info.options.isEmpty {
-                        TextField("", text: Binding(
-                            get: { values[info.name] ?? "" },
-                            set: { values[info.name] = $0 }
-                        ))
-                        .textFieldStyle(.roundedBorder)
+                        AutocompleteTextField(
+                            text: Binding(
+                                get: { values[info.name] ?? "" },
+                                set: { values[info.name] = $0 }
+                            ),
+                            placeholder: "",
+                            suggestions: store.allEnvironmentVariableNames
+                        )
+                        .frame(height: 22)
                     } else {
                         Picker("", selection: Binding(
                             get: { values[info.name] ?? info.options.first ?? "" },
