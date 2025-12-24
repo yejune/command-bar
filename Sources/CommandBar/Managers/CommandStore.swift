@@ -285,6 +285,23 @@ class CommandStore: ObservableObject {
         clipboardTotalCount = max(0, clipboardTotalCount - 1)
     }
 
+    func updateClipboardContent(_ item: ClipboardItem, newContent: String) {
+        // {encrypt:xxx} → {secure:refId} 변환
+        let processedContent = SecureValueManager.shared.processForSave(newContent)
+        db.updateClipboardContent(id: item.id, content: processedContent)
+        // 로컬 상태 업데이트
+        if let index = clipboardItems.firstIndex(where: { $0.id == item.id }) {
+            clipboardItems[index] = ClipboardItem(
+                id: item.id,
+                timestamp: item.timestamp,
+                content: processedContent,
+                isFavorite: item.isFavorite,
+                copyCount: item.copyCount,
+                firstCopiedAt: item.firstCopiedAt
+            )
+        }
+    }
+
     func clearClipboard() {
         db.clearClipboard()
         clipboardItems.removeAll()

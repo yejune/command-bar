@@ -804,6 +804,18 @@ class Database {
         sqlite3_finalize(stmt)
     }
 
+    /// 클립보드 내용 수정
+    func updateClipboardContent(id: UUID, content: String) {
+        let sql = "UPDATE clipboard SET content = ? WHERE id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, content, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, id.uuidString, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
     func loadClipboard(limit: Int = 100, offset: Int = 0) -> [ClipboardItem] {
         var items: [ClipboardItem] = []
         let sql = "SELECT * FROM clipboard WHERE deleted_at IS NULL ORDER BY timestamp DESC LIMIT ? OFFSET ?"

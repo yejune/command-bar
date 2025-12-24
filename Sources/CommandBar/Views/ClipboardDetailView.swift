@@ -7,6 +7,8 @@ struct ClipboardDetailView: View {
     let notesFolderName: String
     let onClose: () -> Void
     @State private var showRegisterSheet = false
+    @State private var editableContent: String = ""
+    @State private var isEdited: Bool = false
 
     var shortId: String {
         Database.shared.getShortId(fullId: item.id.uuidString) ?? String(item.id.uuidString.prefix(8)).lowercased()
@@ -18,6 +20,11 @@ struct ClipboardDetailView: View {
                 HStack {
                     Text(L.clipboardContent)
                         .font(.headline)
+                    if isEdited {
+                        Text("(수정됨)")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                     Spacer()
                     Button(action: copyId) {
                         Text(shortId)
@@ -30,20 +37,28 @@ struct ClipboardDetailView: View {
                 Text(item.timestamp, format: .dateTime)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("\(item.content.count)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack {
+                    Text("\(editableContent.count)자")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("• Option+S: 선택 텍스트 암호화")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
             }
             .padding()
 
             Divider()
 
-            OutputTextView(text: item.content)
+            AutocompleteTextEditor(text: $editableContent, suggestions: [])
                 .padding(8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.gray.opacity(0.1))
                 .cornerRadius(6)
                 .padding()
+                .onChange(of: editableContent) { _, newValue in
+                    isEdited = newValue != item.content
+                }
 
             Divider()
 
@@ -58,6 +73,14 @@ struct ClipboardDetailView: View {
                 }
                 .buttonStyle(HoverTextButtonStyle())
                 Spacer()
+                if isEdited {
+                    Button("저장") {
+                        store.updateClipboardContent(item, newContent: editableContent)
+                        isEdited = false
+                    }
+                    .buttonStyle(HoverTextButtonStyle())
+                    .foregroundStyle(.blue)
+                }
                 Button(L.buttonDelete) {
                     store.removeClipboardItem(item)
                     onClose()
@@ -69,9 +92,12 @@ struct ClipboardDetailView: View {
             }
             .padding()
         }
-        .frame(minWidth: 300, minHeight: 200)
+        .frame(minWidth: 400, minHeight: 300)
         .sheet(isPresented: $showRegisterSheet) {
             RegisterClipboardSheet(store: store, item: item, onComplete: onClose)
+        }
+        .onAppear {
+            editableContent = item.content
         }
     }
 
