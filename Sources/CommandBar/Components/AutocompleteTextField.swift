@@ -48,6 +48,8 @@ struct AutocompleteTextField: NSViewRepresentable {
         case idRef        // {id:xxx}
         case uuidRef      // {uuid:xxx}
         case varRef       // {var:xxx}
+        case encryptRef   // {encrypt:xxx}
+        case secureRef    // {secure:xxx}
         case none
     }
 
@@ -143,6 +145,22 @@ struct AutocompleteTextField: NSViewRepresentable {
                 }
             }
 
+            // {encrypt: 트리거 체크
+            if let encryptRange = beforeCursor.range(of: "{encrypt:", options: .backwards) {
+                let afterTrigger = String(beforeCursor[encryptRange.upperBound...])
+                if !afterTrigger.contains("}") {
+                    return .encryptRef
+                }
+            }
+
+            // {secure: 트리거 체크
+            if let secureRange = beforeCursor.range(of: "{secure:", options: .backwards) {
+                let afterTrigger = String(beforeCursor[secureRange.upperBound...])
+                if !afterTrigger.contains("}") && !afterTrigger.contains(where: { $0.isWhitespace }) {
+                    return .secureRef
+                }
+            }
+
             // $ 트리거 체크
             if let lastDollar = beforeCursor.lastIndex(of: "$") {
                 let afterDollar = String(beforeCursor[text.index(after: lastDollar)...])
@@ -231,6 +249,20 @@ struct AutocompleteTextField: NSViewRepresentable {
                 }.prefix(maxSuggestions)
                 return Array(filtered)
 
+            case .encryptRef:
+                // {encrypt:는 사용자가 직접 입력하므로 자동완성 없음
+                return []
+
+            case .secureRef:
+                // {secure: 이후 입력된 문자열로 필터링 (기존 secure value ID 목록)
+                guard let secureRange = beforeCursor.range(of: "{secure:", options: .backwards) else { return [] }
+                let afterTrigger = String(beforeCursor[secureRange.upperBound...])
+                let allSecureIds = SecureValueManager.shared.getAllRefIds()
+                let filtered = allSecureIds.filter { refId in
+                    afterTrigger.isEmpty || refId.lowercased().hasPrefix(afterTrigger.lowercased())
+                }.prefix(maxSuggestions)
+                return Array(filtered)
+
             case .none:
                 return []
             }
@@ -301,6 +333,23 @@ struct AutocompleteTextField: NSViewRepresentable {
                 let newCursorPosition = dollarPosition + 1 + suggestion.count
                 editor.selectedRange = NSRange(location: newCursorPosition, length: 0)
 
+            case .encryptRef:
+                // {encrypt: 자동완성 없음 (직접 입력)
+                break
+
+            case .secureRef:
+                // {secure: 위치 찾기
+                guard let secureRange = beforeCursor.range(of: "{secure:", options: .backwards) else { return }
+                let triggerStart = text.distance(from: text.startIndex, to: secureRange.lowerBound)
+                let beforeTrigger = String(text.prefix(triggerStart))
+
+                text = beforeTrigger + "{secure:" + suggestion + "}" + afterCursor
+                textField.stringValue = text
+                self.text = text
+
+                let newCursorPosition = triggerStart + 9 + suggestion.count  // {secure: + id + }
+                editor.selectedRange = NSRange(location: newCursorPosition, length: 0)
+
             case .none:
                 break
             }
@@ -347,6 +396,24 @@ struct AutocompleteTextField: NSViewRepresentable {
                 }
             }
 
+            // {encrypt:xxx} 패턴 강조 (빨간색 + 배경)
+            if let encryptRegex = try? NSRegularExpression(pattern: "\\{encrypt:[^}]+\\}") {
+                let matches = encryptRegex.matches(in: text, range: fullRange)
+                for match in matches {
+                    attributed.addAttribute(.foregroundColor, value: NSColor.systemRed, range: match.range)
+                    attributed.addAttribute(.backgroundColor, value: NSColor.systemRed.withAlphaComponent(0.15), range: match.range)
+                }
+            }
+
+            // {secure:xxx} 패턴 강조 (핑크색 + 배경)
+            if let secureRegex = try? NSRegularExpression(pattern: "\\{secure:[^}]+\\}") {
+                let matches = secureRegex.matches(in: text, range: fullRange)
+                for match in matches {
+                    attributed.addAttribute(.foregroundColor, value: NSColor.systemPink, range: match.range)
+                    attributed.addAttribute(.backgroundColor, value: NSColor.systemPink.withAlphaComponent(0.15), range: match.range)
+                }
+            }
+
             // 커서 위치 저장
             let cursorPos = textField.currentEditor()?.selectedRange.location ?? text.count
 
@@ -363,7 +430,54 @@ class AutocompleteNSTextField: NSTextField {
     var onSuggestionSelected: ((String) -> Void)?
 
     override func keyDown(with event: NSEvent) {
+        // Option+S: 선택된 텍스트를 {encrypt:}로 감싸기
+        if event.modifierFlags.contains(.option) && event.charactersIgnoringModifiers == "s" {
+            wrapSelectionWithEncrypt()
+            return
+        }
         // 기본 처리를 먼저 수행하도록 delegate에게 위임
         super.keyDown(with: event)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = super.menu(for: event) ?? NSMenu()
+
+        // 선택된 텍스트가 있을 때만 암호화 메뉴 추가
+        if let editor = currentEditor(), editor.selectedRange.length > 0 {
+            menu.insertItem(NSMenuItem.separator(), at: 0)
+            let encryptItem = NSMenuItem(title: "암호화 ({encrypt:})", action: #selector(wrapSelectionWithEncrypt), keyEquivalent: "s")
+            encryptItem.keyEquivalentModifierMask = .option
+            encryptItem.target = self
+            menu.insertItem(encryptItem, at: 0)
+        }
+
+        return menu
+    }
+
+    @objc func wrapSelectionWithEncrypt() {
+        guard let editor = currentEditor() else { return }
+        let selectedRange = editor.selectedRange
+
+        guard selectedRange.length > 0 else { return }
+
+        let text = stringValue
+        let nsText = text as NSString
+        let selectedText = nsText.substring(with: selectedRange)
+
+        // {encrypt:선택텍스트}로 치환
+        let replacement = "{encrypt:\(selectedText)}"
+        let beforeSelection = nsText.substring(to: selectedRange.location)
+        let afterSelection = nsText.substring(from: selectedRange.location + selectedRange.length)
+
+        stringValue = beforeSelection + replacement + afterSelection
+
+        // 커서를 } 뒤로 이동
+        let newCursorPos = selectedRange.location + replacement.count
+        editor.selectedRange = NSRange(location: newCursorPos, length: 0)
+
+        // delegate에게 변경 알림
+        if let delegate = delegate as? NSTextFieldDelegate {
+            delegate.controlTextDidChange?(Notification(name: NSControl.textDidChangeNotification, object: self))
+        }
     }
 }
