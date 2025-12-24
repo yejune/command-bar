@@ -293,6 +293,25 @@ extension Command {
 
         return result
     }
+
+    /// {secure:refId} 치환 (복호화)
+    func withSecureValuesResolved() -> Command {
+        var result = self
+
+        result.url = SecureValueManager.shared.processForExecution(url)
+        result.bodyData = SecureValueManager.shared.processForExecution(bodyData)
+        result.command = SecureValueManager.shared.processForExecution(command)
+
+        for (key, headerValue) in headers {
+            result.headers[key] = SecureValueManager.shared.processForExecution(headerValue)
+        }
+
+        for (key, paramValue) in queryParams {
+            result.queryParams[key] = SecureValueManager.shared.processForExecution(paramValue)
+        }
+
+        return result
+    }
 }
 
 // API 파라미터 관련 extension

@@ -172,6 +172,46 @@ class Database {
         let createShortIdsIndex = "CREATE INDEX IF NOT EXISTS idx_short_ids_full_id ON short_ids(full_id)"
         sqlite3_exec(db, createShortIdsIndex, nil, nil, nil)
 
+        // 마이그레이션: 휴지통 기능 (deleted_at 컬럼)
+        let addHistoryDeletedAt = "ALTER TABLE history ADD COLUMN deleted_at TEXT"
+        sqlite3_exec(db, addHistoryDeletedAt, nil, nil, nil)
+
+        let addClipboardDeletedAt = "ALTER TABLE clipboard ADD COLUMN deleted_at TEXT"
+        sqlite3_exec(db, addClipboardDeletedAt, nil, nil, nil)
+
+        // deleted_at 인덱스
+        let historyDeletedIndex = "CREATE INDEX IF NOT EXISTS idx_history_deleted ON history(deleted_at)"
+        sqlite3_exec(db, historyDeletedIndex, nil, nil, nil)
+
+        let clipboardDeletedIndex = "CREATE INDEX IF NOT EXISTS idx_clipboard_deleted ON clipboard(deleted_at)"
+        sqlite3_exec(db, clipboardDeletedIndex, nil, nil, nil)
+
+        // Secure Values 테이블 (암호화된 값 저장)
+        let createSecureValuesTable = """
+        CREATE TABLE IF NOT EXISTS secure_values (
+            id TEXT PRIMARY KEY,
+            encrypted_value TEXT NOT NULL,
+            key_version INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+        )
+        """
+        executeStatements(createSecureValuesTable)
+
+        let secureValuesIndex = "CREATE INDEX IF NOT EXISTS idx_secure_values_key_version ON secure_values(key_version)"
+        sqlite3_exec(db, secureValuesIndex, nil, nil, nil)
+
+        // Secure Key Versions 테이블 (키 버전 메타데이터)
+        let createSecureKeyVersionsTable = """
+        CREATE TABLE IF NOT EXISTS secure_key_versions (
+            version INTEGER PRIMARY KEY,
+            key_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            is_active INTEGER DEFAULT 0
+        )
+        """
+        executeStatements(createSecureKeyVersionsTable)
+
         // 기존 항목에 대해 short_id 마이그레이션
         migrateShortIds()
     }
@@ -488,7 +528,7 @@ class Database {
 
     func loadHistory(limit: Int = 100, offset: Int = 0) -> [HistoryItem] {
         var items: [HistoryItem] = []
-        let sql = "SELECT * FROM history ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        let sql = "SELECT * FROM history WHERE deleted_at IS NULL ORDER BY timestamp DESC LIMIT ? OFFSET ?"
         var stmt: OpaquePointer?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
             sqlite3_bind_int(stmt, 1, Int32(limit))
@@ -638,7 +678,7 @@ class Database {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedCommand = command.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let selectSql = "SELECT id, count FROM history WHERE trim(title) = ? AND trim(command) = ? AND type = ? LIMIT 1"
+        let selectSql = "SELECT id, count, deleted_at FROM history WHERE trim(title) = ? AND trim(command) = ? AND type = ? LIMIT 1"
         var stmt: OpaquePointer?
         var historyId: String?
         var currentCount = 0
@@ -660,8 +700,8 @@ class Database {
             return false
         }
 
-        // 카운트 증가 및 타임스탬프 갱신 (최상단 이동)
-        let updateSql = "UPDATE history SET count = ?, timestamp = ? WHERE id = ?"
+        // 카운트 증가, 타임스탬프 갱신, 삭제 상태 해제 (복원)
+        let updateSql = "UPDATE history SET count = ?, timestamp = ?, deleted_at = NULL WHERE id = ?"
         var updateStmt: OpaquePointer?
         if sqlite3_prepare_v2(db, updateSql, -1, &updateStmt, nil) == SQLITE_OK {
             sqlite3_bind_int(updateStmt, 1, Int32(currentCount + 1))
@@ -713,9 +753,26 @@ class Database {
         executeStatements("DELETE FROM history_executions")
     }
 
+    func deleteHistory(id: String) {
+        var stmt: OpaquePointer?
+        let sql = "DELETE FROM history WHERE id = ?"
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+        // 관련 실행 이력도 삭제
+        let execSql = "DELETE FROM history_executions WHERE history_id = ?"
+        if sqlite3_prepare_v2(db, execSql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
     func getHistoryCount() -> Int {
         var count = 0
-        let sql = "SELECT COUNT(*) FROM history"
+        let sql = "SELECT COUNT(*) FROM history WHERE deleted_at IS NULL"
         var stmt: OpaquePointer?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
             if sqlite3_step(stmt) == SQLITE_ROW {
@@ -749,7 +806,7 @@ class Database {
 
     func loadClipboard(limit: Int = 100, offset: Int = 0) -> [ClipboardItem] {
         var items: [ClipboardItem] = []
-        let sql = "SELECT * FROM clipboard ORDER BY timestamp DESC LIMIT ? OFFSET ?"
+        let sql = "SELECT * FROM clipboard WHERE deleted_at IS NULL ORDER BY timestamp DESC LIMIT ? OFFSET ?"
         var stmt: OpaquePointer?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
             sqlite3_bind_int(stmt, 1, Int32(limit))
@@ -904,7 +961,7 @@ class Database {
 
     func getClipboardCount() -> Int {
         var count = 0
-        let sql = "SELECT COUNT(*) FROM clipboard"
+        let sql = "SELECT COUNT(*) FROM clipboard WHERE deleted_at IS NULL"
         var stmt: OpaquePointer?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
             if sqlite3_step(stmt) == SQLITE_ROW {
@@ -1256,6 +1313,336 @@ class Database {
         }
 
         return result
+    }
+
+    // MARK: - 휴지통 (Trash)
+
+    // 히스토리 소프트 삭제
+    func softDeleteHistory(id: String) {
+        let now = ISO8601DateFormatter().string(from: Date())
+        let sql = "UPDATE history SET deleted_at = ? WHERE id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, now, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, id, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    // 클립보드 소프트 삭제
+    func softDeleteClipboard(id: String) {
+        let now = ISO8601DateFormatter().string(from: Date())
+        let sql = "UPDATE clipboard SET deleted_at = ? WHERE id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, now, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, id, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    // 히스토리 복원
+    func restoreHistory(id: String) {
+        let sql = "UPDATE history SET deleted_at = NULL WHERE id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    // 클립보드 복원
+    func restoreClipboard(id: String) {
+        let sql = "UPDATE clipboard SET deleted_at = NULL WHERE id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    // 삭제된 히스토리 로드
+    func loadTrashHistory(limit: Int = 100, offset: Int = 0) -> [HistoryItem] {
+        var items: [HistoryItem] = []
+        let sql = "SELECT * FROM history WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT ? OFFSET ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_int(stmt, 1, Int32(limit))
+            sqlite3_bind_int(stmt, 2, Int32(offset))
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let item = parseHistoryItem(stmt) {
+                    items.append(item)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return items
+    }
+
+    // 삭제된 클립보드 로드
+    func loadTrashClipboard(limit: Int = 100, offset: Int = 0) -> [ClipboardItem] {
+        var items: [ClipboardItem] = []
+        let sql = "SELECT * FROM clipboard WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT ? OFFSET ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_int(stmt, 1, Int32(limit))
+            sqlite3_bind_int(stmt, 2, Int32(offset))
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let item = parseClipboardItem(stmt) {
+                    items.append(item)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return items
+    }
+
+    // 삭제된 히스토리 개수
+    func getTrashHistoryCount() -> Int {
+        var count = 0
+        let sql = "SELECT COUNT(*) FROM history WHERE deleted_at IS NOT NULL"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                count = Int(sqlite3_column_int(stmt, 0))
+            }
+        }
+        sqlite3_finalize(stmt)
+        return count
+    }
+
+    // 삭제된 클립보드 개수
+    func getTrashClipboardCount() -> Int {
+        var count = 0
+        let sql = "SELECT COUNT(*) FROM clipboard WHERE deleted_at IS NOT NULL"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                count = Int(sqlite3_column_int(stmt, 0))
+            }
+        }
+        sqlite3_finalize(stmt)
+        return count
+    }
+
+    // 휴지통 비우기 (히스토리)
+    func emptyTrashHistory() {
+        // 영구 삭제된 히스토리의 실행 이력도 삭제
+        executeStatements("DELETE FROM history_executions WHERE history_id IN (SELECT id FROM history WHERE deleted_at IS NOT NULL)")
+        executeStatements("DELETE FROM history WHERE deleted_at IS NOT NULL")
+    }
+
+    // 휴지통 비우기 (클립보드)
+    func emptyTrashClipboard() {
+        // 영구 삭제된 클립보드의 복사 이력도 삭제
+        executeStatements("DELETE FROM clipboard_copies WHERE clipboard_id IN (SELECT id FROM clipboard WHERE deleted_at IS NOT NULL)")
+        executeStatements("DELETE FROM clipboard WHERE deleted_at IS NOT NULL")
+    }
+
+    // 전체 휴지통 비우기
+    func emptyAllTrash() {
+        emptyTrashHistory()
+        emptyTrashClipboard()
+    }
+
+    // MARK: - Secure Values (암호화된 값 관리)
+
+    /// 암호화된 값 저장
+    func insertSecureValue(id: String, encryptedValue: String, keyVersion: Int) {
+        let now = ISO8601DateFormatter().string(from: Date())
+        let sql = "INSERT OR REPLACE INTO secure_values (id, encrypted_value, key_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, encryptedValue, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_int(stmt, 3, Int32(keyVersion))
+            sqlite3_bind_text(stmt, 4, now, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 5, now, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    /// 암호화된 값 조회
+    func getSecureValue(id: String) -> (encrypted: String, keyVersion: Int)? {
+        let sql = "SELECT encrypted_value, key_version FROM secure_values WHERE id = ?"
+        var stmt: OpaquePointer?
+        var result: (encrypted: String, keyVersion: Int)?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let encryptedCStr = sqlite3_column_text(stmt, 0) {
+                    let encrypted = String(cString: encryptedCStr)
+                    let keyVersion = Int(sqlite3_column_int(stmt, 1))
+                    result = (encrypted, keyVersion)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
+    /// 암호화된 값 업데이트 (키 마이그레이션 시 사용)
+    func updateSecureValue(id: String, encryptedValue: String, keyVersion: Int) {
+        let now = ISO8601DateFormatter().string(from: Date())
+        let sql = "UPDATE secure_values SET encrypted_value = ?, key_version = ?, updated_at = ? WHERE id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, encryptedValue, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_int(stmt, 2, Int32(keyVersion))
+            sqlite3_bind_text(stmt, 3, now, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 4, id, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    /// 암호화된 값 삭제
+    func deleteSecureValue(id: String) {
+        let sql = "DELETE FROM secure_values WHERE id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    /// 전체 암호화된 값 목록 (키 버전 포함)
+    func getAllSecureValues() -> [(id: String, keyVersion: Int)] {
+        var result: [(id: String, keyVersion: Int)] = []
+        let sql = "SELECT id, key_version FROM secure_values"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let idCStr = sqlite3_column_text(stmt, 0) {
+                    let id = String(cString: idCStr)
+                    let keyVersion = Int(sqlite3_column_int(stmt, 1))
+                    result.append((id, keyVersion))
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
+    /// secure value ID 존재 여부 확인
+    func secureValueExists(id: String) -> Bool {
+        let sql = "SELECT 1 FROM secure_values WHERE id = ? LIMIT 1"
+        var stmt: OpaquePointer?
+        var exists = false
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+            exists = sqlite3_step(stmt) == SQLITE_ROW
+        }
+        sqlite3_finalize(stmt)
+        return exists
+    }
+
+    /// 6자리 유니크 secure ID 생성
+    func generateSecureId() -> String {
+        let chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+        var id: String
+        repeat {
+            id = String((0..<6).map { _ in chars.randomElement()! })
+        } while secureValueExists(id: id)
+        return id
+    }
+
+    // MARK: - Secure Key Versions (키 버전 관리)
+
+    /// 현재 활성 키 버전 조회
+    func getCurrentKeyVersion() -> Int {
+        let sql = "SELECT version FROM secure_key_versions WHERE is_active = 1 LIMIT 1"
+        var stmt: OpaquePointer?
+        var version = 0
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                version = Int(sqlite3_column_int(stmt, 0))
+            }
+        }
+        sqlite3_finalize(stmt)
+        return version
+    }
+
+    /// 새 키 버전 등록
+    func insertKeyVersion(version: Int, keyHash: String) {
+        let now = ISO8601DateFormatter().string(from: Date())
+        let sql = "INSERT INTO secure_key_versions (version, key_hash, created_at, is_active) VALUES (?, ?, ?, 0)"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_int(stmt, 1, Int32(version))
+            sqlite3_bind_text(stmt, 2, keyHash, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 3, now, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    /// 키 버전 활성화 (기존 활성 해제 후)
+    func setActiveKeyVersion(version: Int) {
+        // 모든 키 비활성화
+        executeStatements("UPDATE secure_key_versions SET is_active = 0")
+        // 지정된 키 활성화
+        let sql = "UPDATE secure_key_versions SET is_active = 1 WHERE version = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_int(stmt, 1, Int32(version))
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    /// 키 해시 조회 (검증용)
+    func getKeyHash(version: Int) -> String? {
+        let sql = "SELECT key_hash FROM secure_key_versions WHERE version = ?"
+        var stmt: OpaquePointer?
+        var keyHash: String?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_int(stmt, 1, Int32(version))
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let hashCStr = sqlite3_column_text(stmt, 0) {
+                    keyHash = String(cString: hashCStr)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return keyHash
+    }
+
+    /// 다음 키 버전 번호 조회
+    func getNextKeyVersion() -> Int {
+        let sql = "SELECT COALESCE(MAX(version), 0) + 1 FROM secure_key_versions"
+        var stmt: OpaquePointer?
+        var nextVersion = 1
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                nextVersion = Int(sqlite3_column_int(stmt, 0))
+            }
+        }
+        sqlite3_finalize(stmt)
+        return nextVersion
+    }
+
+    /// 특정 키 버전으로 암호화된 값 목록
+    func getSecureValuesByKeyVersion(version: Int) -> [String] {
+        var ids: [String] = []
+        let sql = "SELECT id FROM secure_values WHERE key_version = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_int(stmt, 1, Int32(version))
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let idCStr = sqlite3_column_text(stmt, 0) {
+                    ids.append(String(cString: idCStr))
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return ids
     }
 }
 

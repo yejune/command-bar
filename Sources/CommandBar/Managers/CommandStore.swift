@@ -215,6 +215,12 @@ class CommandStore: ObservableObject {
         historyTotalCount = 0
     }
 
+    func deleteHistory(_ item: HistoryItem) {
+        db.softDeleteHistory(id: item.id.uuidString)
+        history.removeAll { $0.id == item.id }
+        historyTotalCount = max(0, historyTotalCount - 1)
+    }
+
     // 클립보드 관련
     func loadClipboard() {
         let pageSize = Settings.shared.pageSize
@@ -274,8 +280,9 @@ class CommandStore: ObservableObject {
     }
 
     func removeClipboardItem(_ item: ClipboardItem) {
-        db.deleteClipboard(item.id)
+        db.softDeleteClipboard(id: item.id.uuidString)
         clipboardItems.removeAll { $0.id == item.id }
+        clipboardTotalCount = max(0, clipboardTotalCount - 1)
     }
 
     func clearClipboard() {
@@ -327,8 +334,10 @@ class CommandStore: ObservableObject {
     }
 
     func executeAPICommand(_ command: Command) async -> (data: Data?, response: URLResponse?, error: Error?) {
+        // {secure:refId} → 복호화된 값으로 치환
+        var processedCommand = command.withSecureValuesResolved()
+
         // 환경 변수 치환
-        var processedCommand = command
         if let env = activeEnvironment {
             processedCommand = processedCommand.withEnvironmentVariables(env.variables)
         }
@@ -618,6 +627,12 @@ class CommandStore: ObservableObject {
     func add(_ cmd: Command) {
         var newCmd = cmd
         newCmd.command = normalizeQuotes(cmd.command)
+        // {encrypt:xxx} → {secure:refId} 변환
+        newCmd.command = SecureValueManager.shared.processForSave(newCmd.command)
+        newCmd.url = SecureValueManager.shared.processForSave(newCmd.url)
+        newCmd.bodyData = SecureValueManager.shared.processForSave(newCmd.bodyData)
+        // 헤더 값도 처리
+        newCmd.headers = newCmd.headers.mapValues { SecureValueManager.shared.processForSave($0) }
         commands.append(newCmd)
         save()
         if cmd.executionType == .background && cmd.interval > 0 {
@@ -734,6 +749,11 @@ class CommandStore: ObservableObject {
         if let i = commands.firstIndex(where: { $0.id == cmd.id }) {
             var updated = cmd
             updated.command = normalizeQuotes(cmd.command)
+            // {encrypt:xxx} → {secure:refId} 변환
+            updated.command = SecureValueManager.shared.processForSave(updated.command)
+            updated.url = SecureValueManager.shared.processForSave(updated.url)
+            updated.bodyData = SecureValueManager.shared.processForSave(updated.bodyData)
+            updated.headers = updated.headers.mapValues { SecureValueManager.shared.processForSave($0) }
             commands[i] = updated
             commands[i].alertedTimes = []  // 알림 상태 초기화
             commands[i].alertState = .none
@@ -808,7 +828,9 @@ class CommandStore: ObservableObject {
     }
 
     private func runInTerminal(_ cmd: Command, app: String) {
-        let escaped = cmd.command.replacingOccurrences(of: "\"", with: "\\\"")
+        // {secure:refId} → 복호화된 값으로 치환
+        let resolvedCommand = SecureValueManager.shared.processForExecution(cmd.command)
+        let escaped = resolvedCommand.replacingOccurrences(of: "\"", with: "\\\"")
         let script: String
 
         if app == "iTerm" {
@@ -862,12 +884,15 @@ class CommandStore: ObservableObject {
         commands[index].lastOutput = nil
         commands[index].lastExecutedAt = Date()
 
+        // {secure:refId} → 복호화된 값으로 치환
+        let resolvedCommand = SecureValueManager.shared.processForExecution(cmd.command)
+
         DispatchQueue.global(qos: .userInitiated).async {
             let process = Process()
             let pipe = Pipe()
 
             process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            process.arguments = ["-c", cmd.command]
+            process.arguments = ["-c", resolvedCommand]
             process.standardOutput = pipe
             process.standardError = pipe
 
@@ -1393,5 +1418,53 @@ class CommandStore: ObservableObject {
         }
 
         return result
+    }
+
+    // MARK: - 휴지통 (Trash)
+
+    @Published var trashHistory: [HistoryItem] = []
+    @Published var trashClipboard: [ClipboardItem] = []
+    @Published var trashHistoryCount: Int = 0
+    @Published var trashClipboardCount: Int = 0
+
+    func loadTrash() {
+        trashHistory = db.loadTrashHistory(limit: 100, offset: 0)
+        trashClipboard = db.loadTrashClipboard(limit: 100, offset: 0)
+        trashHistoryCount = db.getTrashHistoryCount()
+        trashClipboardCount = db.getTrashClipboardCount()
+    }
+
+    func restoreHistoryItem(_ item: HistoryItem) {
+        db.restoreHistory(id: item.id.uuidString)
+        trashHistory.removeAll { $0.id == item.id }
+        trashHistoryCount = max(0, trashHistoryCount - 1)
+        loadHistory()
+    }
+
+    func restoreClipboardItem(_ item: ClipboardItem) {
+        db.restoreClipboard(id: item.id.uuidString)
+        trashClipboard.removeAll { $0.id == item.id }
+        trashClipboardCount = max(0, trashClipboardCount - 1)
+        loadClipboard()
+    }
+
+    func emptyTrashHistory() {
+        db.emptyTrashHistory()
+        trashHistory.removeAll()
+        trashHistoryCount = 0
+    }
+
+    func emptyTrashClipboard() {
+        db.emptyTrashClipboard()
+        trashClipboard.removeAll()
+        trashClipboardCount = 0
+    }
+
+    func emptyAllTrash() {
+        db.emptyAllTrash()
+        trashHistory.removeAll()
+        trashClipboard.removeAll()
+        trashHistoryCount = 0
+        trashClipboardCount = 0
     }
 }
