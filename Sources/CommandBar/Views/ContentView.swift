@@ -22,6 +22,9 @@ struct ContentView: View {
     @State private var registeringClipboardItem: ClipboardItem? = nil
     @State private var apiCommandWithParameters: Command? = nil
 
+    // 휴지통 서브탭 (0: 목록, 1: 히스토리, 2: 클립보드)
+    @State private var trashSubTab: Int = 0
+
     // 검색 상태
     @State private var historySearchText = ""
     @State private var historySearchDate: Date? = nil
@@ -102,11 +105,20 @@ struct ContentView: View {
                                     }
                                 }
                                 Spacer()
-                                if item.output != nil {
+                                HStack(spacing: 2) {
+                                    if item.output != nil {
+                                        Button(action: {
+                                            HistoryDetailWindowController.show(item: item)
+                                        }) {
+                                            Image(systemName: "doc.text.magnifyingglass")
+                                        }
+                                        .buttonStyle(SmallHoverButtonStyle())
+                                    }
                                     Button(action: {
-                                        HistoryDetailWindowController.show(item: item)
+                                        store.deleteHistory(item)
                                     }) {
-                                        Image(systemName: "doc.text.magnifyingglass")
+                                        Image(systemName: "trash")
+                                            .foregroundStyle(.red)
                                     }
                                     .buttonStyle(SmallHoverButtonStyle())
                                 }
@@ -179,9 +191,16 @@ struct ContentView: View {
                 ScrollView {
                     LazyVStack(spacing: 4) {
                         ForEach(filteredClipboard) { item in
-                            HStack {
+                            HStack(alignment: .top) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     HStack(spacing: 4) {
+                                        Button(action: {
+                                            store.toggleClipboardFavorite(item)
+                                        }) {
+                                            Image(systemName: item.isFavorite ? "star.fill" : "star")
+                                                .foregroundStyle(item.isFavorite ? .yellow : .gray.opacity(0.4))
+                                        }
+                                        .buttonStyle(SmallHoverButtonStyle())
                                         Text(item.preview)
                                             .lineLimit(1)
                                         if item.copyCount > 1 {
@@ -200,27 +219,6 @@ struct ContentView: View {
                                         ClipboardDetailWindowController.show(item: item, store: store, notesFolderName: settings.notesFolderName)
                                     }) {
                                         Image(systemName: "doc.text.magnifyingglass")
-                                    }
-                                    .buttonStyle(SmallHoverButtonStyle())
-                                    Button(action: {
-                                        registeringClipboardItem = item
-                                    }) {
-                                        Image(systemName: "arrow.right.doc.on.clipboard")
-                                    }
-                                    .buttonStyle(SmallHoverButtonStyle())
-                                    .help(L.registerClipboardTitle)
-                                    Button(action: {
-                                        store.sendToNotes(item, folderName: settings.notesFolderName)
-                                    }) {
-                                        Image(systemName: "note.text")
-                                    }
-                                    .buttonStyle(SmallHoverButtonStyle())
-                                    .help(L.clipboardSendToNotes)
-                                    Button(action: {
-                                        store.toggleClipboardFavorite(item)
-                                    }) {
-                                        Image(systemName: item.isFavorite ? "star.fill" : "star")
-                                            .foregroundStyle(item.isFavorite ? .yellow : .gray.opacity(0.4))
                                     }
                                     .buttonStyle(SmallHoverButtonStyle())
                                     Button(action: {
@@ -279,86 +277,216 @@ struct ContentView: View {
             } else if showingTrash {
                 // 휴지통 보기
                 SubtitleBar(title: L.tabTrash) {
-                    if !store.trashItems.isEmpty {
-                        Button(L.trashEmpty) {
+                    Button(L.trashEmpty) {
+                        if trashSubTab == 0 {
                             store.emptyTrash()
+                        } else if trashSubTab == 1 {
+                            store.emptyTrashHistory()
+                        } else {
+                            store.emptyTrashClipboard()
                         }
-                        .font(.caption)
-                        .buttonStyle(HoverButtonStyle())
                     }
+                    .font(.caption)
+                    .buttonStyle(HoverButtonStyle())
+                    .disabled(trashSubTab == 0 ? store.trashItems.isEmpty :
+                              trashSubTab == 1 ? store.trashHistory.isEmpty :
+                              store.trashClipboard.isEmpty)
                 }
                 Divider()
-                ScrollView {
-                    LazyVStack(spacing: 4) {
-                        ForEach(store.trashItems) { cmd in
-                            HStack {
-                                Image(systemName: trashItemIcon(cmd))
-                                    .foregroundStyle(trashItemColor(cmd))
-                                    .frame(width: 14)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(cmd.title)
-                                    if cmd.executionType == .schedule {
-                                        if let date = cmd.scheduleDate {
-                                            Text(formatScheduleDate(date, repeatType: cmd.repeatType))
+                // 서브탭 선택
+                HStack(spacing: 8) {
+                    Button(action: { trashSubTab = 0 }) {
+                        Text("목록(\(store.trashItems.count))")
+                            .font(.caption)
+                            .foregroundStyle(trashSubTab == 0 ? .primary : .secondary)
+                    }
+                    .buttonStyle(SmallHoverButtonStyle())
+                    Button(action: { trashSubTab = 1 }) {
+                        Text("히스토리(\(store.trashHistoryCount))")
+                            .font(.caption)
+                            .foregroundStyle(trashSubTab == 1 ? .primary : .secondary)
+                    }
+                    .buttonStyle(SmallHoverButtonStyle())
+                    Button(action: { trashSubTab = 2 }) {
+                        Text("클립보드(\(store.trashClipboardCount))")
+                            .font(.caption)
+                            .foregroundStyle(trashSubTab == 2 ? .primary : .secondary)
+                    }
+                    .buttonStyle(SmallHoverButtonStyle())
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                Divider()
+
+                if trashSubTab == 0 {
+                    // 목록 (명령어) 휴지통
+                    ScrollView {
+                        LazyVStack(spacing: 4) {
+                            ForEach(store.trashItems) { cmd in
+                                HStack {
+                                    Image(systemName: trashItemIcon(cmd))
+                                        .foregroundStyle(trashItemColor(cmd))
+                                        .frame(width: 14)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(cmd.title)
+                                        if cmd.executionType == .schedule {
+                                            if let date = cmd.scheduleDate {
+                                                Text(formatScheduleDate(date, repeatType: cmd.repeatType))
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        } else if cmd.executionType == .api {
+                                            Text(cmd.url)
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        } else {
+                                            Text(cmd.command)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
                                         }
-                                    } else if cmd.executionType == .api {
-                                        Text(cmd.url)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    } else {
-                                        Text(cmd.command)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
+                                    }
+                                    Spacer()
+                                    HStack(spacing: 2) {
+                                        Button(action: {
+                                            editingCommand = cmd
+                                        }) {
+                                            Image(systemName: "pencil")
+                                        }
+                                        .buttonStyle(SmallHoverButtonStyle())
+                                        Button(action: {
+                                            restoringCommand = cmd
+                                        }) {
+                                            Image(systemName: "arrow.uturn.backward")
+                                                .foregroundStyle(.blue)
+                                        }
+                                        .buttonStyle(SmallHoverButtonStyle())
+                                        Button(action: {
+                                            store.deletePermanently(cmd)
+                                        }) {
+                                            Image(systemName: "xmark")
+                                                .foregroundStyle(.red)
+                                        }
+                                        .buttonStyle(SmallHoverButtonStyle())
                                     }
                                 }
-                                Spacer()
-                                HStack(spacing: 2) {
-                                    Button(action: {
-                                        editingCommand = cmd
-                                    }) {
-                                        Image(systemName: "pencil")
-                                    }
-                                    .buttonStyle(SmallHoverButtonStyle())
-                                    Button(action: {
-                                        restoringCommand = cmd
-                                    }) {
-                                        Image(systemName: "arrow.uturn.backward")
-                                            .foregroundStyle(.blue)
-                                    }
-                                    .buttonStyle(SmallHoverButtonStyle())
-                                    Button(action: {
-                                        store.deletePermanently(cmd)
-                                    }) {
-                                        Image(systemName: "xmark")
-                                            .foregroundStyle(.red)
-                                    }
-                                    .buttonStyle(SmallHoverButtonStyle())
-                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(Color.gray.opacity(0.1))
+                                )
                             }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(Color.gray.opacity(0.1))
-                            )
+                        }
+                        .padding(8)
+                    }
+                    .background(Color.clear)
+                    .overlay {
+                        if store.trashItems.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "trash")
+                                    .font(.title2)
+                                    .foregroundStyle(.secondary)
+                                Text(L.trashEmptyMessage)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
-                    .padding(8)
-                }
-                .background(Color.clear)
-                .overlay {
-                    if store.trashItems.isEmpty {
-                        VStack(spacing: 8) {
-                            Image(systemName: "trash")
-                                .font(.title2)
-                                .foregroundStyle(.secondary)
-                            Text(L.trashEmptyMessage)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                } else if trashSubTab == 1 {
+                    // 히스토리 휴지통
+                    ScrollView {
+                        LazyVStack(spacing: 4) {
+                            ForEach(store.trashHistory) { item in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.title)
+                                            .lineLimit(1)
+                                        Text(item.timestamp, format: .dateTime.month().day().hour().minute())
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    HStack(spacing: 2) {
+                                        Button(action: {
+                                            store.restoreHistoryItem(item)
+                                        }) {
+                                            Image(systemName: "arrow.uturn.backward")
+                                                .foregroundStyle(.blue)
+                                        }
+                                        .buttonStyle(SmallHoverButtonStyle())
+                                    }
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(Color.gray.opacity(0.1))
+                                )
+                            }
+                        }
+                        .padding(8)
+                    }
+                    .background(Color.clear)
+                    .overlay {
+                        if store.trashHistory.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "trash")
+                                    .font(.title2)
+                                    .foregroundStyle(.secondary)
+                                Text(L.trashEmptyMessage)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                } else {
+                    // 클립보드 휴지통
+                    ScrollView {
+                        LazyVStack(spacing: 4) {
+                            ForEach(store.trashClipboard) { item in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.preview)
+                                            .lineLimit(1)
+                                        Text(item.timestamp, format: .dateTime.month().day().hour().minute())
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    HStack(spacing: 2) {
+                                        Button(action: {
+                                            store.restoreClipboardItem(item)
+                                        }) {
+                                            Image(systemName: "arrow.uturn.backward")
+                                                .foregroundStyle(.blue)
+                                        }
+                                        .buttonStyle(SmallHoverButtonStyle())
+                                    }
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(Color.gray.opacity(0.1))
+                                )
+                            }
+                        }
+                        .padding(8)
+                    }
+                    .background(Color.clear)
+                    .overlay {
+                        if store.trashClipboard.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "trash")
+                                    .font(.title2)
+                                    .foregroundStyle(.secondary)
+                                Text(L.trashEmptyMessage)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -602,8 +730,8 @@ struct ContentView: View {
                 }
                 .buttonStyle(HoverButtonStyle())
 
-                Button(action: { showingTrash = true; showingHistory = false; showingClipboard = false; showingGroups = false }) {
-                    Image(systemName: store.trashItems.isEmpty ? "trash" : "trash.fill")
+                Button(action: { showingTrash = true; showingHistory = false; showingClipboard = false; showingGroups = false; store.loadTrash() }) {
+                    Image(systemName: store.trashItems.isEmpty && store.trashHistoryCount == 0 && store.trashClipboardCount == 0 ? "trash" : "trash.fill")
                         .foregroundStyle(showingTrash ? .primary : .secondary)
                 }
                 .buttonStyle(HoverButtonStyle())
