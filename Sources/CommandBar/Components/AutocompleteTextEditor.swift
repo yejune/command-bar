@@ -91,7 +91,7 @@ struct AutocompleteTextEditor: NSViewRepresentable {
 
         // 현재 텍스트뷰에 변환되지 않은 백틱 패턴이 있는지 확인
         let displayedText = textView.string
-        let hasUnconvertedInView = displayedText.contains("`secure@") || displayedText.contains("`page@") || displayedText.contains("`var@")
+        let hasUnconvertedInView = displayedText.contains("`secure@") || displayedText.contains("`command@") || displayedText.contains("`var@")
 
         // 텍스트가 다르거나 변환되지 않은 패턴이 있으면 업데이트
         if currentPlainText != text || hasUnconvertedInView {
@@ -130,7 +130,7 @@ struct AutocompleteTextEditor: NSViewRepresentable {
 
     enum TriggerType {
         case dollar       // $VAR
-        case pageRef      // {page:xxx} 또는 {page#label}
+        case commandRef   // {command:xxx} 또는 {command#label}
         case varRef       // {var:xxx}
         case secureRef    // {secure:xxx} - 입력용
         case lockedRef    // {secure:xxx} - 저장된 형태
@@ -286,10 +286,10 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 }
             }
 
-            // 입력 패턴 강조: {secure:xxx}, {page:xxx}, {var:xxx} 등
+            // 입력 패턴 강조: {secure:xxx}, {command:xxx}, {var:xxx} 등
             let inputPatterns: [(pattern: String, color: NSColor)] = [
                 ("\\{secure[#:]?[^}]*\\}", .systemPink),
-                ("\\{page[#:]?[^}]*\\}", .systemBlue),
+                ("\\{command[#:]?[^}]*\\}", .systemBlue),
                 ("\\{var[#:]?[^}]*\\}", .systemGreen)
             ]
             for (pattern, color) in inputPatterns {
@@ -320,13 +320,13 @@ struct AutocompleteTextEditor: NSViewRepresentable {
             let index = text.index(text.startIndex, offsetBy: cursorPosition)
             let beforeCursor = String(text[..<index])
 
-            // {page: 또는 {page# 트리거 체크
-            let pageTriggers = ["{page:", "{page#"]
-            for trigger in pageTriggers {
-                if let pageRange = beforeCursor.range(of: trigger, options: .backwards) {
-                    let afterTrigger = String(beforeCursor[pageRange.upperBound...])
+            // {command: 또는 {command# 트리거 체크
+            let commandTriggers = ["{command:", "{command#"]
+            for trigger in commandTriggers {
+                if let cmdRange = beforeCursor.range(of: trigger, options: .backwards) {
+                    let afterTrigger = String(beforeCursor[cmdRange.upperBound...])
                     if !afterTrigger.contains("}") && !afterTrigger.contains(where: { $0.isWhitespace }) {
-                        return .pageRef
+                        return .commandRef
                     }
                 }
             }
@@ -400,11 +400,11 @@ struct AutocompleteTextEditor: NSViewRepresentable {
             let maxSuggestions = 10
 
             switch currentTrigger {
-            case .pageRef:
-                // {page: 또는 {page# 찾기
-                let pageTriggers = ["{page:", "{page#"]
+            case .commandRef:
+                // {command: 또는 {command# 찾기
+                let commandTriggers = ["{command:", "{command#"]
                 var afterTrigger = ""
-                for trigger in pageTriggers {
+                for trigger in commandTriggers {
                     if let range = beforeCursor.range(of: trigger, options: .backwards) {
                         afterTrigger = String(beforeCursor[range.upperBound...])
                         break
@@ -511,26 +511,26 @@ struct AutocompleteTextEditor: NSViewRepresentable {
             let afterCursor = String(text[index...])
 
             switch currentTrigger {
-            case .pageRef:
-                // {page: 또는 {page# 찾기
-                let pageTriggers = ["{page:", "{page#"]
+            case .commandRef:
+                // {command: 또는 {command# 찾기
+                let commandTriggers = ["{command:", "{command#"]
                 var triggerRange: Range<String.Index>?
-                for trigger in pageTriggers {
+                for trigger in commandTriggers {
                     if let range = beforeCursor.range(of: trigger, options: .backwards) {
                         triggerRange = range
                         break
                     }
                 }
-                guard let pageRange = triggerRange else { return }
-                let triggerStart = text.distance(from: text.startIndex, to: pageRange.lowerBound)
+                guard let cmdRange = triggerRange else { return }
+                let triggerStart = text.distance(from: text.startIndex, to: cmdRange.lowerBound)
                 let beforeTrigger = String(text.prefix(triggerStart))
                 // 라벨로 shortId 조회
                 if let shortId = Database.shared.getShortIdByLabel(suggestion) {
-                    // `page@shortId` 형태로 저장 (배지로 변환됨)
-                    let newText = beforeTrigger + "`page@\(shortId)`" + afterCursor
+                    // `command@shortId` 형태로 저장 (배지로 변환됨)
+                    let newText = beforeTrigger + "`command@\(shortId)`" + afterCursor
                     textView.string = newText
                     self.text = newText
-                    let newCursorPosition = triggerStart + 8 + shortId.count  // `page@ + shortId + `
+                    let newCursorPosition = triggerStart + 11 + shortId.count  // `command@ + shortId + `
                     textView.setSelectedRange(NSRange(location: newCursorPosition, length: 0))
                 }
 

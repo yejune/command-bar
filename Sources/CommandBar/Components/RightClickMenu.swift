@@ -175,7 +175,7 @@ struct RightClickMenu: NSViewRepresentable {
         @objc func copyIdAction() {
             guard let cmd = cmd else { return }
             let shortId = Database.shared.getShortId(fullId: cmd.id.uuidString) ?? String(cmd.id.uuidString.prefix(6))
-            let idString = "{page@\(shortId)}"
+            let idString = "{command@\(shortId)}"
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(idString, forType: .string)
         }

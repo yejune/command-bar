@@ -35,7 +35,7 @@ struct BadgeTextView: View {
         var remaining = text
 
         // 백틱 패턴: `type@id` 또는 `type#label`
-        let pattern = "`(secure|page|var)[@#]([^`]+)`"
+        let pattern = "`(secure|command|var)[@#]([^`]+)`"
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
             return [TextSegment(text: text, badge: nil)]
         }
@@ -79,7 +79,7 @@ struct BadgeView: View {
     var color: Color {
         switch type {
         case "secure": return .pink
-        case "page": return .blue
+        case "command": return .blue
         case "var": return .green
         default: return .gray
         }
@@ -93,7 +93,7 @@ struct BadgeView: View {
             if let label = db.getSecureLabelById(id) {
                 return "\(type)#\(label)"
             }
-        case "page":
+        case "command":
             if let label = db.getCommandLabelByShortId(id) {
                 return "\(type)#\(label)"
             }

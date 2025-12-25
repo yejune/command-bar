@@ -1343,16 +1343,16 @@ class CommandStore: ObservableObject {
         return shortId
     }
 
-    // MARK: - Page Chaining
+    // MARK: - Command Chaining
 
-    /// 문자열에서 페이지 참조를 처리하여 값으로 치환
-    /// - `page@shortId` 또는 `page@shortId|path` (배지 저장 형식)
-    /// - {page#label} 또는 {page#label|path} (입력 형식)
-    func resolvePageReferences(in text: String) -> String {
+    /// 문자열에서 명령어 참조를 처리하여 값으로 치환
+    /// - `command@shortId` 또는 `command@shortId|path` (배지 저장 형식)
+    /// - {command#label} 또는 {command#label|path} (입력 형식)
+    func resolveCommandReferences(in text: String) -> String {
         var result = text
 
-        // 1. 배지 형식: `page@shortId` 또는 `page@shortId|path`
-        if let badgeRegex = try? NSRegularExpression(pattern: "`page@([^`|]+)(?:\\|([^`]+))?`") {
+        // 1. 배지 형식: `command@shortId` 또는 `command@shortId|path`
+        if let badgeRegex = try? NSRegularExpression(pattern: "`command@([^`|]+)(?:\\|([^`]+))?`") {
             let range = NSRange(result.startIndex..., in: result)
             let matches = badgeRegex.matches(in: result, range: range).reversed()
 
@@ -1368,14 +1368,14 @@ class CommandStore: ObservableObject {
                     jsonPath = nil
                 }
 
-                if let value = getValueFromPage(shortId: shortId, jsonPath: jsonPath) {
+                if let value = getValueFromCommand(shortId: shortId, jsonPath: jsonPath) {
                     result.replaceSubrange(fullRange, with: value)
                 }
             }
         }
 
-        // 2. 입력 형식: {page#label} 또는 {page#label|path}
-        if let inputRegex = try? NSRegularExpression(pattern: "\\{page#([^}|]+)(?:\\|([^}]+))?\\}") {
+        // 2. 입력 형식: {command#label} 또는 {command#label|path}
+        if let inputRegex = try? NSRegularExpression(pattern: "\\{command#([^}|]+)(?:\\|([^}]+))?\\}") {
             let range = NSRange(result.startIndex..., in: result)
             let matches = inputRegex.matches(in: result, range: range).reversed()
 
@@ -1393,7 +1393,7 @@ class CommandStore: ObservableObject {
 
                 // 라벨로 shortId 조회 후 값 가져오기
                 if let shortId = db.getShortIdByLabel(label),
-                   let value = getValueFromPage(shortId: shortId, jsonPath: jsonPath) {
+                   let value = getValueFromCommand(shortId: shortId, jsonPath: jsonPath) {
                     result.replaceSubrange(fullRange, with: value)
                 }
             }
@@ -1402,8 +1402,8 @@ class CommandStore: ObservableObject {
         return result
     }
 
-    /// shortId로 페이지 결과값 조회
-    func getValueFromPage(shortId: String, jsonPath: String?) -> String? {
+    /// shortId로 명령어 결과값 조회
+    func getValueFromCommand(shortId: String, jsonPath: String?) -> String? {
         guard let fullIdStr = db.getFullId(shortId: shortId),
               let fullId = UUID(uuidString: fullIdStr) else { return nil }
 

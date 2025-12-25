@@ -148,8 +148,8 @@ struct ScriptExecutionView: View {
         }
         var finalCommand = command.commandWith(values: finalValues)
 
-        // {page#label} 또는 `page@id` 체이닝 처리
-        finalCommand = store.resolvePageReferences(in: finalCommand)
+        // {command#label} 또는 `command@id` 체이닝 처리
+        finalCommand = store.resolveCommandReferences(in: finalCommand)
 
         // {var:xxx} 환경 변수 처리
         finalCommand = store.resolveVarReferences(in: finalCommand)
