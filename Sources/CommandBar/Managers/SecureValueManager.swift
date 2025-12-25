@@ -3,8 +3,8 @@ import CryptoKit
 import Security
 
 /// 민감한 데이터 암호화 관리자
-/// - {secure:평문} 입력 → 암호화 → {🔒:refId} 저장
-/// - {🔒:refId} 실행 시 → 복호화 → 원래 값
+/// - {secure:평문} 입력 → 암호화 → {secure:refId} 저장
+/// - {secure:refId} 실행 시 → 복호화 → 원래 값
 class SecureValueManager {
     static let shared = SecureValueManager()
 
@@ -193,16 +193,18 @@ class SecureValueManager {
     }
 
     /// 저장 전 처리:
-    /// - {secure:값} → 암호화 → {🔒:refId}
-    /// - {secure#라벨:값} → 암호화 + 라벨 저장 → {🔒:refId}
-    /// - {secure#라벨} → 기존 라벨 참조 → {🔒:refId}
+    /// - {secure:값}, [secure:값] → 암호화 → `secure:refId`
+    /// - {secure#라벨:값}, [secure#라벨:값] → 암호화 + 라벨 저장 → `secure:라벨`
+    /// - {secure#라벨}, [secure#라벨] → 기존 라벨 참조 → `secure:라벨`
     func processForSave(_ text: String) -> ProcessResult {
         var result = text
 
-        // 1. {secure#라벨:값} 패턴 처리 (라벨 + 새 암호화)
-        if let labelValueRegex = try? NSRegularExpression(pattern: "\\{secure#([^:}]+):([^}]+)\\}") {
+        // 1. {secure#라벨:값} 또는 [secure#라벨:값] 패턴 처리 (라벨 + 새 암호화)
+        let labelValuePatterns = ["\\{secure#([^:}]+):([^}]+)\\}", "\\[secure#([^:\\]]+):([^\\]]+)\\]"]
+        for pattern in labelValuePatterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
             let range = NSRange(result.startIndex..., in: result)
-            let matches = labelValueRegex.matches(in: result, range: range).reversed()
+            let matches = regex.matches(in: result, range: range).reversed()
 
             for match in matches {
                 guard let fullRange = Range(match.range, in: result),
@@ -219,23 +221,25 @@ class SecureValueManager {
                     return ProcessResult(text: text, error: "라벨 '\(label)'이(가) 이미 존재합니다.", errorRange: match.range)
                 }
 
-                // 암호화
+                // 암호화 (ID 생성, 라벨은 별도 저장)
                 if let encrypted = encrypt(plaintext) {
                     db.insertSecureValue(
                         id: encrypted.refId,
                         encryptedValue: encrypted.encrypted,
                         keyVersion: encrypted.keyVersion,
-                        label: label
+                        label: label  // 라벨은 별도 저장
                     )
-                    result.replaceSubrange(fullRange, with: "{🔒:\(encrypted.refId)}")
+                    result.replaceSubrange(fullRange, with: "`secure@\(encrypted.refId)`")  // 저장은 항상 @id
                 }
             }
         }
 
-        // 2. {secure#라벨} 패턴 처리 (기존 라벨 참조)
-        if let labelOnlyRegex = try? NSRegularExpression(pattern: "\\{secure#([^:}]+)\\}") {
+        // 2. {secure#라벨} 또는 [secure#라벨] 패턴 처리 (기존 라벨 참조)
+        let labelOnlyPatterns = ["\\{secure#([^:}]+)\\}", "\\[secure#([^:\\]]+)\\]"]
+        for pattern in labelOnlyPatterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
             let range = NSRange(result.startIndex..., in: result)
-            let matches = labelOnlyRegex.matches(in: result, range: range).reversed()
+            let matches = regex.matches(in: result, range: range).reversed()
 
             for match in matches {
                 guard let fullRange = Range(match.range, in: result),
@@ -247,17 +251,19 @@ class SecureValueManager {
 
                 // 라벨로 ID 조회
                 if let existingId = db.getSecureIdByLabel(label) {
-                    result.replaceSubrange(fullRange, with: "{🔒:\(existingId)}")
+                    result.replaceSubrange(fullRange, with: "`secure@\(existingId)`")  // 저장은 항상 @id
                 } else {
                     return ProcessResult(text: text, error: "라벨 '\(label)'을(를) 찾을 수 없습니다.", errorRange: match.range)
                 }
             }
         }
 
-        // 3. {secure:값} 패턴 처리 (라벨 없이 새 암호화)
-        if let simpleRegex = try? NSRegularExpression(pattern: "\\{secure:([^}]+)\\}") {
+        // 3. {secure:값} 또는 [secure:값] 패턴 처리 (라벨 없이 새 암호화)
+        let simplePatterns = ["\\{secure:([^}]+)\\}", "\\[secure:([^\\]]+)\\]"]
+        for pattern in simplePatterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
             let range = NSRange(result.startIndex..., in: result)
-            let matches = simpleRegex.matches(in: result, range: range).reversed()
+            let matches = regex.matches(in: result, range: range).reversed()
 
             for match in matches {
                 guard let fullRange = Range(match.range, in: result),
@@ -273,7 +279,7 @@ class SecureValueManager {
                         encryptedValue: encrypted.encrypted,
                         keyVersion: encrypted.keyVersion
                     )
-                    result.replaceSubrange(fullRange, with: "{🔒:\(encrypted.refId)}")
+                    result.replaceSubrange(fullRange, with: "`secure@\(encrypted.refId)`")  // ID는 @
                 }
             }
         }
@@ -281,15 +287,17 @@ class SecureValueManager {
         return ProcessResult(text: result, error: nil, errorRange: nil)
     }
 
-    /// 실행 전 처리: {🔒:refId} → 복호화 → 원래 값
+    /// 실행 전 처리: `secure@id` → 복호화 → 원래 값
     func processForExecution(_ text: String) -> String {
-        guard let regex = try? NSRegularExpression(pattern: "\\{🔒:([^}]+)\\}") else {
-            return text
+        var result = text
+
+        // `secure@xxx` 패턴 처리
+        guard let regex = try? NSRegularExpression(pattern: "`secure@([^`]+)`") else {
+            return result
         }
 
-        var result = text
-        let range = NSRange(text.startIndex..., in: text)
-        let matches = regex.matches(in: text, range: range).reversed()
+        let range = NSRange(result.startIndex..., in: result)
+        let matches = regex.matches(in: result, range: range).reversed()
 
         for match in matches {
             guard let fullRange = Range(match.range, in: result),

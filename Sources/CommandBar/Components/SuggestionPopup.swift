@@ -43,7 +43,7 @@ class SuggestionPopupController: NSViewController {
         popover?.contentViewController?.view = hostingView!
 
         let maxHeight: CGFloat = min(CGFloat(suggestions.count) * 24 + 8, 200)
-        popover?.contentSize = NSSize(width: 200, height: maxHeight)
+        popover?.contentSize = NSSize(width: 300, height: maxHeight)
 
         if let viewWindow = view.window,
            let viewSuper = view.superview {

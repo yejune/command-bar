@@ -644,12 +644,26 @@ class CommandStore: ObservableObject {
     func add(_ cmd: Command) {
         var newCmd = cmd
         newCmd.command = normalizeQuotes(cmd.command)
-        // {secure:xxx} → {🔒:refId} 변환
-        newCmd.command = SecureValueManager.shared.processForSave(newCmd.command).text
+
+        // 1. {id#라벨}, {var#라벨:값}, {var#라벨} 처리
+        let labelResult = processIdVarLabels(newCmd.command)
+        if let error = labelResult.error {
+            print("Label processing error: \(error)")
+            // 에러가 있어도 계속 진행 (에러 처리는 UI에서 해야 함)
+        }
+        newCmd.command = labelResult.text
+
+        // 2. {secure:xxx}, {secure#라벨:xxx} → {secure:refId} 변환
+        let secureResult = SecureValueManager.shared.processForSave(newCmd.command)
+        if let error = secureResult.error {
+            print("Secure processing error: \(error)")
+        }
+        newCmd.command = secureResult.text
         newCmd.url = SecureValueManager.shared.processForSave(newCmd.url).text
         newCmd.bodyData = SecureValueManager.shared.processForSave(newCmd.bodyData).text
         // 헤더 값도 처리
         newCmd.headers = newCmd.headers.mapValues { SecureValueManager.shared.processForSave($0).text }
+
         commands.append(newCmd)
         save()
         if cmd.executionType == .background && cmd.interval > 0 {
@@ -766,11 +780,21 @@ class CommandStore: ObservableObject {
         if let i = commands.firstIndex(where: { $0.id == cmd.id }) {
             var updated = cmd
             updated.command = normalizeQuotes(cmd.command)
-            // {secure:xxx} → {🔒:refId} 변환
+
+            // 1. {id#라벨}, {var#라벨:값}, {var#라벨} 처리
+            let labelResult = processIdVarLabels(updated.command)
+            if let error = labelResult.error {
+                print("Label processing error: \(error)")
+                // 에러가 있어도 계속 진행 (에러 처리는 UI에서 해야 함)
+            }
+            updated.command = labelResult.text
+
+            // 2. {secure:xxx} → {secure:refId} 변환
             updated.command = SecureValueManager.shared.processForSave(updated.command).text
             updated.url = SecureValueManager.shared.processForSave(updated.url).text
             updated.bodyData = SecureValueManager.shared.processForSave(updated.bodyData).text
             updated.headers = updated.headers.mapValues { SecureValueManager.shared.processForSave($0).text }
+
             commands[i] = updated
             commands[i].alertedTimes = []  // 알림 상태 초기화
             commands[i].alertState = .none
@@ -845,8 +869,10 @@ class CommandStore: ObservableObject {
     }
 
     private func runInTerminal(_ cmd: Command, app: String) {
-        // {secure:refId} → 복호화된 값으로 치환
-        let resolvedCommand = SecureValueManager.shared.processForExecution(cmd.command)
+        // 1. {var:varId} or {var:envVar} → 실제 값으로 치환
+        var resolvedCommand = resolveVarReferences(in: cmd.command)
+        // 2. {secure:refId} → 복호화된 값으로 치환
+        resolvedCommand = SecureValueManager.shared.processForExecution(resolvedCommand)
         let escaped = resolvedCommand.replacingOccurrences(of: "\"", with: "\\\"")
         let script: String
 
@@ -901,8 +927,10 @@ class CommandStore: ObservableObject {
         commands[index].lastOutput = nil
         commands[index].lastExecutedAt = Date()
 
-        // {secure:refId} → 복호화된 값으로 치환
-        let resolvedCommand = SecureValueManager.shared.processForExecution(cmd.command)
+        // 1. {var:varId} or {var:envVar} → 실제 값으로 치환
+        var resolvedCommand = resolveVarReferences(in: cmd.command)
+        // 2. {secure:refId} → 복호화된 값으로 치환
+        resolvedCommand = SecureValueManager.shared.processForExecution(resolvedCommand)
 
         DispatchQueue.global(qos: .userInitiated).async {
             let process = Process()
@@ -1411,10 +1439,10 @@ class CommandStore: ObservableObject {
         return nil
     }
 
-    /// 문자열에서 {var:xxx} 참조를 환경 변수 값으로 치환
+    /// 문자열에서 {var:xxx} 참조를 변수 값 또는 환경 변수 값으로 치환
+    /// - {var:6자리ID} → DB의 variables 테이블에서 값 조회
+    /// - {var:환경변수명} → 환경 변수에서 값 조회
     func resolveVarReferences(in text: String) -> String {
-        guard let env = activeEnvironment else { return text }
-
         // {var:xxx} 패턴
         guard let regex = try? NSRegularExpression(pattern: "\\{var:([^}]+)\\}") else {
             return text
@@ -1429,7 +1457,13 @@ class CommandStore: ObservableObject {
                   let varNameRange = Range(match.range(at: 1), in: result) else { continue }
 
             let varName = String(result[varNameRange])
-            if let value = env.variables[varName] {
+
+            // 1. 먼저 DB 변수에서 찾기 (6자리 ID 형식)
+            if let value = db.getVariableValueById(varName) {
+                result.replaceSubrange(fullRange, with: value)
+            }
+            // 2. 환경 변수에서 찾기
+            else if let env = activeEnvironment, let value = env.variables[varName] {
                 result.replaceSubrange(fullRange, with: value)
             }
         }
@@ -1483,5 +1517,159 @@ class CommandStore: ObservableObject {
         trashClipboard.removeAll()
         trashHistoryCount = 0
         trashClipboardCount = 0
+    }
+
+    // MARK: - ID/Var Label Processing
+
+    /// 저장 전 처리 결과
+    struct LabelProcessResult {
+        var text: String
+        var labels: [(commandId: UUID, label: String)]  // 설정된 라벨들
+        var error: String?
+        var errorRange: NSRange?
+    }
+
+    /// id/var 라벨 처리:
+    /// - {id#라벨}, [id#라벨] → 기존 라벨로 명령어 참조 → `id:shortId`
+    /// - {var#라벨:값}, [var#라벨:값] → 새 변수 + 라벨 저장 → `var:라벨`
+    /// - {var#라벨}, [var#라벨] → 기존 라벨 참조 → `var:라벨`
+    /// - {id:xxx}, [id:xxx] → `id:xxx`
+    /// - {var:xxx}, [var:xxx] → `var:xxx`
+    func processIdVarLabels(_ text: String) -> LabelProcessResult {
+        var result = text
+        let labels: [(commandId: UUID, label: String)] = []
+
+        // 1. {id#라벨} 또는 [id#라벨] 패턴 처리 (기존 라벨로 명령어 참조)
+        let idLabelPatterns = ["\\{id#([^}]+)\\}", "\\[id#([^\\]]+)\\]"]
+        for pattern in idLabelPatterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(result.startIndex..., in: result)
+            let matches = regex.matches(in: result, range: range).reversed()
+
+            for match in matches {
+                guard let fullRange = Range(match.range, in: result),
+                      let labelRange = Range(match.range(at: 1), in: result) else {
+                    continue
+                }
+
+                let label = String(result[labelRange])
+
+                // 라벨로 명령어 ID 조회
+                if let commandId = db.getCommandIdByLabel(label) {
+                    // shortId 조회
+                    if let shortId = db.getShortId(fullId: commandId.uuidString) {
+                        result.replaceSubrange(fullRange, with: "`id@\(shortId)`")  // 저장은 항상 @id
+                    } else {
+                        return LabelProcessResult(text: text, labels: [], error: "명령어 '\(label)'의 ID를 찾을 수 없습니다.", errorRange: match.range)
+                    }
+                } else {
+                    return LabelProcessResult(text: text, labels: [], error: "라벨 '\(label)'을(를) 가진 명령어를 찾을 수 없습니다.", errorRange: match.range)
+                }
+            }
+        }
+
+        // 2. {var#라벨:값} 또는 [var#라벨:값] 패턴 처리 (라벨 + 새 변수)
+        let varLabelValuePatterns = ["\\{var#([^:}]+):([^}]+)\\}", "\\[var#([^:\\]]+):([^\\]]+)\\]"]
+        for pattern in varLabelValuePatterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(result.startIndex..., in: result)
+            let matches = regex.matches(in: result, range: range).reversed()
+
+            for match in matches {
+                guard let fullRange = Range(match.range, in: result),
+                      let labelRange = Range(match.range(at: 1), in: result),
+                      let valueRange = Range(match.range(at: 2), in: result) else {
+                    continue
+                }
+
+                let label = String(result[labelRange])
+                let value = String(result[valueRange])
+
+                // 라벨 중복 검사
+                if db.variableLabelExists(label) {
+                    return LabelProcessResult(text: text, labels: [], error: "변수 라벨 '\(label)'이(가) 이미 존재합니다.", errorRange: match.range)
+                }
+
+                // 변수 저장 (ID 생성, 라벨은 별도 저장)
+                let varId = db.generateVariableId()
+                db.insertVariable(id: varId, value: value, label: label)
+                result.replaceSubrange(fullRange, with: "`var@\(varId)`")  // 저장은 항상 @id
+            }
+        }
+
+        // 3. {var#라벨} 또는 [var#라벨] 패턴 처리 (기존 라벨 참조)
+        let varLabelOnlyPatterns = ["\\{var#([^:}]+)\\}", "\\[var#([^:\\]]+)\\]"]
+        for pattern in varLabelOnlyPatterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(result.startIndex..., in: result)
+            let matches = regex.matches(in: result, range: range).reversed()
+
+            for match in matches {
+                guard let fullRange = Range(match.range, in: result),
+                      let labelRange = Range(match.range(at: 1), in: result) else {
+                    continue
+                }
+
+                let label = String(result[labelRange])
+
+                // 라벨로 변수 ID 조회
+                if let varId = db.getVariableIdByLabel(label) {
+                    result.replaceSubrange(fullRange, with: "`var@\(varId)`")  // 저장은 항상 @id
+                } else {
+                    return LabelProcessResult(text: text, labels: [], error: "변수 라벨 '\(label)'을(를) 찾을 수 없습니다.", errorRange: match.range)
+                }
+            }
+        }
+
+        // 4. {id:xxx} 또는 [id:xxx] 패턴 처리 → `id@xxx`
+        let idPatterns = ["\\{id:([^}]+)\\}", "\\[id:([^\\]]+)\\]"]
+        for pattern in idPatterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(result.startIndex..., in: result)
+            let matches = regex.matches(in: result, range: range).reversed()
+
+            for match in matches {
+                guard let fullRange = Range(match.range, in: result),
+                      let idRange = Range(match.range(at: 1), in: result) else {
+                    continue
+                }
+                let id = String(result[idRange])
+                result.replaceSubrange(fullRange, with: "`id@\(id)`")
+            }
+        }
+
+        // 5. {var:xxx} 또는 [var:xxx] 패턴 처리 → `var@xxx`
+        let varPatterns = ["\\{var:([^}]+)\\}", "\\[var:([^\\]]+)\\]"]
+        for pattern in varPatterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(result.startIndex..., in: result)
+            let matches = regex.matches(in: result, range: range).reversed()
+
+            for match in matches {
+                guard let fullRange = Range(match.range, in: result),
+                      let idRange = Range(match.range(at: 1), in: result) else {
+                    continue
+                }
+                let id = String(result[idRange])
+                result.replaceSubrange(fullRange, with: "`var@\(id)`")
+            }
+        }
+
+        return LabelProcessResult(text: result, labels: labels, error: nil, errorRange: nil)
+    }
+
+    /// 모든 변수 라벨 목록
+    func getAllVariableLabels() -> [String] {
+        return db.getAllVariableLabels()
+    }
+
+    /// 모든 명령어 라벨 목록
+    func getAllCommandLabels() -> [String] {
+        return db.getAllCommandLabels()
+    }
+
+    /// 명령어에 라벨 설정
+    func setCommandLabel(_ command: Command, label: String?) {
+        db.setCommandLabel(commandId: command.id, label: label)
     }
 }

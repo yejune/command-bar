@@ -155,14 +155,10 @@ struct CommandRowView: View {
                             .foregroundStyle(.secondary)
                     }
                 } else if cmd.executionType == .api {
-                    Text(cmd.url)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
+                    BadgeTextView(text: cmd.url)
                         .lineLimit(1)
                 } else {
-                    Text(cmd.command)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
+                    BadgeTextView(text: cmd.command)
                         .lineLimit(1)
                 }
                 if cmd.executionType == .background {

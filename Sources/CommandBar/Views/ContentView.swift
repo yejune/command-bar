@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var showingHistory = false
     @State private var showingClipboard = false
     @State private var showingGroups = false
+    @State private var showingSecure = false
     @State private var editingCommand: Command?
     @State private var selectedId: UUID?
     @State private var draggingItem: Command?
@@ -274,6 +275,9 @@ struct ContentView: View {
             } else if showingGroups {
                 // 그룹 관리 페이지
                 GroupListView(store: store)
+            } else if showingSecure {
+                // 암호화 값 관리
+                SecureListView()
             } else if showingTrash {
                 // 휴지통 보기
                 SubtitleBar(title: L.tabTrash) {
@@ -689,11 +693,11 @@ struct ContentView: View {
             Divider()
 
             HStack(spacing: 2) {
-                Button(action: { showingTrash = false; showingHistory = false; showingClipboard = false; showingGroups = false }) {
+                Button(action: { showingTrash = false; showingHistory = false; showingClipboard = false; showingGroups = false; showingSecure = false }) {
                     ZStack {
                         Image(systemName: "doc.text")
-                            .foregroundStyle(!showingTrash && !showingHistory && !showingClipboard && !showingGroups ? .primary : .secondary)
-                        if (showingTrash || showingHistory || showingClipboard || showingGroups) && hasActiveIndicator {
+                            .foregroundStyle(!showingTrash && !showingHistory && !showingClipboard && !showingGroups && !showingSecure ? .primary : .secondary)
+                        if (showingTrash || showingHistory || showingClipboard || showingGroups || showingSecure) && hasActiveIndicator {
                             Circle()
                                 .fill(Color.red)
                                 .frame(width: 6, height: 6)
@@ -703,7 +707,7 @@ struct ContentView: View {
                 }
                 .buttonStyle(HoverButtonStyle())
 
-                if !showingTrash && !showingHistory && !showingClipboard && !showingGroups {
+                if !showingTrash && !showingHistory && !showingClipboard && !showingGroups && !showingSecure {
                     Button(action: { showAddSheet = true }) {
                         Image(systemName: "plus")
                     }
@@ -712,25 +716,31 @@ struct ContentView: View {
 
                 Spacer()
 
-                Button(action: { showingGroups = true; showingClipboard = false; showingHistory = false; showingTrash = false }) {
+                Button(action: { showingGroups = true; showingClipboard = false; showingHistory = false; showingTrash = false; showingSecure = false }) {
                     Image(systemName: store.groups.isEmpty ? "folder" : "folder.fill")
                         .foregroundStyle(showingGroups ? .primary : .secondary)
                 }
                 .buttonStyle(HoverButtonStyle())
 
-                Button(action: { showingClipboard = true; showingHistory = false; showingTrash = false; showingGroups = false }) {
+                Button(action: { showingClipboard = true; showingHistory = false; showingTrash = false; showingGroups = false; showingSecure = false }) {
                     Image(systemName: store.clipboardItems.isEmpty ? "doc.on.clipboard" : "doc.on.clipboard.fill")
                         .foregroundStyle(showingClipboard ? .primary : .secondary)
                 }
                 .buttonStyle(HoverButtonStyle())
 
-                Button(action: { showingHistory = true; showingTrash = false; showingClipboard = false; showingGroups = false }) {
+                Button(action: { showingHistory = true; showingTrash = false; showingClipboard = false; showingGroups = false; showingSecure = false }) {
                     Image(systemName: store.history.isEmpty ? "clock" : "clock.fill")
                         .foregroundStyle(showingHistory ? .primary : .secondary)
                 }
                 .buttonStyle(HoverButtonStyle())
 
-                Button(action: { showingTrash = true; showingHistory = false; showingClipboard = false; showingGroups = false; store.loadTrash() }) {
+                Button(action: { showingSecure = true; showingHistory = false; showingTrash = false; showingClipboard = false; showingGroups = false }) {
+                    Image(systemName: "lock.fill")
+                        .foregroundStyle(showingSecure ? .primary : .secondary)
+                }
+                .buttonStyle(HoverButtonStyle())
+
+                Button(action: { showingTrash = true; showingHistory = false; showingClipboard = false; showingGroups = false; showingSecure = false; store.loadTrash() }) {
                     Image(systemName: store.trashItems.isEmpty && store.trashHistoryCount == 0 && store.trashClipboardCount == 0 ? "trash" : "trash.fill")
                         .foregroundStyle(showingTrash ? .primary : .secondary)
                 }

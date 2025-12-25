@@ -208,6 +208,28 @@ class Database {
         let secureLabelIndex = "CREATE UNIQUE INDEX IF NOT EXISTS idx_secure_values_label ON secure_values(label) WHERE label IS NOT NULL"
         sqlite3_exec(db, secureLabelIndex, nil, nil, nil)
 
+        // Variables 테이블 (var 라벨 저장)
+        let createVariablesTable = """
+        CREATE TABLE IF NOT EXISTS variables (
+            id TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            label TEXT UNIQUE NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT
+        )
+        """
+        executeStatements(createVariablesTable)
+
+        let variablesLabelIndex = "CREATE UNIQUE INDEX IF NOT EXISTS idx_variables_label ON variables(label)"
+        sqlite3_exec(db, variablesLabelIndex, nil, nil, nil)
+
+        // 마이그레이션: commands 테이블에 label 컬럼 추가
+        let addCommandLabelColumn = "ALTER TABLE commands ADD COLUMN label TEXT"
+        sqlite3_exec(db, addCommandLabelColumn, nil, nil, nil)
+
+        let commandLabelIndex = "CREATE UNIQUE INDEX IF NOT EXISTS idx_commands_label ON commands(label) WHERE label IS NOT NULL"
+        sqlite3_exec(db, commandLabelIndex, nil, nil, nil)
+
         // Secure Key Versions 테이블 (키 버전 메타데이터)
         let createSecureKeyVersionsTable = """
         CREATE TABLE IF NOT EXISTS secure_key_versions (
@@ -1508,6 +1530,23 @@ class Database {
         return result
     }
 
+    /// ID로 라벨 조회
+    func getSecureLabelById(_ id: String) -> String? {
+        let sql = "SELECT label FROM secure_values WHERE id = ?"
+        var stmt: OpaquePointer?
+        var result: String?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let labelCStr = sqlite3_column_text(stmt, 0) {
+                    result = String(cString: labelCStr)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
     /// 라벨 존재 여부 확인
     func secureLabelExists(_ label: String) -> Bool {
         return getSecureIdByLabel(label) != nil
@@ -1574,6 +1613,24 @@ class Database {
         sqlite3_finalize(stmt)
     }
 
+    /// 암호화된 값의 라벨 수정
+    func updateSecureLabel(id: String, label: String?) {
+        let now = ISO8601DateFormatter().string(from: Date())
+        let sql = "UPDATE secure_values SET label = ?, updated_at = ? WHERE id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            if let label = label, !label.isEmpty {
+                sqlite3_bind_text(stmt, 1, label, -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 1)
+            }
+            sqlite3_bind_text(stmt, 2, now, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 3, id, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
     /// 전체 암호화된 값 목록 (키 버전 포함)
     func getAllSecureValues() -> [(id: String, keyVersion: Int)] {
         var result: [(id: String, keyVersion: Int)] = []
@@ -1585,6 +1642,28 @@ class Database {
                     let id = String(cString: idCStr)
                     let keyVersion = Int(sqlite3_column_int(stmt, 1))
                     result.append((id, keyVersion))
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
+    /// 전체 암호화된 값 목록 (상세 정보 포함)
+    func getAllSecureValuesWithDetails() -> [(id: String, label: String?, createdAt: Date, keyVersion: Int)] {
+        var result: [(id: String, label: String?, createdAt: Date, keyVersion: Int)] = []
+        let sql = "SELECT id, label, created_at, key_version FROM secure_values ORDER BY created_at DESC"
+        var stmt: OpaquePointer?
+        let formatter = ISO8601DateFormatter()
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let idCStr = sqlite3_column_text(stmt, 0) {
+                    let id = String(cString: idCStr)
+                    let label = sqlite3_column_text(stmt, 1).map { String(cString: $0) }
+                    let createdAtStr = sqlite3_column_text(stmt, 2).map { String(cString: $0) } ?? ""
+                    let createdAt = formatter.date(from: createdAtStr) ?? Date()
+                    let keyVersion = Int(sqlite3_column_int(stmt, 3))
+                    result.append((id, label, createdAt, keyVersion))
                 }
             }
         }
@@ -1705,6 +1784,255 @@ class Database {
         }
         sqlite3_finalize(stmt)
         return ids
+    }
+
+    // MARK: - Variables (var 라벨 관리)
+
+    /// 변수 저장 (라벨 포함)
+    func insertVariable(id: String, value: String, label: String) {
+        let now = ISO8601DateFormatter().string(from: Date())
+        let sql = "INSERT OR REPLACE INTO variables (id, value, label, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, value, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 3, label, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 4, now, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 5, now, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    /// 라벨로 변수 ID 조회
+    func getVariableIdByLabel(_ label: String) -> String? {
+        let sql = "SELECT id FROM variables WHERE label = ?"
+        var stmt: OpaquePointer?
+        var result: String?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, label, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let idCStr = sqlite3_column_text(stmt, 0) {
+                    result = String(cString: idCStr)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
+    /// ID로 변수 라벨 조회
+    func getVariableLabelById(_ id: String) -> String? {
+        let sql = "SELECT label FROM variables WHERE id = ?"
+        var stmt: OpaquePointer?
+        var result: String?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let labelCStr = sqlite3_column_text(stmt, 0) {
+                    result = String(cString: labelCStr)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
+    /// 라벨로 변수 값 조회
+    func getVariableValueByLabel(_ label: String) -> String? {
+        let sql = "SELECT value FROM variables WHERE label = ?"
+        var stmt: OpaquePointer?
+        var result: String?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, label, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let valueCStr = sqlite3_column_text(stmt, 0) {
+                    result = String(cString: valueCStr)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
+    /// ID로 변수 값 조회
+    func getVariableValueById(_ id: String) -> String? {
+        let sql = "SELECT value FROM variables WHERE id = ?"
+        var stmt: OpaquePointer?
+        var result: String?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let valueCStr = sqlite3_column_text(stmt, 0) {
+                    result = String(cString: valueCStr)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
+    /// 변수 라벨 존재 여부 확인
+    func variableLabelExists(_ label: String) -> Bool {
+        return getVariableIdByLabel(label) != nil
+    }
+
+    /// 모든 변수 라벨 목록 조회
+    func getAllVariableLabels() -> [String] {
+        var result: [String] = []
+        let sql = "SELECT label FROM variables WHERE label IS NOT NULL ORDER BY label"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let labelCStr = sqlite3_column_text(stmt, 0) {
+                    result.append(String(cString: labelCStr))
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
+    /// 모든 변수 ID 목록 조회
+    func getAllVariableIds() -> [String] {
+        var result: [String] = []
+        let sql = "SELECT id FROM variables ORDER BY id"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let idCStr = sqlite3_column_text(stmt, 0) {
+                    result.append(String(cString: idCStr))
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
+    /// 모든 암호화 값 ID 목록 조회
+    func getAllSecureIds() -> [String] {
+        var result: [String] = []
+        let sql = "SELECT id FROM secure_values ORDER BY id"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let idCStr = sqlite3_column_text(stmt, 0) {
+                    result.append(String(cString: idCStr))
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
+    /// 변수 삭제
+    func deleteVariable(id: String) {
+        let sql = "DELETE FROM variables WHERE id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    /// 6자리 유니크 변수 ID 생성
+    func generateVariableId() -> String {
+        let chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+        var id: String
+        repeat {
+            id = String((0..<6).map { _ in chars.randomElement()! })
+        } while variableIdExists(id: id)
+        return id
+    }
+
+    /// 변수 ID 존재 여부 확인
+    func variableIdExists(id: String) -> Bool {
+        let sql = "SELECT 1 FROM variables WHERE id = ? LIMIT 1"
+        var stmt: OpaquePointer?
+        var exists = false
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+            exists = sqlite3_step(stmt) == SQLITE_ROW
+        }
+        sqlite3_finalize(stmt)
+        return exists
+    }
+
+    // MARK: - Command Labels (id 라벨 관리)
+
+    /// 명령어에 라벨 설정
+    func setCommandLabel(commandId: UUID, label: String?) {
+        let sql = "UPDATE commands SET label = ? WHERE id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            if let label = label {
+                sqlite3_bind_text(stmt, 1, label, -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 1)
+            }
+            sqlite3_bind_text(stmt, 2, commandId.uuidString, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    /// 라벨로 명령어 ID 조회
+    func getCommandIdByLabel(_ label: String) -> UUID? {
+        let sql = "SELECT id FROM commands WHERE label = ?"
+        var stmt: OpaquePointer?
+        var result: UUID?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, label, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let idCStr = sqlite3_column_text(stmt, 0) {
+                    result = UUID(uuidString: String(cString: idCStr))
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
+    /// shortId로 명령어 라벨 조회
+    func getCommandLabelByShortId(_ shortId: String) -> String? {
+        // shortId → fullId
+        guard let fullId = getFullId(shortId: shortId) else { return nil }
+        // fullId → label
+        let sql = "SELECT label FROM commands WHERE id = ?"
+        var stmt: OpaquePointer?
+        var result: String?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, fullId, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let labelCStr = sqlite3_column_text(stmt, 0) {
+                    result = String(cString: labelCStr)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
+    /// 명령어 라벨 존재 여부 확인
+    func commandLabelExists(_ label: String) -> Bool {
+        return getCommandIdByLabel(label) != nil
+    }
+
+    /// 모든 명령어 라벨 목록 조회
+    func getAllCommandLabels() -> [String] {
+        var result: [String] = []
+        let sql = "SELECT label FROM commands WHERE label IS NOT NULL ORDER BY label"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let labelCStr = sqlite3_column_text(stmt, 0) {
+                    result.append(String(cString: labelCStr))
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
     }
 }
 
