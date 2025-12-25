@@ -10,7 +10,7 @@ struct RestoreGroupSheet: View {
         self.store = store
         self.command = command
         // 기존 그룹이 유효하면 선택, 아니면 기본 그룹
-        let defaultSeq = store.groups.first(where: { $0.id == CommandStore.defaultGroupId })?.seq
+        let defaultSeq = CommandStore.defaultGroupSeq
         let validGroupSeq = store.groups.contains(where: { $0.seq == command.groupSeq })
             ? command.groupSeq
             : defaultSeq
@@ -51,10 +51,7 @@ struct RestoreGroupSheet: View {
                 .keyboardShortcut(.cancelAction)
 
                 Button(L.trashRestore) {
-                    let groupId = selectedGroupSeq.flatMap { seq in
-                        store.groups.first(where: { $0.seq == seq })?.id
-                    }
-                    store.restoreFromTrash(command, toGroupId: groupId)
+                    store.restoreFromTrash(command, toGroupSeq: selectedGroupSeq)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)

@@ -15,7 +15,7 @@ struct ContentView: View {
     @State private var draggingItem: Command?
     @State private var selectedHistoryItem: HistoryItem?
     @State private var selectedClipboardItem: ClipboardItem?
-    @State private var selectedGroupId: String? = nil  // nil = 전체
+    @State private var selectedGroupSeq: Int? = nil  // nil = 전체
     @State private var showFavoritesOnly = false
     @State private var showAddGroupSheet = false
     @State private var editingGroup: Group? = nil
@@ -42,7 +42,7 @@ struct ContentView: View {
     }
 
     var filteredItems: [Command] {
-        let items = store.itemsForGroup(selectedGroupId)
+        let items = store.itemsForGroup(selectedGroupSeq)
         if showFavoritesOnly {
             return items.filter { $0.isFavorite }
         }
@@ -511,13 +511,13 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 30, alignment: .leading)
 
-                    Picker("", selection: $selectedGroupId) {
+                    Picker("", selection: $selectedGroupSeq) {
                         Label {
                             let totalCount = store.commands.filter { !$0.isInTrash }.count
                             Text("  \(L.groupAll)(\(totalCount))")
                         } icon: {
                             colorCircleImage("gray", size: 8, leftShift: 2)
-                        }.tag(nil as String?)
+                        }.tag(nil as Int?)
 
                         Divider()
 
@@ -527,15 +527,15 @@ struct ContentView: View {
                                 Text("  \(group.name)(\(count))")
                             } icon: {
                                 colorCircleImage(group.color, size: 8, leftShift: 2)
-                            }.tag(group.id as String?)
+                            }.tag(group.seq as Int?)
                         }
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                    if let groupId = selectedGroupId,
-                       let group = store.groups.first(where: { $0.id == groupId }) {
+                    if let groupSeq = selectedGroupSeq,
+                       let group = store.groups.first(where: { $0.seq == groupSeq }) {
                         Button(action: { editingGroup = group }) {
                             Image(systemName: "pencil.circle")
                         }
@@ -635,8 +635,8 @@ struct ContentView: View {
                                     store.toggleFavorite(cmd)
                                 },
                                 groups: store.groups,
-                                onMoveToGroup: { groupId in
-                                    store.moveToGroup(cmd, groupId: groupId)
+                                onMoveToGroup: { groupSeq in
+                                    store.moveToGroup(cmd, groupSeq: groupSeq)
                                 }
                             )
                             .onDrag {

@@ -29,7 +29,7 @@ struct GroupEditSheet: View {
     }
 
     var isDefaultGroup: Bool {
-        existingGroup?.id == CommandStore.defaultGroupId
+        existingGroup?.seq == CommandStore.defaultGroupSeq
     }
 
     var canDelete: Bool {
@@ -124,7 +124,7 @@ struct GroupEditSheet: View {
                             .foregroundStyle(deleteOption == .merge ? .primary : .secondary)
                         if deleteOption == .merge {
                             Picker(L.groupSelectTarget, selection: $mergeTargetGroupSeq) {
-                                ForEach(availableTargetGroups, id: \.id) { group in
+                                ForEach(availableTargetGroups) { group in
                                     Text(group.name).tag(group.seq as Int?)
                                 }
                             }
@@ -156,9 +156,8 @@ struct GroupEditSheet: View {
 
                 Button(L.buttonDelete) {
                     if let group = existingGroup {
-                        if deleteOption == .merge, let targetSeq = mergeTargetGroupSeq,
-                           let targetGroup = store.groups.first(where: { $0.seq == targetSeq }) {
-                            store.deleteGroupAndMerge(group, to: targetGroup.id)
+                        if deleteOption == .merge, let targetSeq = mergeTargetGroupSeq {
+                            store.deleteGroupAndMerge(group, to: targetSeq)
                         } else {
                             store.deleteGroupWithCommands(group)
                         }
@@ -175,7 +174,7 @@ struct GroupEditSheet: View {
     }
 
     var availableTargetGroups: [Group] {
-        store.groups.filter { $0.id != existingGroup?.id }
+        store.groups.filter { $0.seq != existingGroup?.seq }
     }
 
     func colorFor(_ name: String) -> Color {

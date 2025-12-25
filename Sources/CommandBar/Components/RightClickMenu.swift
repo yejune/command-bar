@@ -10,8 +10,8 @@ struct RightClickMenu: NSViewRepresentable {
     let onCopy: () -> Void
     let onDelete: () -> Void
     let groups: [Group]
-    let currentGroupId: String?
-    let onMoveToGroup: (String) -> Void
+    let currentGroupSeq: Int?
+    let onMoveToGroup: (Int) -> Void
 
     func makeNSView(context: Context) -> NSView {
         let view = RightClickMenuView()
@@ -23,7 +23,7 @@ struct RightClickMenu: NSViewRepresentable {
         view.onCopy = onCopy
         view.onDelete = onDelete
         view.groups = groups
-        view.currentGroupId = currentGroupId
+        view.currentGroupSeq = currentGroupSeq
         view.onMoveToGroup = onMoveToGroup
         return view
     }
@@ -38,7 +38,7 @@ struct RightClickMenu: NSViewRepresentable {
         view.onCopy = onCopy
         view.onDelete = onDelete
         view.groups = groups
-        view.currentGroupId = currentGroupId
+        view.currentGroupSeq = currentGroupSeq
         view.onMoveToGroup = onMoveToGroup
     }
 
@@ -51,8 +51,8 @@ struct RightClickMenu: NSViewRepresentable {
         var onCopy: (() -> Void)?
         var onDelete: (() -> Void)?
         var groups: [Group] = []
-        var currentGroupId: String?
-        var onMoveToGroup: ((String) -> Void)?
+        var currentGroupSeq: Int?
+        var onMoveToGroup: ((Int) -> Void)?
 
         override func rightMouseDown(with event: NSEvent) {
             showMenu(with: event)
@@ -119,7 +119,7 @@ struct RightClickMenu: NSViewRepresentable {
             for group in groups {
                 let groupItem = NSMenuItem(title: group.name, action: #selector(moveToGroupAction(_:)), keyEquivalent: "")
                 groupItem.target = self
-                groupItem.representedObject = group.id
+                groupItem.representedObject = group.seq
 
                 // Add color indicator as attributed string
                 let attributedTitle = NSMutableAttributedString()
@@ -136,7 +136,7 @@ struct RightClickMenu: NSViewRepresentable {
                 groupItem.attributedTitle = attributedTitle
 
                 // Disable if already in this group
-                if currentGroupId == group.id {
+                if currentGroupSeq == group.seq {
                     groupItem.isEnabled = false
                 }
 
@@ -180,8 +180,8 @@ struct RightClickMenu: NSViewRepresentable {
         }
         @objc func deleteAction() { onDelete?() }
         @objc func moveToGroupAction(_ sender: NSMenuItem) {
-            if let groupId = sender.representedObject as? String {
-                onMoveToGroup?(groupId)
+            if let groupSeq = sender.representedObject as? Int {
+                onMoveToGroup?(groupSeq)
             }
         }
     }

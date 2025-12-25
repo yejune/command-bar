@@ -6,7 +6,7 @@ class Database {
     private var db: OpaquePointer?
 
     // DB 버전 관리
-    private let currentDBVersion = 2  // seq 기반 스키마
+    private let currentDBVersion = 3  // ids 테이블 추가 및 Group.id 제거
 
     private var dbPath: URL {
         let configDir = FileManager.default.homeDirectoryForCurrentUser
@@ -39,10 +39,16 @@ class Database {
     private func performMigrationIfNeeded() {
         let version = getDBVersion()
 
-        if version < currentDBVersion {
-            print("Migrating database from version \(version) to \(currentDBVersion)")
+        if version < 2 {
+            print("Migrating database from version \(version) to 2")
             migrateToSeqBasedSchema()
-            setDBVersion(currentDBVersion)
+            setDBVersion(2)
+        }
+
+        if version < 3 {
+            print("Migrating database from version \(version) to 3")
+            migrateToIdsTable()
+            setDBVersion(3)
         }
     }
 
@@ -512,12 +518,132 @@ class Database {
         return seq
     }
 
+    /// ids 테이블 추가 및 Group에서 id 제거하는 마이그레이션
+    private func migrateToIdsTable() {
+        print("Starting migration to ids table...")
+
+        // 1. ids 테이블 생성
+        let createIdsTable = """
+        CREATE TABLE IF NOT EXISTS ids (
+            id TEXT PRIMARY KEY,       -- 6자리 유니크 ID
+            type TEXT NOT NULL,        -- "command", "clipboard", "history", "secure", "var"
+            table_seq INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ids_type_seq ON ids(type, table_seq);
+        """
+        executeStatements(createIdsTable)
+
+        // 2. 기존 테이블의 id들을 ids 테이블로 마이그레이션
+        migrateIdsFromTable(tableName: "commands", type: "command")
+        migrateIdsFromTable(tableName: "history", type: "history")
+        migrateIdsFromTable(tableName: "clipboard", type: "clipboard")
+
+        // 3. groups 테이블에서 8자리 id를 6자리로 변환
+        migrateGroupIds()
+
+        // 4. groups 테이블에서 id 컬럼 제거
+        let createGroupsNew = """
+        CREATE TABLE IF NOT EXISTS groups_v3 (
+            seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            color TEXT NOT NULL,
+            sort_order INTEGER DEFAULT 0
+        );
+        """
+        executeStatements(createGroupsNew)
+
+        // 5. 데이터 복사
+        let copyGroups = "INSERT INTO groups_v3 (seq, name, color, sort_order) SELECT seq, name, color, sort_order FROM groups"
+        executeStatements(copyGroups)
+
+        // 6. 기존 테이블 삭제 및 이름 변경
+        executeStatements("DROP TABLE IF EXISTS groups")
+        executeStatements("ALTER TABLE groups_v3 RENAME TO groups")
+
+        print("Migration to ids table completed successfully")
+    }
+
+    /// 특정 테이블의 id들을 ids 테이블로 마이그레이션
+    private func migrateIdsFromTable(tableName: String, type: String) {
+        let sql = "SELECT seq, id FROM \(tableName)"
+        var stmt: OpaquePointer?
+
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                let seq = Int(sqlite3_column_int(stmt, 0))
+                if let idStr = sqlite3_column_text(stmt, 1) {
+                    let id = String(cString: idStr)
+                    // 8자리 id를 6자리로 변환
+                    let newId = String(id.prefix(6))
+
+                    // ids 테이블에 삽입
+                    let insertSql = "INSERT OR IGNORE INTO ids (id, type, table_seq) VALUES (?, ?, ?)"
+                    var insertStmt: OpaquePointer?
+                    if sqlite3_prepare_v2(db, insertSql, -1, &insertStmt, nil) == SQLITE_OK {
+                        sqlite3_bind_text(insertStmt, 1, newId, -1, SQLITE_TRANSIENT)
+                        sqlite3_bind_text(insertStmt, 2, type, -1, SQLITE_TRANSIENT)
+                        sqlite3_bind_int(insertStmt, 3, Int32(seq))
+                        sqlite3_step(insertStmt)
+                    }
+                    sqlite3_finalize(insertStmt)
+
+                    // 원본 테이블의 id도 6자리로 업데이트
+                    let updateSql = "UPDATE \(tableName) SET id = ? WHERE seq = ?"
+                    var updateStmt: OpaquePointer?
+                    if sqlite3_prepare_v2(db, updateSql, -1, &updateStmt, nil) == SQLITE_OK {
+                        sqlite3_bind_text(updateStmt, 1, newId, -1, SQLITE_TRANSIENT)
+                        sqlite3_bind_int(updateStmt, 2, Int32(seq))
+                        sqlite3_step(updateStmt)
+                    }
+                    sqlite3_finalize(updateStmt)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    /// groups 테이블의 id를 ids 테이블로 마이그레이션
+    private func migrateGroupIds() {
+        let sql = "SELECT seq, id FROM groups"
+        var stmt: OpaquePointer?
+
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                let seq = Int(sqlite3_column_int(stmt, 0))
+                if let idStr = sqlite3_column_text(stmt, 1) {
+                    let id = String(cString: idStr)
+                    // 8자리 id를 6자리로 변환
+                    let newId = String(id.prefix(6))
+
+                    // ids 테이블에 삽입
+                    let insertSql = "INSERT OR IGNORE INTO ids (id, type, table_seq) VALUES (?, ?, ?)"
+                    var insertStmt: OpaquePointer?
+                    if sqlite3_prepare_v2(db, insertSql, -1, &insertStmt, nil) == SQLITE_OK {
+                        sqlite3_bind_text(insertStmt, 1, newId, -1, SQLITE_TRANSIENT)
+                        sqlite3_bind_text(insertStmt, 2, "group", -1, SQLITE_TRANSIENT)
+                        sqlite3_bind_int(insertStmt, 3, Int32(seq))
+                        sqlite3_step(insertStmt)
+                    }
+                    sqlite3_finalize(insertStmt)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+    }
+
     private func createTables() {
         let createSQL = """
+        -- ID 관리 테이블
+        CREATE TABLE IF NOT EXISTS ids (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            table_seq INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ids_type_seq ON ids(type, table_seq);
+
         -- 그룹
         CREATE TABLE IF NOT EXISTS groups (
             seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            id TEXT UNIQUE NOT NULL,
             name TEXT NOT NULL,
             color TEXT NOT NULL,
             sort_order INTEGER DEFAULT 0
@@ -707,15 +833,14 @@ class Database {
         executeStatements("DELETE FROM groups")
         for (index, group) in groups.enumerated() {
             let sql = """
-            INSERT INTO groups (id, name, color, sort_order)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO groups (name, color, sort_order)
+            VALUES (?, ?, ?)
             """
             var stmt: OpaquePointer?
             if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-                sqlite3_bind_text(stmt, 1, group.id, -1, SQLITE_TRANSIENT)
-                sqlite3_bind_text(stmt, 2, group.name, -1, SQLITE_TRANSIENT)
-                sqlite3_bind_text(stmt, 3, group.color, -1, SQLITE_TRANSIENT)
-                sqlite3_bind_int(stmt, 4, Int32(index))
+                sqlite3_bind_text(stmt, 1, group.name, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(stmt, 2, group.color, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_int(stmt, 3, Int32(index))
                 sqlite3_step(stmt)
             }
             sqlite3_finalize(stmt)
@@ -724,19 +849,17 @@ class Database {
 
     func loadGroups() -> [Group] {
         var groups: [Group] = []
-        let sql = "SELECT seq, id, name, color, sort_order FROM groups ORDER BY sort_order"
+        let sql = "SELECT seq, name, color, sort_order FROM groups ORDER BY sort_order"
         var stmt: OpaquePointer?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
             while sqlite3_step(stmt) == SQLITE_ROW {
                 let seq = Int(sqlite3_column_int(stmt, 0))
-                if let idStr = sqlite3_column_text(stmt, 1),
-                   let namePtr = sqlite3_column_text(stmt, 2),
-                   let colorPtr = sqlite3_column_text(stmt, 3) {
-                    let id = String(cString: idStr)
+                if let namePtr = sqlite3_column_text(stmt, 1),
+                   let colorPtr = sqlite3_column_text(stmt, 2) {
                     let name = String(cString: namePtr)
                     let color = String(cString: colorPtr)
-                    let order = Int(sqlite3_column_int(stmt, 4))
-                    groups.append(Group(seq: seq, id: id, name: name, color: color, order: order))
+                    let order = Int(sqlite3_column_int(stmt, 3))
+                    groups.append(Group(seq: seq, name: name, color: color, order: order))
                 }
             }
         }
@@ -1650,6 +1773,34 @@ class Database {
     // MARK: - Short IDs
 
     /// 유니크한 6자 short_id 생성
+    /// 타입과 seq에 맞는 유니크 ID 생성 및 등록
+    func generateUniqueId(type: String, tableSeq: Int) -> String {
+        let chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+        var shortId: String
+        var attempts = 0
+        repeat {
+            shortId = String((0..<6).map { _ in chars.randomElement()! })
+            attempts += 1
+            if attempts > 1000 { // 무한루프 방지
+                shortId += String(Int.random(in: 0...999))
+                break
+            }
+        } while idExists(shortId)
+
+        // ids 테이블에 등록
+        let sql = "INSERT OR REPLACE INTO ids (id, type, table_seq) VALUES (?, ?, ?)"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, shortId, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, type, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_int(stmt, 3, Int32(tableSeq))
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+
+        return shortId
+    }
+
     func generateUniqueShortId(length: Int = 6) -> String {
         let chars = "abcdefghijklmnopqrstuvwxyz0123456789"
         var shortId: String
@@ -1665,21 +1816,18 @@ class Database {
         return shortId
     }
 
-    /// ID 중복 체크 (groups, commands, history, clipboard 모두 확인)
+    /// ID 중복 체크 (ids 테이블에서 확인)
     func idExists(_ id: String) -> Bool {
-        let tables = ["groups", "commands", "history", "clipboard"]
-        for table in tables {
-            let sql = "SELECT 1 FROM \(table) WHERE id = ? LIMIT 1"
-            var stmt: OpaquePointer?
-            if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-                sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
-                if sqlite3_step(stmt) == SQLITE_ROW {
-                    sqlite3_finalize(stmt)
-                    return true
-                }
+        let sql = "SELECT 1 FROM ids WHERE id = ? LIMIT 1"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                sqlite3_finalize(stmt)
+                return true
             }
-            sqlite3_finalize(stmt)
         }
+        sqlite3_finalize(stmt)
         return false
     }
 
@@ -2361,20 +2509,26 @@ class Database {
 
     // MARK: - ID/Seq Helper Functions
 
-    /// group id로 seq 조회
-    func getGroupSeq(groupId: String) -> Int? {
-        let sql = "SELECT seq FROM groups WHERE id = ?"
+    /// ID로 테이블 정보 조회 (체이닝용)
+    func getTableInfo(id: String) -> (type: String, seq: Int)? {
+        let sql = "SELECT type, table_seq FROM ids WHERE id = ?"
         var stmt: OpaquePointer?
-        var seq: Int?
+        var result: (type: String, seq: Int)?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            sqlite3_bind_text(stmt, 1, groupId, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
             if sqlite3_step(stmt) == SQLITE_ROW {
-                seq = Int(sqlite3_column_int(stmt, 0))
+                if let typeStr = sqlite3_column_text(stmt, 0) {
+                    let type = String(cString: typeStr)
+                    let seq = Int(sqlite3_column_int(stmt, 1))
+                    result = (type: type, seq: seq)
+                }
             }
         }
         sqlite3_finalize(stmt)
-        return seq
+        return result
     }
+
+    /// group id로 seq 조회
 
     /// command id로 seq 조회
     func getCommandSeq(commandId: String) -> Int? {

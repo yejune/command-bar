@@ -11,7 +11,7 @@ struct GroupListView: View {
     }
 
     func isDefaultGroup(_ group: Group) -> Bool {
-        group.id == CommandStore.defaultGroupId
+        group.seq == CommandStore.defaultGroupSeq
     }
 
     var body: some View {
@@ -71,17 +71,17 @@ struct GroupListView: View {
             commandCount: commandCount(for: group),
             isDefault: isDefaultGroup(group),
             isLastGroup: store.groups.count == 1,
-            isDragging: draggingItem?.id == group.id,
+            isDragging: draggingItem?.seq == group.seq,
             onEdit: { editingGroup = group },
             onDelete: {
                 if !isDefaultGroup(group) && store.groups.count > 1 {
-                    store.deleteGroupAndMerge(group, to: CommandStore.defaultGroupId)
+                    store.deleteGroupAndMerge(group, to: CommandStore.defaultGroupSeq)
                 }
             }
         )
         .onDrag {
             draggingItem = group
-            return NSItemProvider(object: group.id as NSString)
+            return NSItemProvider(object: String(group.seq ?? 0) as NSString)
         } preview: {
             Color.clear.frame(width: 1, height: 1)
         }

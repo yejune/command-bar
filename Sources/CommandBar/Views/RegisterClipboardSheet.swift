@@ -26,7 +26,7 @@ struct RegisterClipboardSheet: View {
         self.store = store
         self.item = item
         self.onComplete = onComplete
-        let defaultSeq = store.groups.first(where: { $0.id == CommandStore.defaultGroupId })?.seq
+        let defaultSeq = CommandStore.defaultGroupSeq
         _selectedGroupSeq = State(initialValue: defaultSeq)
     }
 
@@ -100,13 +100,11 @@ struct RegisterClipboardSheet: View {
 
                 Button(L.registerClipboardRegister) {
                     let asLast = selectedPosition == .bottom
-                    let groupId = selectedGroupSeq.flatMap { seq in
-                        store.groups.first(where: { $0.seq == seq })?.id
-                    } ?? CommandStore.defaultGroupId
+                    let groupSeq = selectedGroupSeq ?? CommandStore.defaultGroupSeq
                     store.registerClipboardAsCommand(
                         item,
                         asLast: asLast,
-                        groupId: groupId,
+                        groupSeq: groupSeq,
                         terminalApp: selectedTerminalApp
                     )
                     dismiss()

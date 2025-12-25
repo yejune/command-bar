@@ -13,7 +13,7 @@ struct CommandRowView: View {
     let onRun: () -> Void
     let onToggleFavorite: () -> Void
     let groups: [Group]
-    let onMoveToGroup: (String) -> Void
+    let onMoveToGroup: (Int) -> Void
 
     @State private var shakeOffset: CGFloat = 0
 
@@ -230,7 +230,7 @@ struct CommandRowView: View {
                 onCopy: onCopy,
                 onDelete: onDelete,
                 groups: groups,
-                currentGroupId: groups.first(where: { $0.seq == cmd.groupSeq })?.id,
+                currentGroupSeq: cmd.groupSeq,
                 onMoveToGroup: onMoveToGroup
             )
         }

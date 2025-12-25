@@ -2,10 +2,7 @@ import SwiftUI
 import AppKit
 
 class CommandStore: ObservableObject {
-    static let defaultGroupId = "000000"
-    static var defaultGroupSeq: Int? {
-        Database.shared.getGroupSeq(groupId: defaultGroupId)
-    }
+    static let defaultGroupSeq: Int = 1
 
     @Published var commands: [Command] = []
     @Published var groups: [Group] = []
@@ -313,11 +310,11 @@ class CommandStore: ObservableObject {
         clipboardTotalCount = 0
     }
 
-    func registerClipboardAsCommand(_ item: ClipboardItem, asLast: Bool = true, groupId: String = CommandStore.defaultGroupId, terminalApp: TerminalApp = .iterm2) {
+    func registerClipboardAsCommand(_ item: ClipboardItem, asLast: Bool = true, groupSeq: Int = CommandStore.defaultGroupSeq, terminalApp: TerminalApp = .iterm2) {
         let firstLine = item.content.components(separatedBy: .newlines).first ?? item.content
         let title = String(firstLine.prefix(50))
         let cmd = Command(
-            groupSeq: db.getGroupSeq(groupId: groupId),
+            groupSeq: groupSeq,
             title: title,
             command: item.content,
             executionType: .terminal,
@@ -617,15 +614,15 @@ class CommandStore: ObservableObject {
         commands = db.loadCommands()
 
         // Migration: assign default group seq to commands without groupSeq or with invalid groupSeq
-        let validGroupSeqs = Set(groups.compactMap { db.getGroupSeq(groupId: $0.id) })
+        let validGroupSeqs = Set(groups.compactMap { $0.seq })
         var needsSave = false
         commands = commands.map { cmd in
             var updatedCmd = cmd
             if let seq = updatedCmd.groupSeq, !validGroupSeqs.contains(seq) {
-                updatedCmd.groupSeq = db.getGroupSeq(groupId: Self.defaultGroupId)
+                updatedCmd.groupSeq = Self.defaultGroupSeq
                 needsSave = true
             } else if updatedCmd.groupSeq == nil {
-                updatedCmd.groupSeq = db.getGroupSeq(groupId: Self.defaultGroupId)
+                updatedCmd.groupSeq = Self.defaultGroupSeq
                 needsSave = true
             }
             return updatedCmd
@@ -730,21 +727,21 @@ class CommandStore: ObservableObject {
         }
     }
 
-    func restoreFromTrash(_ cmd: Command, toGroupId: String? = nil) {
+    func restoreFromTrash(_ cmd: Command, toGroupSeq: Int? = nil) {
         if let i = commands.firstIndex(where: { $0.id == cmd.id }) {
             commands[i].isInTrash = false
-            // 그룹 ID 지정 시 변경, 아니면 기존 그룹이 유효한지 확인
-            if let groupId = toGroupId {
-                commands[i].groupSeq = db.getGroupSeq(groupId: groupId)
+            // 그룹 seq 지정 시 변경, 아니면 기존 그룹이 유효한지 확인
+            if let groupSeq = toGroupSeq {
+                commands[i].groupSeq = groupSeq
             } else if let seq = commands[i].groupSeq {
                 // 기존 그룹 seq가 유효한지 확인
                 if !groups.contains(where: { $0.seq == seq }) {
                     // 기존 그룹이 삭제된 경우 기본 그룹으로
-                    commands[i].groupSeq = db.getGroupSeq(groupId: CommandStore.defaultGroupId)
+                    commands[i].groupSeq = CommandStore.defaultGroupSeq
                 }
             } else {
                 // groupSeq가 없으면 기본 그룹으로
-                commands[i].groupSeq = db.getGroupSeq(groupId: CommandStore.defaultGroupId)
+                commands[i].groupSeq = CommandStore.defaultGroupSeq
             }
             save()
             if commands[i].executionType == .background && commands[i].interval > 0 {
@@ -1014,14 +1011,13 @@ class CommandStore: ObservableObject {
         // 마지막 그룹은 삭제 불가
         guard groups.count > 1 else { return }
         // 기본 그룹은 삭제 불가
-        guard group.id != Self.defaultGroupId else { return }
+        guard group.seq != Self.defaultGroupSeq else { return }
         // 해당 그룹 명령어들을 기본 그룹으로 이동
-        let groupSeq = db.getGroupSeq(groupId: group.id)
-        let defaultSeq = db.getGroupSeq(groupId: Self.defaultGroupId)
+        let groupSeq = group.seq
         for i in commands.indices where commands[i].groupSeq == groupSeq {
-            commands[i].groupSeq = defaultSeq
+            commands[i].groupSeq = Self.defaultGroupSeq
         }
-        groups.removeAll { $0.id == group.id }
+        groups.removeAll { $0.seq == group.seq }
         save()
     }
 
@@ -1029,49 +1025,47 @@ class CommandStore: ObservableObject {
         // 마지막 그룹은 삭제 불가
         guard groups.count > 1 else { return }
         // 기본 그룹은 삭제 불가
-        guard group.id != Self.defaultGroupId else { return }
+        guard group.seq != Self.defaultGroupSeq else { return }
         // 해당 그룹의 명령어들을 휴지통으로 이동
-        let groupSeq = db.getGroupSeq(groupId: group.id)
+        let groupSeq = group.seq
         for i in commands.indices where commands[i].groupSeq == groupSeq {
             commands[i].isInTrash = true
         }
-        groups.removeAll { $0.id == group.id }
+        groups.removeAll { $0.seq == group.seq }
         save()
     }
 
-    func deleteGroupAndMerge(_ group: Group, to targetGroupId: String) {
+    func deleteGroupAndMerge(_ group: Group, to targetGroupSeq: Int) {
         // 마지막 그룹은 삭제 불가
         guard groups.count > 1 else { return }
         // 기본 그룹은 삭제 불가
-        guard group.id != Self.defaultGroupId else { return }
+        guard group.seq != Self.defaultGroupSeq else { return }
         // 해당 그룹의 명령어들을 다른 그룹으로 이동
-        let groupSeq = db.getGroupSeq(groupId: group.id)
-        let targetSeq = db.getGroupSeq(groupId: targetGroupId)
+        let groupSeq = group.seq
         for i in commands.indices where commands[i].groupSeq == groupSeq {
-            commands[i].groupSeq = targetSeq
+            commands[i].groupSeq = targetGroupSeq
         }
-        groups.removeAll { $0.id == group.id }
+        groups.removeAll { $0.seq == group.seq }
         save()
     }
 
-    func moveToGroup(_ command: Command, groupId: String) {
+    func moveToGroup(_ command: Command, groupSeq: Int) {
         if let i = commands.firstIndex(where: { $0.id == command.id }) {
-            commands[i].groupSeq = db.getGroupSeq(groupId: groupId)
+            commands[i].groupSeq = groupSeq
             save()
         }
     }
 
-    func itemsForGroup(_ groupId: String?) -> [Command] {
+    func itemsForGroup(_ groupSeq: Int?) -> [Command] {
         let active = commands.filter { !$0.isInTrash }
-        guard let gid = groupId else { return active }
-        let groupSeq = db.getGroupSeq(groupId: gid)
-        return active.filter { $0.groupSeq == groupSeq }
+        guard let seq = groupSeq else { return active }
+        return active.filter { $0.groupSeq == seq }
     }
 
     func ensureDefaultGroup() {
-        if groups.isEmpty || !groups.contains(where: { $0.id == Self.defaultGroupId }) {
+        if groups.isEmpty || !groups.contains(where: { $0.seq == Self.defaultGroupSeq }) {
             let defaultGroup = Group(
-                id: Self.defaultGroupId,
+                seq: Self.defaultGroupSeq,
                 name: L.groupDefault,
                 color: "gray",
                 order: 0
