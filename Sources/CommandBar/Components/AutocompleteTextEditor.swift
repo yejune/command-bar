@@ -5,21 +5,28 @@ struct AutocompleteTextEditor: NSViewRepresentable {
     @Binding var text: String
     let suggestions: [String]  // $ 트리거용 (환경 변수)
     var idSuggestions: [(id: String, title: String)] = []  // {id: 트리거용
+    var singleLine: Bool = false  // 한 줄 모드 (Enter 무시, 스크롤 없음)
+    var placeholder: String = ""  // 플레이스홀더
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
         let textView = AutocompleteNSTextView()
 
         textView.isRichText = true
-        textView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        let fontSize: CGFloat = singleLine ? NSFont.systemFontSize : 12
+        let font = singleLine ? NSFont.systemFont(ofSize: fontSize) : NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        textView.font = font
         textView.typingAttributes = [
-            .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+            .font: font,
             .foregroundColor: NSColor.textColor
         ]
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
+        textView.allowsUndo = true
         textView.delegate = context.coordinator
+        textView.singleLineMode = singleLine
+        textView.placeholderString = placeholder
 
         textView.suggestionProvider = { [weak textView] in
             guard let tv = textView else { return [] }
@@ -31,30 +38,64 @@ struct AutocompleteTextEditor: NSViewRepresentable {
         }
 
         scrollView.documentView = textView
-        scrollView.hasVerticalScroller = true
+        scrollView.borderType = singleLine ? .bezelBorder : .noBorder
+        scrollView.hasVerticalScroller = !singleLine
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
 
-        textView.minSize = NSSize(width: 0, height: 0)
-        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
-        textView.textContainer?.containerSize = NSSize(width: scrollView.contentSize.width, height: CGFloat.greatestFiniteMagnitude)
-        textView.textContainer?.widthTracksTextView = true
+        if singleLine {
+            // 한 줄 모드: 가로 스크롤 + 커서 따라가기 (스크롤바 숨김)
+            scrollView.drawsBackground = true
+            scrollView.hasHorizontalScroller = false
+            scrollView.hasVerticalScroller = false
+            scrollView.horizontalScrollElasticity = .none
+
+            textView.drawsBackground = true
+            textView.backgroundColor = .textBackgroundColor
+
+            // 핵심: 가로 확장 가능, 세로 고정
+            textView.isVerticallyResizable = false
+            textView.isHorizontallyResizable = true
+            textView.autoresizingMask = [.width]
+
+            // minSize로 최소 너비 보장, maxSize로 확장 허용
+            textView.minSize = NSSize(width: 0, height: 20)
+            textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: 20)
+
+            // 텍스트 컨테이너: word wrap 비활성화
+            textView.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: 20)
+            textView.textContainer?.widthTracksTextView = false
+            textView.textContainer?.lineFragmentPadding = 4
+            textView.textContainerInset = NSSize(width: 0, height: 3)
+        } else {
+            textView.minSize = NSSize(width: 0, height: 0)
+            textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            textView.isVerticallyResizable = true
+            textView.isHorizontallyResizable = false
+            textView.autoresizingMask = [.width]
+            textView.textContainer?.containerSize = NSSize(width: scrollView.contentSize.width, height: CGFloat.greatestFiniteMagnitude)
+            textView.textContainer?.widthTracksTextView = true
+        }
 
         return scrollView
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
-        guard let textView = nsView.documentView as? NSTextView else { return }
+        guard let textView = nsView.documentView as? AutocompleteNSTextView else { return }
         if textView.string != text {
             textView.string = text
         }
         context.coordinator.suggestions = suggestions
         context.coordinator.idSuggestions = idSuggestions
+
         // 구문 강조 적용
         context.coordinator.applySyntaxHighlighting(to: textView)
+
+        if singleLine {
+            // singleLine 모드: minSize로 최소 너비 보장
+            let minWidth = nsView.contentSize.width
+            textView.minSize = NSSize(width: minWidth, height: 20)
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -66,8 +107,8 @@ struct AutocompleteTextEditor: NSViewRepresentable {
         case idRef        // {id:xxx}
         case uuidRef      // {uuid:xxx}
         case varRef       // {var:xxx}
-        case encryptRef   // {encrypt:xxx}
-        case secureRef    // {secure:xxx}
+        case secureRef    // {secure:xxx} - 입력용
+        case lockedRef    // {🔒:#xxx} - 저장된 형태
         case none
     }
 
@@ -104,6 +145,11 @@ struct AutocompleteTextEditor: NSViewRepresentable {
             // 구문 강조 적용
             applySyntaxHighlighting(to: textView)
 
+            // singleLine 모드: 커서 위치로 스크롤
+            if textView.singleLineMode {
+                textView.scrollRangeToVisible(textView.selectedRange())
+            }
+
             // 트리거 타입 감지
             let trigger = detectTrigger(in: textView)
             currentTrigger = trigger
@@ -124,6 +170,66 @@ struct AutocompleteTextEditor: NSViewRepresentable {
             } else {
                 popupController.hide()
             }
+        }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard let textView = notification.object as? AutocompleteNSTextView else { return }
+
+            // {🔒:id} 블록 내부에 커서가 있으면 전체 선택
+            let selectedRange = textView.selectedRange()
+            if selectedRange.length == 0 {
+                if let blockRange = findLockedBlockAt(position: selectedRange.location, in: textView.string) {
+                    textView.setSelectedRange(blockRange)
+                    return
+                }
+            }
+
+            // singleLine 모드: 커서 이동 시 스크롤
+            if textView.singleLineMode {
+                textView.scrollRangeToVisible(textView.selectedRange())
+            }
+        }
+
+        /// {🔒:id} 블록을 찾음
+        private func findLockedBlockAt(position: Int, in text: String) -> NSRange? {
+            guard let regex = try? NSRegularExpression(pattern: "\\{🔒:[^}]+\\}") else { return nil }
+            let fullRange = NSRange(location: 0, length: text.utf16.count)
+            let matches = regex.matches(in: text, range: fullRange)
+
+            for match in matches {
+                // 커서가 블록 내부에 있는지 확인 (시작과 끝 제외)
+                if position > match.range.location && position < match.range.location + match.range.length {
+                    return match.range
+                }
+            }
+            return nil
+        }
+
+        /// {🔒:id} 블록 편집 방지
+        func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange, replacementString: String?) -> Bool {
+            let text = textView.string
+            guard let regex = try? NSRegularExpression(pattern: "\\{🔒:[^}]+\\}") else { return true }
+            let fullRange = NSRange(location: 0, length: text.utf16.count)
+            let matches = regex.matches(in: text, range: fullRange)
+
+            for match in matches {
+                let blockStart = match.range.location
+                let blockEnd = match.range.location + match.range.length
+
+                // 블록 전체 삭제는 허용
+                if affectedCharRange.location <= blockStart && affectedCharRange.location + affectedCharRange.length >= blockEnd {
+                    continue
+                }
+
+                // 블록 내부 편집은 거부
+                if affectedCharRange.location > blockStart && affectedCharRange.location < blockEnd {
+                    return false
+                }
+                if affectedCharRange.location + affectedCharRange.length > blockStart && affectedCharRange.location + affectedCharRange.length < blockEnd {
+                    return false
+                }
+            }
+            return true
         }
 
         func applySyntaxHighlighting(to textView: NSTextView) {
@@ -166,17 +272,17 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 }
             }
 
-            // {encrypt:xxx} 패턴 강조 (빨간색 + 배경)
-            if let encryptRegex = try? NSRegularExpression(pattern: "\\{encrypt:[^}]+\\}") {
-                let matches = encryptRegex.matches(in: text, range: fullRange)
+            // {secure:xxx} 패턴 강조 (빨간색 + 배경) - 저장 전 입력 형태
+            if let secureInputRegex = try? NSRegularExpression(pattern: "\\{secure:[^}]+\\}") {
+                let matches = secureInputRegex.matches(in: text, range: fullRange)
                 for match in matches {
                     textStorage.addAttribute(.foregroundColor, value: NSColor.systemRed, range: match.range)
                     textStorage.addAttribute(.backgroundColor, value: NSColor.systemRed.withAlphaComponent(0.15), range: match.range)
                 }
             }
 
-            // {secure:xxx} 패턴 강조 (핑크색 + 배경)
-            if let secureRegex = try? NSRegularExpression(pattern: "\\{secure:[^}]+\\}") {
+            // {🔒:xxx} 패턴 강조 (핑크색 + 배경) - 저장된 형태
+            if let secureRegex = try? NSRegularExpression(pattern: "\\{🔒:[^}]+\\}") {
                 let matches = secureRegex.matches(in: text, range: fullRange)
                 for match in matches {
                     textStorage.addAttribute(.foregroundColor, value: NSColor.systemPink, range: match.range)
@@ -223,18 +329,10 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 }
             }
 
-            // {encrypt: 트리거 체크
-            if let encryptRange = beforeCursor.range(of: "{encrypt:", options: .backwards) {
-                let afterTrigger = String(beforeCursor[encryptRange.upperBound...])
-                if !afterTrigger.contains("}") {
-                    return .encryptRef
-                }
-            }
-
             // {secure: 트리거 체크
             if let secureRange = beforeCursor.range(of: "{secure:", options: .backwards) {
                 let afterTrigger = String(beforeCursor[secureRange.upperBound...])
-                if !afterTrigger.contains("}") && !afterTrigger.contains(where: { $0.isWhitespace }) {
+                if !afterTrigger.contains("}") {
                     return .secureRef
                 }
             }
@@ -323,19 +421,18 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 }.prefix(maxSuggestions)
                 return Array(filtered)
 
-            case .encryptRef:
-                // {encrypt:는 사용자가 직접 입력하므로 자동완성 없음
-                return []
-
             case .secureRef:
-                // {secure: 이후 입력된 문자열로 필터링 (기존 secure value ID 목록)
+                // {secure: 이후 기존 라벨 목록 자동완성
+                let allLabels = SecureValueManager.shared.getAllLabels()
                 guard let secureRange = beforeCursor.range(of: "{secure:", options: .backwards) else { return [] }
                 let afterTrigger = String(beforeCursor[secureRange.upperBound...])
-                let allSecureIds = SecureValueManager.shared.getAllRefIds()
-                let filtered = allSecureIds.filter { refId in
-                    afterTrigger.isEmpty || refId.lowercased().hasPrefix(afterTrigger.lowercased())
+                let filtered = allLabels.filter { label in
+                    afterTrigger.isEmpty || label.lowercased().hasPrefix(afterTrigger.lowercased())
                 }.prefix(maxSuggestions)
                 return Array(filtered)
+
+            case .lockedRef:
+                return []
 
             case .none:
                 return []
@@ -395,20 +492,19 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 let newCursorPosition = dollarPosition + 1 + suggestion.count
                 textView.setSelectedRange(NSRange(location: newCursorPosition, length: 0))
 
-            case .encryptRef:
-                // {encrypt: 자동완성 없음 (직접 입력)
-                break
-
             case .secureRef:
-                // {secure: 위치 찾기
+                // {secure: → {🔒:라벨} 형태로 변환 (기존 라벨 선택 시)
                 guard let secureRange = beforeCursor.range(of: "{secure:", options: .backwards) else { return }
                 let triggerStart = text.distance(from: text.startIndex, to: secureRange.lowerBound)
                 let beforeTrigger = String(text.prefix(triggerStart))
-                let newText = beforeTrigger + "{secure:" + suggestion + "}" + afterCursor
+                let newText = beforeTrigger + "{🔒:\(suggestion)}" + afterCursor
                 textView.string = newText
                 self.text = newText
-                let newCursorPosition = triggerStart + 9 + suggestion.count  // {secure: + id + }
+                let newCursorPosition = triggerStart + 4 + suggestion.count  // {🔒: + label + }
                 textView.setSelectedRange(NSRange(location: newCursorPosition, length: 0))
+
+            case .lockedRef:
+                break
 
             case .none:
                 break
@@ -425,46 +521,94 @@ struct AutocompleteTextEditor: NSViewRepresentable {
 class AutocompleteNSTextView: NSTextView {
     var suggestionProvider: (() -> [String])?
     var onSuggestionSelected: ((String) -> Void)?
+    var singleLineMode: Bool = false
+    var placeholderString: String = ""
 
     override func keyDown(with event: NSEvent) {
-        // Option+S: 선택된 텍스트를 {encrypt:}로 감싸기
+        // Option+S: 선택된 텍스트를 {secure:}로 감싸기
         if event.modifierFlags.contains(.option) && event.charactersIgnoringModifiers == "s" {
-            wrapSelectionWithEncrypt()
+            wrapSelectionWithSecure()
+            return
+        }
+        // 한 줄 모드에서 Enter 무시
+        if singleLineMode && event.keyCode == 36 {  // Return key
             return
         }
         super.keyDown(with: event)
     }
 
-    override func menu(for event: NSEvent) -> NSMenu? {
-        let menu = super.menu(for: event) ?? NSMenu()
-
-        // 선택된 텍스트가 있을 때만 암호화 메뉴 추가
-        if selectedRange().length > 0 {
-            menu.insertItem(NSMenuItem.separator(), at: 0)
-            let encryptItem = NSMenuItem(title: "암호화 ({encrypt:})", action: #selector(wrapSelectionWithEncrypt), keyEquivalent: "s")
-            encryptItem.keyEquivalentModifierMask = .option
-            encryptItem.target = self
-            menu.insertItem(encryptItem, at: 0)
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        // 플레이스홀더 그리기
+        if string.isEmpty && !placeholderString.isEmpty {
+            let attrs: [NSAttributedString.Key: Any] = [
+                .foregroundColor: NSColor.placeholderTextColor,
+                .font: font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            ]
+            let placeholderRect = bounds.insetBy(dx: textContainerInset.width + 5, dy: textContainerInset.height)
+            placeholderString.draw(in: placeholderRect, withAttributes: attrs)
         }
-
-        return menu
     }
 
-    @objc func wrapSelectionWithEncrypt() {
+    override var needsDisplay: Bool {
+        didSet {
+            if string.isEmpty { super.needsDisplay = true }
+        }
+    }
+
+    override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        // 기존 암호화 메뉴 제거 (중복 방지)
+        menu.items.filter { $0.title.contains("암호화") }.forEach { menu.removeItem($0) }
+
+        let range = selectedRange()
+        let isEnabled = range.length > 0 && !isInsideSecureBlock(range)
+
+        // 암호화 메뉴 추가
+        let secureItem = NSMenuItem(title: "암호화", action: #selector(wrapSelectionWithSecure), keyEquivalent: "")
+        secureItem.target = self
+        secureItem.isEnabled = isEnabled
+
+        menu.insertItem(secureItem, at: 0)
+        menu.insertItem(NSMenuItem.separator(), at: 1)
+
+        super.willOpenMenu(menu, with: event)
+    }
+
+    private func isInsideSecureBlock(_ range: NSRange) -> Bool {
+        let text = string
+        guard !text.isEmpty else { return false }
+
+        // {secure:...} 또는 {🔒:...} 패턴 찾기
+        let patterns = ["\\{secure:[^}]*\\}", "\\{🔒:[^}]*\\}"]
+        for pattern in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern) {
+                let matches = regex.matches(in: text, range: NSRange(location: 0, length: text.utf16.count))
+                for match in matches {
+                    let blockStart = match.range.location
+                    let blockEnd = match.range.location + match.range.length
+                    if range.location >= blockStart && range.location + range.length <= blockEnd {
+                        return true
+                    }
+                }
+            }
+        }
+        return false
+    }
+
+    @objc func wrapSelectionWithSecure() {
         let selectedRange = self.selectedRange()
         guard selectedRange.length > 0 else { return }
 
         let nsText = string as NSString
         let selectedText = nsText.substring(with: selectedRange)
 
-        // {encrypt:선택텍스트}로 치환
-        let replacement = "{encrypt:\(selectedText)}"
+        // {secure:선택텍스트}로 치환
+        let replacement = "{secure:\(selectedText)}"
 
         if shouldChangeText(in: selectedRange, replacementString: replacement) {
             replaceCharacters(in: selectedRange, with: replacement)
             didChangeText()
 
-            // 커서를 } 뒤로 이동
             let newCursorPos = selectedRange.location + replacement.count
             setSelectedRange(NSRange(location: newCursorPos, length: 0))
         }

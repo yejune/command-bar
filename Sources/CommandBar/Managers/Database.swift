@@ -201,6 +201,13 @@ class Database {
         let secureValuesIndex = "CREATE INDEX IF NOT EXISTS idx_secure_values_key_version ON secure_values(key_version)"
         sqlite3_exec(db, secureValuesIndex, nil, nil, nil)
 
+        // 마이그레이션: secure_values에 label 컬럼 추가
+        let addSecureLabelColumn = "ALTER TABLE secure_values ADD COLUMN label TEXT"
+        sqlite3_exec(db, addSecureLabelColumn, nil, nil, nil)
+
+        let secureLabelIndex = "CREATE UNIQUE INDEX IF NOT EXISTS idx_secure_values_label ON secure_values(label) WHERE label IS NOT NULL"
+        sqlite3_exec(db, secureLabelIndex, nil, nil, nil)
+
         // Secure Key Versions 테이블 (키 버전 메타데이터)
         let createSecureKeyVersionsTable = """
         CREATE TABLE IF NOT EXISTS secure_key_versions (
@@ -1463,20 +1470,63 @@ class Database {
 
     // MARK: - Secure Values (암호화된 값 관리)
 
-    /// 암호화된 값 저장
-    func insertSecureValue(id: String, encryptedValue: String, keyVersion: Int) {
+    /// 암호화된 값 저장 (라벨 포함)
+    func insertSecureValue(id: String, encryptedValue: String, keyVersion: Int, label: String? = nil) {
         let now = ISO8601DateFormatter().string(from: Date())
-        let sql = "INSERT OR REPLACE INTO secure_values (id, encrypted_value, key_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+        let sql = "INSERT OR REPLACE INTO secure_values (id, encrypted_value, key_version, label, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
         var stmt: OpaquePointer?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
             sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
             sqlite3_bind_text(stmt, 2, encryptedValue, -1, SQLITE_TRANSIENT)
             sqlite3_bind_int(stmt, 3, Int32(keyVersion))
-            sqlite3_bind_text(stmt, 4, now, -1, SQLITE_TRANSIENT)
+            if let label = label {
+                sqlite3_bind_text(stmt, 4, label, -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 4)
+            }
             sqlite3_bind_text(stmt, 5, now, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 6, now, -1, SQLITE_TRANSIENT)
             sqlite3_step(stmt)
         }
         sqlite3_finalize(stmt)
+    }
+
+    /// 라벨로 secure value ID 조회
+    func getSecureIdByLabel(_ label: String) -> String? {
+        let sql = "SELECT id FROM secure_values WHERE label = ?"
+        var stmt: OpaquePointer?
+        var result: String?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, label, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let idCStr = sqlite3_column_text(stmt, 0) {
+                    result = String(cString: idCStr)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
+    /// 라벨 존재 여부 확인
+    func secureLabelExists(_ label: String) -> Bool {
+        return getSecureIdByLabel(label) != nil
+    }
+
+    /// 모든 라벨 목록 조회
+    func getAllSecureLabels() -> [String] {
+        var result: [String] = []
+        let sql = "SELECT label FROM secure_values WHERE label IS NOT NULL ORDER BY label"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                if let labelCStr = sqlite3_column_text(stmt, 0) {
+                    result.append(String(cString: labelCStr))
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
     }
 
     /// 암호화된 값 조회

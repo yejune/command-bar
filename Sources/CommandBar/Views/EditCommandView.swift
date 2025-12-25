@@ -261,13 +261,14 @@ struct EditCommandView: View {
                     Text(L.apiEndpoint)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    AutocompleteTextField(
+                    AutocompleteTextEditor(
                         text: $apiUrl,
-                        placeholder: "https://api.example.com/endpoint",
                         suggestions: store.allEnvironmentVariableNames,
-                        idSuggestions: store.allIdSuggestions
+                        idSuggestions: store.allIdSuggestions,
+                        singleLine: true,
+                        placeholder: "https://api.example.com/endpoint"
                     )
-                    .frame(height: 22)
+                    .frame(height: 24)
                 }
 
                 // HTTP Method
@@ -302,20 +303,22 @@ struct EditCommandView: View {
                         VStack(spacing: 8) {
                             ForEach(headers.indices, id: \.self) { index in
                                 HStack(spacing: 8) {
-                                    AutocompleteTextField(
+                                    AutocompleteTextEditor(
                                         text: $headers[index].key,
-                                        placeholder: "Key",
                                         suggestions: store.allEnvironmentVariableNames,
-                                        idSuggestions: store.allIdSuggestions
+                                        idSuggestions: store.allIdSuggestions,
+                                        singleLine: true,
+                                        placeholder: "Key"
                                     )
-                                    .frame(width: 120, height: 22)
-                                    AutocompleteTextField(
+                                    .frame(width: 120, height: 24)
+                                    AutocompleteTextEditor(
                                         text: $headers[index].value,
-                                        placeholder: "Value",
                                         suggestions: store.allEnvironmentVariableNames,
-                                        idSuggestions: store.allIdSuggestions
+                                        idSuggestions: store.allIdSuggestions,
+                                        singleLine: true,
+                                        placeholder: "Value"
                                     )
-                                    .frame(height: 22)
+                                    .frame(height: 24)
                                     Button(action: {
                                         headers.remove(at: index)
                                     }) {
@@ -347,20 +350,22 @@ struct EditCommandView: View {
                         VStack(spacing: 8) {
                             ForEach(queryParams.indices, id: \.self) { index in
                                 HStack(spacing: 8) {
-                                    AutocompleteTextField(
+                                    AutocompleteTextEditor(
                                         text: $queryParams[index].key,
-                                        placeholder: "Key",
                                         suggestions: store.allEnvironmentVariableNames,
-                                        idSuggestions: store.allIdSuggestions
+                                        idSuggestions: store.allIdSuggestions,
+                                        singleLine: true,
+                                        placeholder: "Key"
                                     )
-                                    .frame(width: 120, height: 22)
-                                    AutocompleteTextField(
+                                    .frame(width: 120, height: 24)
+                                    AutocompleteTextEditor(
                                         text: $queryParams[index].value,
-                                        placeholder: "Value",
                                         suggestions: store.allEnvironmentVariableNames,
-                                        idSuggestions: store.allIdSuggestions
+                                        idSuggestions: store.allIdSuggestions,
+                                        singleLine: true,
+                                        placeholder: "Value"
                                     )
-                                    .frame(height: 22)
+                                    .frame(height: 24)
                                     Button(action: {
                                         queryParams.remove(at: index)
                                     }) {
@@ -421,20 +426,22 @@ struct EditCommandView: View {
                                 VStack(spacing: 8) {
                                     ForEach(bodyParams.indices, id: \.self) { index in
                                         HStack(spacing: 8) {
-                                            AutocompleteTextField(
+                                            AutocompleteTextEditor(
                                                 text: $bodyParams[index].key,
-                                                placeholder: "Key",
                                                 suggestions: store.allEnvironmentVariableNames,
-                                                idSuggestions: store.allIdSuggestions
+                                                idSuggestions: store.allIdSuggestions,
+                                                singleLine: true,
+                                                placeholder: "Key"
                                             )
-                                            .frame(width: 120, height: 22)
-                                            AutocompleteTextField(
+                                            .frame(width: 120, height: 24)
+                                            AutocompleteTextEditor(
                                                 text: $bodyParams[index].value,
-                                                placeholder: "Value",
                                                 suggestions: store.allEnvironmentVariableNames,
-                                                idSuggestions: store.allIdSuggestions
+                                                idSuggestions: store.allIdSuggestions,
+                                                singleLine: true,
+                                                placeholder: "Value"
                                             )
-                                            .frame(height: 22)
+                                            .frame(height: 24)
                                             Button(action: {
                                                 bodyParams.remove(at: index)
                                             }) {
@@ -466,20 +473,22 @@ struct EditCommandView: View {
                                 VStack(spacing: 8) {
                                     ForEach(bodyParams.indices, id: \.self) { index in
                                         HStack(spacing: 8) {
-                                            AutocompleteTextField(
+                                            AutocompleteTextEditor(
                                                 text: $bodyParams[index].key,
-                                                placeholder: "Key",
                                                 suggestions: store.allEnvironmentVariableNames,
-                                                idSuggestions: store.allIdSuggestions
+                                                idSuggestions: store.allIdSuggestions,
+                                                singleLine: true,
+                                                placeholder: "Key"
                                             )
-                                            .frame(width: 120, height: 22)
-                                            AutocompleteTextField(
+                                            .frame(width: 120, height: 24)
+                                            AutocompleteTextEditor(
                                                 text: $bodyParams[index].value,
-                                                placeholder: "Value",
                                                 suggestions: store.allEnvironmentVariableNames,
-                                                idSuggestions: store.allIdSuggestions
+                                                idSuggestions: store.allIdSuggestions,
+                                                singleLine: true,
+                                                placeholder: "Value"
                                             )
-                                            .frame(height: 22)
+                                            .frame(height: 24)
                                             Button(action: {
                                                 bodyParams.remove(at: index)
                                             }) {
@@ -613,6 +622,10 @@ struct EditCommandView: View {
                     dismiss()
                 }
                 .buttonStyle(HoverTextButtonStyle())
+                Button("리셋") {
+                    resetToOriginal()
+                }
+                .buttonStyle(HoverTextButtonStyle())
                 Spacer()
                 if let onRun = onRun {
                     Button(L.buttonRun) {
@@ -679,6 +692,39 @@ struct EditCommandView: View {
         case "yellow": return .yellow
         default: return .blue
         }
+    }
+
+    func resetToOriginal() {
+        title = command.title
+        commandText = command.command
+        groupId = command.groupId
+        executionType = command.executionType
+        terminalApp = command.terminalApp
+        interval = String(command.interval)
+        scheduleDate = command.scheduleDate ?? Date()
+        repeatType = command.repeatType
+        remind5min = command.reminderTimes.contains(300)
+        remind30min = command.reminderTimes.contains(1800)
+        remind1hour = command.reminderTimes.contains(3600)
+        remind1day = command.reminderTimes.contains(86400)
+        apiUrl = command.url
+        httpMethod = command.httpMethod
+        headers = command.headers.map { KeyValuePair(key: $0.key, value: $0.value) }
+        queryParams = command.queryParams.map { KeyValuePair(key: $0.key, value: $0.value) }
+        bodyType = command.bodyType
+        bodyData = command.bodyData
+        // bodyParams 초기화: formData나 multipart일 때 bodyData JSON 파싱
+        if (command.bodyType == .formData || command.bodyType == .multipart) && !command.bodyData.isEmpty {
+            if let data = command.bodyData.data(using: .utf8),
+               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
+                bodyParams = dict.map { KeyValuePair(key: $0.key, value: $0.value) }
+            } else {
+                bodyParams = []
+            }
+        } else {
+            bodyParams = []
+        }
+        fileParams = command.fileParams.map { KeyValuePair(key: $0.key, value: $0.value) }
     }
 
     func copyId() {

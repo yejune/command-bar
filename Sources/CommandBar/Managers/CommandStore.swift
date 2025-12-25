@@ -287,14 +287,14 @@ class CommandStore: ObservableObject {
 
     func updateClipboardContent(_ item: ClipboardItem, newContent: String) {
         // {encrypt:xxx} → {secure:refId} 변환
-        let processedContent = SecureValueManager.shared.processForSave(newContent)
-        db.updateClipboardContent(id: item.id, content: processedContent)
+        let processResult = SecureValueManager.shared.processForSave(newContent)
+        db.updateClipboardContent(id: item.id, content: processResult.text)
         // 로컬 상태 업데이트
         if let index = clipboardItems.firstIndex(where: { $0.id == item.id }) {
             clipboardItems[index] = ClipboardItem(
                 id: item.id,
                 timestamp: item.timestamp,
-                content: processedContent,
+                content: processResult.text,
                 isFavorite: item.isFavorite,
                 copyCount: item.copyCount,
                 firstCopiedAt: item.firstCopiedAt
@@ -644,12 +644,12 @@ class CommandStore: ObservableObject {
     func add(_ cmd: Command) {
         var newCmd = cmd
         newCmd.command = normalizeQuotes(cmd.command)
-        // {encrypt:xxx} → {secure:refId} 변환
-        newCmd.command = SecureValueManager.shared.processForSave(newCmd.command)
-        newCmd.url = SecureValueManager.shared.processForSave(newCmd.url)
-        newCmd.bodyData = SecureValueManager.shared.processForSave(newCmd.bodyData)
+        // {secure:xxx} → {🔒:refId} 변환
+        newCmd.command = SecureValueManager.shared.processForSave(newCmd.command).text
+        newCmd.url = SecureValueManager.shared.processForSave(newCmd.url).text
+        newCmd.bodyData = SecureValueManager.shared.processForSave(newCmd.bodyData).text
         // 헤더 값도 처리
-        newCmd.headers = newCmd.headers.mapValues { SecureValueManager.shared.processForSave($0) }
+        newCmd.headers = newCmd.headers.mapValues { SecureValueManager.shared.processForSave($0).text }
         commands.append(newCmd)
         save()
         if cmd.executionType == .background && cmd.interval > 0 {
@@ -766,11 +766,11 @@ class CommandStore: ObservableObject {
         if let i = commands.firstIndex(where: { $0.id == cmd.id }) {
             var updated = cmd
             updated.command = normalizeQuotes(cmd.command)
-            // {encrypt:xxx} → {secure:refId} 변환
-            updated.command = SecureValueManager.shared.processForSave(updated.command)
-            updated.url = SecureValueManager.shared.processForSave(updated.url)
-            updated.bodyData = SecureValueManager.shared.processForSave(updated.bodyData)
-            updated.headers = updated.headers.mapValues { SecureValueManager.shared.processForSave($0) }
+            // {secure:xxx} → {🔒:refId} 변환
+            updated.command = SecureValueManager.shared.processForSave(updated.command).text
+            updated.url = SecureValueManager.shared.processForSave(updated.url).text
+            updated.bodyData = SecureValueManager.shared.processForSave(updated.bodyData).text
+            updated.headers = updated.headers.mapValues { SecureValueManager.shared.processForSave($0).text }
             commands[i] = updated
             commands[i].alertedTimes = []  // 알림 상태 초기화
             commands[i].alertState = .none

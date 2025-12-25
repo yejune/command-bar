@@ -61,16 +61,16 @@ struct ScriptExecutionView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             if info.options.isEmpty {
-                                AutocompleteTextField(
+                                AutocompleteTextEditor(
                                     text: Binding(
                                         get: { values[info.name] ?? "" },
                                         set: { values[info.name] = $0 }
                                     ),
-                                    placeholder: "",
                                     suggestions: store.allEnvironmentVariableNames,
-                                    idSuggestions: store.allIdSuggestions
+                                    idSuggestions: store.allIdSuggestions,
+                                    singleLine: true
                                 )
-                                .frame(height: 22)
+                                .frame(height: 24)
                             } else {
                                 Picker("", selection: Binding(
                                     get: { values[info.name] ?? info.options.first ?? "" },
