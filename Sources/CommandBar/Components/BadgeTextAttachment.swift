@@ -107,7 +107,7 @@ struct BadgeUtils {
         }
         // command 배지 (라벨 조회)
         convertPattern(commandPattern, type: .command, in: attributedString) { refId in
-            db.getCommandLabelByShortId(refId)
+            db.getCommandLabelById(refId)
         }
         // var 배지 (라벨 조회)
         convertPattern(varPattern, type: .variable, in: attributedString) { refId in

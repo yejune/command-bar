@@ -6,7 +6,7 @@ struct RegisterClipboardSheet: View {
     let item: ClipboardItem
     var onComplete: (() -> Void)? = nil
 
-    @State private var selectedGroupId: UUID
+    @State private var selectedGroupSeq: Int?
     @State private var selectedTerminalApp: TerminalApp = .iterm2
     @State private var selectedPosition: Position = .top
 
@@ -26,7 +26,8 @@ struct RegisterClipboardSheet: View {
         self.store = store
         self.item = item
         self.onComplete = onComplete
-        _selectedGroupId = State(initialValue: CommandStore.defaultGroupId)
+        let defaultSeq = store.groups.first(where: { $0.id == CommandStore.defaultGroupId })?.seq
+        _selectedGroupSeq = State(initialValue: defaultSeq)
     }
 
     var body: some View {
@@ -60,13 +61,13 @@ struct RegisterClipboardSheet: View {
                 Text(L.groupTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Picker("", selection: $selectedGroupId) {
+                Picker("", selection: $selectedGroupSeq) {
                     ForEach(store.groups) { group in
                         Label {
                             Text(" \(group.name)")
                         } icon: {
                             colorCircleImage(group.color, size: 8)
-                        }.tag(group.id)
+                        }.tag(group.seq as Int?)
                     }
                 }
                 .labelsHidden()
@@ -99,10 +100,13 @@ struct RegisterClipboardSheet: View {
 
                 Button(L.registerClipboardRegister) {
                     let asLast = selectedPosition == .bottom
+                    let groupId = selectedGroupSeq.flatMap { seq in
+                        store.groups.first(where: { $0.seq == seq })?.id
+                    } ?? CommandStore.defaultGroupId
                     store.registerClipboardAsCommand(
                         item,
                         asLast: asLast,
-                        groupId: selectedGroupId,
+                        groupId: groupId,
                         terminalApp: selectedTerminalApp
                     )
                     dismiss()

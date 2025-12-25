@@ -9,7 +9,7 @@ struct EditCommandView: View {
     var onRun: ((Command) -> Void)? = nil
     @State private var title: String
     @State private var commandText: String
-    @State private var groupId: UUID
+    @State private var groupSeq: Int?
     @State private var executionType: ExecutionType
     @State private var terminalApp: TerminalApp
     @State private var interval: String
@@ -40,7 +40,7 @@ struct EditCommandView: View {
         self.onRun = onRun
         _title = State(initialValue: command.title)
         _commandText = State(initialValue: command.command)
-        _groupId = State(initialValue: command.groupId)
+        _groupSeq = State(initialValue: command.groupSeq)
         _executionType = State(initialValue: command.executionType)
         _terminalApp = State(initialValue: command.terminalApp)
         _interval = State(initialValue: String(command.interval))
@@ -69,8 +69,7 @@ struct EditCommandView: View {
         _bodyParams = State(initialValue: initialBodyParams)
         _fileParams = State(initialValue: command.fileParams.map { KeyValuePair(key: $0.key, value: $0.value) })
         // shortId 초기화
-        let existingShortId = Database.shared.getShortId(fullId: command.id.uuidString) ?? ""
-        _shortIdText = State(initialValue: existingShortId)
+        _shortIdText = State(initialValue: command.id)
         _shortIdError = State(initialValue: nil)
     }
 
@@ -109,13 +108,13 @@ struct EditCommandView: View {
                 Text(L.commandEditTitle)
                     .font(.headline)
                 Spacer()
-                Button(action: copyUUID) {
-                    Text(command.id.uuidString.prefix(8) + "...")
+                Button(action: copyId) {
+                    Text(command.id)
                         .font(.caption2.monospaced())
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
-                .help("UUID 복사: \(command.id.uuidString)")
+                .help("ID 복사: {id:\(command.id)}")
             }
 
             Divider()
@@ -129,7 +128,7 @@ struct EditCommandView: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Short ID")
+                Text("ID")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack(spacing: 4) {
@@ -160,13 +159,13 @@ struct EditCommandView: View {
                     Text(L.groupTitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Picker("", selection: $groupId) {
+                    Picker("", selection: $groupSeq) {
                         ForEach(store.groups) { group in
                             Label {
                                 Text(" \(group.name)")
                             } icon: {
                                 colorCircleImage(group.color, size: 8)
-                            }.tag(group.id)
+                            }.tag(group.seq as Int?)
                         }
                     }
                     .labelsHidden()
@@ -638,7 +637,7 @@ struct EditCommandView: View {
                     var updated = command
                     updated.title = title
                     updated.command = commandText
-                    updated.groupId = groupId
+                    updated.groupSeq = groupSeq
                     updated.executionType = executionType
                     updated.terminalApp = terminalApp
                     updated.interval = Int(interval) ?? 0
@@ -697,7 +696,7 @@ struct EditCommandView: View {
     func resetToOriginal() {
         title = command.title
         commandText = command.command
-        groupId = command.groupId
+        groupSeq = command.groupSeq
         executionType = command.executionType
         terminalApp = command.terminalApp
         interval = String(command.interval)
@@ -733,24 +732,18 @@ struct EditCommandView: View {
         NSPasteboard.general.setString(idString, forType: .string)
     }
 
-    func copyUUID() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(command.id.uuidString, forType: .string)
-    }
-
     func validateShortId(_ newValue: String) {
         if newValue.isEmpty {
             shortIdError = nil
             return
         }
         // 현재 ID와 같으면 OK
-        let currentShortId = Database.shared.getShortId(fullId: command.id.uuidString) ?? ""
-        if newValue == currentShortId {
+        if newValue == command.id {
             shortIdError = nil
             return
         }
         // 중복 체크
-        if Database.shared.shortIdExists(newValue) {
+        if store.commands.contains(where: { $0.id == newValue }) {
             shortIdError = "중복"
         } else {
             shortIdError = nil
@@ -759,12 +752,10 @@ struct EditCommandView: View {
 
     func saveShortId() {
         guard !shortIdText.isEmpty, shortIdError == nil else { return }
-        let currentShortId = Database.shared.getShortId(fullId: command.id.uuidString) ?? ""
-        if shortIdText != currentShortId && !currentShortId.isEmpty {
-            // shortId 업데이트
-            _ = Database.shared.updateShortId(oldShortId: currentShortId, newShortId: shortIdText)
+        if shortIdText != command.id {
+            // ID 업데이트 - Command의 id를 직접 변경하면 Database가 자동으로 업데이트됨
             // 모든 명령어에서 참조 치환
-            replaceShortIdReferences(from: currentShortId, to: shortIdText)
+            replaceShortIdReferences(from: command.id, to: shortIdText)
         }
     }
 

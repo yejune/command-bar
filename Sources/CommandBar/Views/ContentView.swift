@@ -11,11 +11,11 @@ struct ContentView: View {
     @State private var showingGroups = false
     @State private var showingSecure = false
     @State private var editingCommand: Command?
-    @State private var selectedId: UUID?
+    @State private var selectedId: String?
     @State private var draggingItem: Command?
     @State private var selectedHistoryItem: HistoryItem?
     @State private var selectedClipboardItem: ClipboardItem?
-    @State private var selectedGroupId: UUID? = nil  // nil = 전체
+    @State private var selectedGroupId: String? = nil  // nil = 전체
     @State private var showFavoritesOnly = false
     @State private var showAddGroupSheet = false
     @State private var editingGroup: Group? = nil
@@ -517,17 +517,17 @@ struct ContentView: View {
                             Text("  \(L.groupAll)(\(totalCount))")
                         } icon: {
                             colorCircleImage("gray", size: 8, leftShift: 2)
-                        }.tag(nil as UUID?)
+                        }.tag(nil as String?)
 
                         Divider()
 
                         ForEach(store.groups) { group in
                             Label {
-                                let count = store.commands.filter { $0.groupId == group.id && !$0.isInTrash }.count
+                                let count = store.commands.filter { $0.groupSeq == group.seq && !$0.isInTrash }.count
                                 Text("  \(group.name)(\(count))")
                             } icon: {
                                 colorCircleImage(group.color, size: 8, leftShift: 2)
-                            }.tag(group.id as UUID?)
+                            }.tag(group.id as String?)
                         }
                     }
                     .labelsHidden()
@@ -642,7 +642,7 @@ struct ContentView: View {
                             .onDrag {
                                 draggingItem = cmd
                                 selectedId = cmd.id
-                                return NSItemProvider(object: cmd.id.uuidString as NSString)
+                                return NSItemProvider(object: cmd.id as NSString)
                             } preview: {
                                 Color.clear.frame(width: 1, height: 1)
                             }
@@ -869,8 +869,10 @@ struct ContentView: View {
 
     func executeAPICommand(_ cmd: Command) {
         // 먼저 로딩 창 표시
+        // cmd.id는 String이므로 UUID로 변환 (실패시 새 UUID 생성)
+        let requestUUID = UUID(uuidString: cmd.id) ?? UUID()
         let state = APIResponseWindowController.showLoading(
-            requestId: cmd.id,
+            requestId: requestUUID,
             method: cmd.httpMethod.rawValue,
             url: cmd.url,
             title: cmd.title

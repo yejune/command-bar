@@ -10,7 +10,7 @@ struct GroupEditSheet: View {
     @State private var color: String = "blue"
     @State private var showDeleteConfirm = false
     @State private var deleteOption: DeleteOption = .merge
-    @State private var mergeTargetGroupId: UUID = CommandStore.defaultGroupId
+    @State private var mergeTargetGroupSeq: Int? = nil
 
     private let colors = ["blue", "red", "green", "orange", "purple", "gray"]
 
@@ -123,9 +123,9 @@ struct GroupEditSheet: View {
                         Text(L.groupDeleteMerge)
                             .foregroundStyle(deleteOption == .merge ? .primary : .secondary)
                         if deleteOption == .merge {
-                            Picker(L.groupSelectTarget, selection: $mergeTargetGroupId) {
+                            Picker(L.groupSelectTarget, selection: $mergeTargetGroupSeq) {
                                 ForEach(availableTargetGroups, id: \.id) { group in
-                                    Text(group.name).tag(group.id)
+                                    Text(group.name).tag(group.seq as Int?)
                                 }
                             }
                             .labelsHidden()
@@ -156,8 +156,9 @@ struct GroupEditSheet: View {
 
                 Button(L.buttonDelete) {
                     if let group = existingGroup {
-                        if deleteOption == .merge {
-                            store.deleteGroupAndMerge(group, to: mergeTargetGroupId)
+                        if deleteOption == .merge, let targetSeq = mergeTargetGroupSeq,
+                           let targetGroup = store.groups.first(where: { $0.seq == targetSeq }) {
+                            store.deleteGroupAndMerge(group, to: targetGroup.id)
                         } else {
                             store.deleteGroupWithCommands(group)
                         }

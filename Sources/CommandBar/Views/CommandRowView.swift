@@ -13,7 +13,7 @@ struct CommandRowView: View {
     let onRun: () -> Void
     let onToggleFavorite: () -> Void
     let groups: [Group]
-    let onMoveToGroup: (UUID) -> Void
+    let onMoveToGroup: (String) -> Void
 
     @State private var shakeOffset: CGFloat = 0
 
@@ -102,7 +102,7 @@ struct CommandRowView: View {
     }
 
     var currentGroup: Group? {
-        groups.first { $0.id == cmd.groupId }
+        groups.first { $0.seq == cmd.groupSeq }
     }
 
     func colorFor(_ name: String) -> Color {
@@ -117,6 +117,30 @@ struct CommandRowView: View {
         }
     }
 
+    var backgroundFillColor: Color {
+        if isAlerting {
+            return Color.red.opacity(0.3)
+        } else if isSelected {
+            return Color.accentColor.opacity(0.2)
+        } else {
+            return Color.clear
+        }
+    }
+
+    var strokeColor: Color {
+        if isAlerting {
+            return Color.red
+        } else if isSelected {
+            return Color.accentColor
+        } else {
+            return Color.primary.opacity(0.1)
+        }
+    }
+
+    var strokeLineWidth: CGFloat {
+        isAlerting ? 2 : 1
+    }
+
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
@@ -128,8 +152,10 @@ struct CommandRowView: View {
                             .frame(width: 8, height: 8)
                     }
                     // 즐겨찾기 별
-                    Image(systemName: cmd.isFavorite ? "star.fill" : "star")
-                        .foregroundStyle(cmd.isFavorite ? .yellow : .gray.opacity(0.4))
+                    let starIcon = cmd.isFavorite ? "star.fill" : "star"
+                    let starColor: Color = cmd.isFavorite ? .yellow : .gray.opacity(0.4)
+                    Image(systemName: starIcon)
+                        .foregroundStyle(starColor)
                         .font(.caption2)
                         .frame(width: 16, height: 16)
                         .contentShape(Rectangle())
@@ -183,11 +209,11 @@ struct CommandRowView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(isAlerting ? Color.red.opacity(0.3) : (isSelected ? Color.accentColor.opacity(0.2) : Color.clear))
+                .fill(backgroundFillColor)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .stroke(isAlerting ? Color.red : (isSelected ? Color.accentColor : Color.primary.opacity(0.1)), lineWidth: isAlerting ? 2 : 1)
+                .stroke(strokeColor, lineWidth: strokeLineWidth)
         )
         .offset(x: shakeOffset)
         .opacity(isDragging ? 0.5 : 1.0)
@@ -204,7 +230,7 @@ struct CommandRowView: View {
                 onCopy: onCopy,
                 onDelete: onDelete,
                 groups: groups,
-                currentGroupId: cmd.groupId,
+                currentGroupId: groups.first(where: { $0.seq == cmd.groupSeq })?.id,
                 onMoveToGroup: onMoveToGroup
             )
         }

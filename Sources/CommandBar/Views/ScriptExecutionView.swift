@@ -23,7 +23,7 @@ struct ScriptExecutionView: View {
     }
 
     var shortId: String {
-        Database.shared.getShortId(fullId: command.id.uuidString) ?? String(command.id.uuidString.prefix(8)).lowercased()
+        command.id
     }
 
     var body: some View {
@@ -40,7 +40,7 @@ struct ScriptExecutionView: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .help("ID 복사: {id:\(command.id.uuidString)}")
+                    .help("ID 복사: {id:\(command.id)}")
                 }
 
                 Text(executedCommand ?? command.command)
@@ -171,7 +171,7 @@ struct ScriptExecutionView: View {
                 command: finalCommand,
                 type: .script,
                 output: output,
-                commandId: command.id
+                commandSeq: command.seq
             ))
         }
     }

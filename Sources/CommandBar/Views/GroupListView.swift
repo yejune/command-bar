@@ -7,7 +7,7 @@ struct GroupListView: View {
     @State private var editingGroup: Group?
 
     func commandCount(for group: Group) -> Int {
-        store.commands.filter { $0.groupId == group.id }.count
+        store.commands.filter { $0.groupSeq == group.seq }.count
     }
 
     func isDefaultGroup(_ group: Group) -> Bool {
@@ -81,7 +81,7 @@ struct GroupListView: View {
         )
         .onDrag {
             draggingItem = group
-            return NSItemProvider(object: group.id.uuidString as NSString)
+            return NSItemProvider(object: group.id as NSString)
         } preview: {
             Color.clear.frame(width: 1, height: 1)
         }

@@ -2,11 +2,14 @@ import SwiftUI
 import AppKit
 
 class CommandStore: ObservableObject {
-    static let defaultGroupId = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+    static let defaultGroupId = "000000"
+    static var defaultGroupSeq: Int? {
+        Database.shared.getGroupSeq(groupId: defaultGroupId)
+    }
 
     @Published var commands: [Command] = []
     @Published var groups: [Group] = []
-    @Published var alertingCommandId: UUID?  // 현재 알림 중인 명령
+    @Published var alertingCommandId: String?  // 현재 알림 중인 명령
     @Published var history: [HistoryItem] = []
     @Published var clipboardItems: [ClipboardItem] = []
 
@@ -151,9 +154,9 @@ class CommandStore: ObservableObject {
     }
 
     func addHistory(_ item: HistoryItem) {
-        // 지금! 알림은 같은 명령 ID면 병합
-        if item.type == .scheduleAlert, let cmdId = item.commandId {
-            if var existing = db.findHistoryByCommandId(cmdId, type: .scheduleAlert) {
+        // 지금! 알림은 같은 명령 seq면 병합
+        if item.type == .scheduleAlert, let cmdSeq = item.commandSeq {
+            if var existing = db.findHistoryByCommandSeq(cmdSeq, type: .scheduleAlert) {
                 existing.count += 1
                 existing.endTimestamp = item.timestamp
                 existing.timestamp = item.timestamp
@@ -175,7 +178,7 @@ class CommandStore: ObservableObject {
         db.addHistory(newItem)
 
         // 첫 실행 이력도 추가
-        db.addHistoryExecution(historyId: newItem.id.uuidString, executedAt: Date())
+        db.addHistoryExecution(historyId: newItem.id, executedAt: Date())
 
         loadHistory()
     }
@@ -216,7 +219,7 @@ class CommandStore: ObservableObject {
     }
 
     func deleteHistory(_ item: HistoryItem) {
-        db.softDeleteHistory(id: item.id.uuidString)
+        db.softDeleteHistory(id: item.id)
         history.removeAll { $0.id == item.id }
         historyTotalCount = max(0, historyTotalCount - 1)
     }
@@ -280,7 +283,7 @@ class CommandStore: ObservableObject {
     }
 
     func removeClipboardItem(_ item: ClipboardItem) {
-        db.softDeleteClipboard(id: item.id.uuidString)
+        db.softDeleteClipboard(id: item.id)
         clipboardItems.removeAll { $0.id == item.id }
         clipboardTotalCount = max(0, clipboardTotalCount - 1)
     }
@@ -292,9 +295,10 @@ class CommandStore: ObservableObject {
         // 로컬 상태 업데이트
         if let index = clipboardItems.firstIndex(where: { $0.id == item.id }) {
             clipboardItems[index] = ClipboardItem(
+                seq: item.seq,
                 id: item.id,
-                timestamp: item.timestamp,
                 content: processResult.text,
+                timestamp: item.timestamp,
                 isFavorite: item.isFavorite,
                 copyCount: item.copyCount,
                 firstCopiedAt: item.firstCopiedAt
@@ -309,11 +313,11 @@ class CommandStore: ObservableObject {
         clipboardTotalCount = 0
     }
 
-    func registerClipboardAsCommand(_ item: ClipboardItem, asLast: Bool = true, groupId: UUID = CommandStore.defaultGroupId, terminalApp: TerminalApp = .iterm2) {
+    func registerClipboardAsCommand(_ item: ClipboardItem, asLast: Bool = true, groupId: String = CommandStore.defaultGroupId, terminalApp: TerminalApp = .iterm2) {
         let firstLine = item.content.components(separatedBy: .newlines).first ?? item.content
         let title = String(firstLine.prefix(50))
         let cmd = Command(
-            groupId: groupId,
+            groupSeq: db.getGroupSeq(groupId: groupId),
             title: title,
             command: item.content,
             executionType: .terminal,
@@ -360,8 +364,8 @@ class CommandStore: ObservableObject {
         }
 
         // API 체이닝 참조 치환
-        processedCommand = processedCommand.withAPIChainValues { [weak self] commandId, jsonPath in
-            self?.getValueFromAPIResponse(commandId: commandId, jsonPath: jsonPath)
+        processedCommand = processedCommand.withAPIChainValues { [weak self] commandIdStr, jsonPath in
+            self?.getValueFromAPIResponse(commandId: commandIdStr, jsonPath: jsonPath)
         }
 
         // URL 생성 (queryParams 적용)
@@ -512,7 +516,7 @@ class CommandStore: ObservableObject {
                         command: "지금!",
                         type: .scheduleAlert,
                         output: nil,
-                        commandId: commands[i].id
+                        commandSeq: db.getCommandSeq(commandId: commands[i].id)
                     ))
                 }
                 continue
@@ -534,7 +538,7 @@ class CommandStore: ObservableObject {
                             command: alertStateFor(seconds: reminderTime).rawValue,
                             type: .reminder,
                             output: nil,
-                            commandId: commands[i].id
+                            commandSeq: db.getCommandSeq(commandId: commands[i].id)
                         ))
                     }
                     break
@@ -612,13 +616,16 @@ class CommandStore: ObservableObject {
         // Load commands
         commands = db.loadCommands()
 
-        // Migration: assign default group ID to commands without groupId or with invalid groupId
-        let validGroupIds = Set(groups.map { $0.id })
+        // Migration: assign default group seq to commands without groupSeq or with invalid groupSeq
+        let validGroupSeqs = Set(groups.compactMap { db.getGroupSeq(groupId: $0.id) })
         var needsSave = false
         commands = commands.map { cmd in
             var updatedCmd = cmd
-            if !validGroupIds.contains(updatedCmd.groupId) {
-                updatedCmd.groupId = Self.defaultGroupId
+            if let seq = updatedCmd.groupSeq, !validGroupSeqs.contains(seq) {
+                updatedCmd.groupSeq = db.getGroupSeq(groupId: Self.defaultGroupId)
+                needsSave = true
+            } else if updatedCmd.groupSeq == nil {
+                updatedCmd.groupSeq = db.getGroupSeq(groupId: Self.defaultGroupId)
                 needsSave = true
             }
             return updatedCmd
@@ -679,7 +686,7 @@ class CommandStore: ObservableObject {
 
     func duplicate(_ cmd: Command) {
         var newCmd = cmd
-        newCmd.id = UUID()
+        newCmd.id = Command.generateId()
         newCmd.title = cmd.title + " (복사)"
         newCmd.isRunning = false
         newCmd.lastOutput = nil
@@ -723,15 +730,21 @@ class CommandStore: ObservableObject {
         }
     }
 
-    func restoreFromTrash(_ cmd: Command, toGroupId: UUID? = nil) {
+    func restoreFromTrash(_ cmd: Command, toGroupId: String? = nil) {
         if let i = commands.firstIndex(where: { $0.id == cmd.id }) {
             commands[i].isInTrash = false
             // 그룹 ID 지정 시 변경, 아니면 기존 그룹이 유효한지 확인
             if let groupId = toGroupId {
-                commands[i].groupId = groupId
-            } else if !groups.contains(where: { $0.id == commands[i].groupId }) {
-                // 기존 그룹이 삭제된 경우 기본 그룹으로
-                commands[i].groupId = CommandStore.defaultGroupId
+                commands[i].groupSeq = db.getGroupSeq(groupId: groupId)
+            } else if let seq = commands[i].groupSeq {
+                // 기존 그룹 seq가 유효한지 확인
+                if !groups.contains(where: { $0.seq == seq }) {
+                    // 기존 그룹이 삭제된 경우 기본 그룹으로
+                    commands[i].groupSeq = db.getGroupSeq(groupId: CommandStore.defaultGroupId)
+                }
+            } else {
+                // groupSeq가 없으면 기본 그룹으로
+                commands[i].groupSeq = db.getGroupSeq(groupId: CommandStore.defaultGroupId)
             }
             save()
             if commands[i].executionType == .background && commands[i].interval > 0 {
@@ -1003,8 +1016,10 @@ class CommandStore: ObservableObject {
         // 기본 그룹은 삭제 불가
         guard group.id != Self.defaultGroupId else { return }
         // 해당 그룹 명령어들을 기본 그룹으로 이동
-        for i in commands.indices where commands[i].groupId == group.id {
-            commands[i].groupId = Self.defaultGroupId
+        let groupSeq = db.getGroupSeq(groupId: group.id)
+        let defaultSeq = db.getGroupSeq(groupId: Self.defaultGroupId)
+        for i in commands.indices where commands[i].groupSeq == groupSeq {
+            commands[i].groupSeq = defaultSeq
         }
         groups.removeAll { $0.id == group.id }
         save()
@@ -1016,37 +1031,41 @@ class CommandStore: ObservableObject {
         // 기본 그룹은 삭제 불가
         guard group.id != Self.defaultGroupId else { return }
         // 해당 그룹의 명령어들을 휴지통으로 이동
-        for i in commands.indices where commands[i].groupId == group.id {
+        let groupSeq = db.getGroupSeq(groupId: group.id)
+        for i in commands.indices where commands[i].groupSeq == groupSeq {
             commands[i].isInTrash = true
         }
         groups.removeAll { $0.id == group.id }
         save()
     }
 
-    func deleteGroupAndMerge(_ group: Group, to targetGroupId: UUID) {
+    func deleteGroupAndMerge(_ group: Group, to targetGroupId: String) {
         // 마지막 그룹은 삭제 불가
         guard groups.count > 1 else { return }
         // 기본 그룹은 삭제 불가
         guard group.id != Self.defaultGroupId else { return }
         // 해당 그룹의 명령어들을 다른 그룹으로 이동
-        for i in commands.indices where commands[i].groupId == group.id {
-            commands[i].groupId = targetGroupId
+        let groupSeq = db.getGroupSeq(groupId: group.id)
+        let targetSeq = db.getGroupSeq(groupId: targetGroupId)
+        for i in commands.indices where commands[i].groupSeq == groupSeq {
+            commands[i].groupSeq = targetSeq
         }
         groups.removeAll { $0.id == group.id }
         save()
     }
 
-    func moveToGroup(_ command: Command, groupId: UUID) {
+    func moveToGroup(_ command: Command, groupId: String) {
         if let i = commands.firstIndex(where: { $0.id == command.id }) {
-            commands[i].groupId = groupId
+            commands[i].groupSeq = db.getGroupSeq(groupId: groupId)
             save()
         }
     }
 
-    func itemsForGroup(_ groupId: UUID?) -> [Command] {
+    func itemsForGroup(_ groupId: String?) -> [Command] {
         let active = commands.filter { !$0.isInTrash }
         guard let gid = groupId else { return active }
-        return active.filter { $0.groupId == gid }
+        let groupSeq = db.getGroupSeq(groupId: gid)
+        return active.filter { $0.groupSeq == groupSeq }
     }
 
     func ensureDefaultGroup() {
@@ -1145,7 +1164,7 @@ class CommandStore: ObservableObject {
         }
 
         if merge {
-            // 병합: 기존 ID와 겹치면 새 ID 부여
+            // 병합: 기존 ID와 겹치면 새 ID 부여 (APIEnvironment는 아직 UUID 사용)
             let existingIds = Set(environments.map { $0.id })
             for var env in imported.environments {
                 if existingIds.contains(env.id) {
@@ -1164,7 +1183,7 @@ class CommandStore: ObservableObject {
     }
 
     /// 다른 API 응답에서 값 추출 (API 체이닝)
-    func getValueFromAPIResponse(commandId: UUID, jsonPath: String?) -> String? {
+    func getValueFromAPIResponse(commandId: String, jsonPath: String?) -> String? {
         guard let cmd = commands.first(where: { $0.id == commandId }),
               let response = cmd.lastResponse else {
             return nil
@@ -1269,7 +1288,7 @@ class CommandStore: ObservableObject {
             let existingIds = Set(commands.map { $0.id })
             for var cmd in imported.commands {
                 if existingIds.contains(cmd.id) {
-                    cmd.id = UUID()
+                    cmd.id = Command.generateId()
                 }
                 // 런타임 상태 초기화
                 cmd.isRunning = false
@@ -1294,73 +1313,42 @@ class CommandStore: ObservableObject {
 
     // MARK: - ID Suggestions for Autocomplete
 
-    /// 모든 항목의 shortId와 제목 목록 (자동완성용)
+    /// 모든 항목의 id와 제목 목록 (자동완성용)
     var allIdSuggestions: [(id: String, title: String)] {
-        let shortIds = db.getAllShortIds()
         var result: [(id: String, title: String)] = []
 
-        for item in shortIds {
-            switch item.type {
-            case "command":
-                if let uuid = UUID(uuidString: item.fullId),
-                   let cmd = commands.first(where: { $0.id == uuid && !$0.isInTrash }) {
-                    result.append((id: item.shortId, title: cmd.title))
-                }
-            case "clipboard":
-                if let uuid = UUID(uuidString: item.fullId),
-                   let clip = clipboardItems.first(where: { $0.id == uuid }) {
-                    let preview = String(clip.content.prefix(30)).replacingOccurrences(of: "\n", with: " ")
-                    result.append((id: item.shortId, title: preview))
-                }
-            default:
-                break
-            }
+        // Commands
+        for cmd in commands where !cmd.isInTrash {
+            result.append((id: cmd.id, title: cmd.title))
         }
+
+        // Clipboard items
+        for clip in clipboardItems {
+            let preview = String(clip.content.prefix(30)).replacingOccurrences(of: "\n", with: " ")
+            result.append((id: clip.id, title: preview))
+        }
+
         return result
-    }
-
-    /// shortId로 full UUID 조회
-    func getFullId(shortId: String) -> UUID? {
-        if let fullIdStr = db.getFullId(shortId: shortId) {
-            return UUID(uuidString: fullIdStr)
-        }
-        return nil
-    }
-
-    /// full UUID로 shortId 조회
-    func getShortId(fullId: UUID) -> String? {
-        return db.getShortId(fullId: fullId.uuidString)
-    }
-
-    /// 새 항목에 대한 shortId 생성 및 등록
-    func registerShortId(for fullId: UUID, type: String) -> String {
-        // 이미 등록되어 있으면 기존 shortId 반환
-        if let existing = db.getShortId(fullId: fullId.uuidString) {
-            return existing
-        }
-        let shortId = db.generateUniqueShortId()
-        db.insertShortId(shortId: shortId, fullId: fullId.uuidString, type: type)
-        return shortId
     }
 
     // MARK: - Command Chaining
 
     /// 문자열에서 명령어 참조를 처리하여 값으로 치환
-    /// - `command@shortId` 또는 `command@shortId|path` (배지 저장 형식)
+    /// - `command@id` 또는 `command@id|path` (배지 저장 형식)
     /// - {command#label} 또는 {command#label|path} (입력 형식)
     func resolveCommandReferences(in text: String) -> String {
         var result = text
 
-        // 1. 배지 형식: `command@shortId` 또는 `command@shortId|path`
+        // 1. 배지 형식: `command@id` 또는 `command@id|path`
         if let badgeRegex = try? NSRegularExpression(pattern: "`command@([^`|]+)(?:\\|([^`]+))?`") {
             let range = NSRange(result.startIndex..., in: result)
             let matches = badgeRegex.matches(in: result, range: range).reversed()
 
             for match in matches {
                 guard let fullRange = Range(match.range, in: result),
-                      let shortIdRange = Range(match.range(at: 1), in: result) else { continue }
+                      let idRange = Range(match.range(at: 1), in: result) else { continue }
 
-                let shortId = String(result[shortIdRange])
+                let commandId = String(result[idRange])
                 let jsonPath: String?
                 if match.numberOfRanges > 2, let pathRange = Range(match.range(at: 2), in: result) {
                     jsonPath = String(result[pathRange])
@@ -1368,7 +1356,7 @@ class CommandStore: ObservableObject {
                     jsonPath = nil
                 }
 
-                if let value = getValueFromCommand(shortId: shortId, jsonPath: jsonPath) {
+                if let value = getValueFromCommand(commandId: commandId, jsonPath: jsonPath) {
                     result.replaceSubrange(fullRange, with: value)
                 }
             }
@@ -1391,9 +1379,9 @@ class CommandStore: ObservableObject {
                     jsonPath = nil
                 }
 
-                // 라벨로 shortId 조회 후 값 가져오기
-                if let shortId = db.getShortIdByLabel(label),
-                   let value = getValueFromCommand(shortId: shortId, jsonPath: jsonPath) {
+                // 라벨로 commandId 조회 후 값 가져오기
+                if let commandId = db.getCommandIdByLabel(label),
+                   let value = getValueFromCommand(commandId: commandId, jsonPath: jsonPath) {
                     result.replaceSubrange(fullRange, with: value)
                 }
             }
@@ -1402,13 +1390,10 @@ class CommandStore: ObservableObject {
         return result
     }
 
-    /// shortId로 명령어 결과값 조회
-    func getValueFromCommand(shortId: String, jsonPath: String?) -> String? {
-        guard let fullIdStr = db.getFullId(shortId: shortId),
-              let fullId = UUID(uuidString: fullIdStr) else { return nil }
-
+    /// commandId로 명령어 결과값 조회
+    func getValueFromCommand(commandId: String, jsonPath: String?) -> String? {
         // Command에서 찾기
-        if let cmd = commands.first(where: { $0.id == fullId }) {
+        if let cmd = commands.first(where: { $0.id == commandId }) {
             let response: String?
             if cmd.executionType == .api {
                 response = cmd.lastResponse
@@ -1426,7 +1411,7 @@ class CommandStore: ObservableObject {
         }
 
         // ClipboardItem에서 찾기
-        if let clip = clipboardItems.first(where: { $0.id == fullId }) {
+        if let clip = clipboardItems.first(where: { $0.id == commandId }) {
             if let path = jsonPath, !path.isEmpty {
                 return extractValueFromJSON(clip.content, path: path)
             }
@@ -1436,13 +1421,10 @@ class CommandStore: ObservableObject {
         return nil
     }
 
-    /// shortId로 값 조회 (Command의 lastOutput/lastResponse 또는 ClipboardItem의 content)
-    func getValueFromId(shortId: String, jsonPath: String?) -> String? {
-        guard let fullIdStr = db.getFullId(shortId: shortId),
-              let fullId = UUID(uuidString: fullIdStr) else { return nil }
-
+    /// id로 값 조회 (Command의 lastOutput/lastResponse 또는 ClipboardItem의 content)
+    func getValueFromId(id: String, jsonPath: String?) -> String? {
         // Command에서 찾기
-        if let cmd = commands.first(where: { $0.id == fullId }) {
+        if let cmd = commands.first(where: { $0.id == id }) {
             let response: String?
             if cmd.executionType == .api {
                 response = cmd.lastResponse
@@ -1460,7 +1442,7 @@ class CommandStore: ObservableObject {
         }
 
         // ClipboardItem에서 찾기
-        if let clip = clipboardItems.first(where: { $0.id == fullId }) {
+        if let clip = clipboardItems.first(where: { $0.id == id }) {
             // jsonPath가 있으면 JSON에서 값 추출 시도
             if let path = jsonPath, !path.isEmpty {
                 return extractValueFromJSON(clip.content, path: path)
@@ -1546,14 +1528,14 @@ class CommandStore: ObservableObject {
     }
 
     func restoreHistoryItem(_ item: HistoryItem) {
-        db.restoreHistory(id: item.id.uuidString)
+        db.restoreHistory(id: item.id)
         trashHistory.removeAll { $0.id == item.id }
         trashHistoryCount = max(0, trashHistoryCount - 1)
         loadHistory()
     }
 
     func restoreClipboardItem(_ item: ClipboardItem) {
-        db.restoreClipboard(id: item.id.uuidString)
+        db.restoreClipboard(id: item.id)
         trashClipboard.removeAll { $0.id == item.id }
         trashClipboardCount = max(0, trashClipboardCount - 1)
         loadClipboard()
@@ -1584,20 +1566,20 @@ class CommandStore: ObservableObject {
     /// 저장 전 처리 결과
     struct LabelProcessResult {
         var text: String
-        var labels: [(commandId: UUID, label: String)]  // 설정된 라벨들
+        var labels: [(commandId: String, label: String)]  // 설정된 라벨들
         var error: String?
         var errorRange: NSRange?
     }
 
     /// id/var 라벨 처리:
-    /// - {id#라벨}, [id#라벨] → 기존 라벨로 명령어 참조 → `id:shortId`
-    /// - {var#라벨:값}, [var#라벨:값] → 새 변수 + 라벨 저장 → `var:라벨`
-    /// - {var#라벨}, [var#라벨] → 기존 라벨 참조 → `var:라벨`
-    /// - {id:xxx}, [id:xxx] → `id:xxx`
-    /// - {var:xxx}, [var:xxx] → `var:xxx`
+    /// - {id#라벨}, [id#라벨] → 기존 라벨로 명령어 참조 → `id@commandId`
+    /// - {var#라벨:값}, [var#라벨:값] → 새 변수 + 라벨 저장 → `var@varId`
+    /// - {var#라벨}, [var#라벨] → 기존 라벨 참조 → `var@varId`
+    /// - {id:xxx}, [id:xxx] → `id@xxx`
+    /// - {var:xxx}, [var:xxx] → `var@xxx`
     func processIdVarLabels(_ text: String) -> LabelProcessResult {
         var result = text
-        let labels: [(commandId: UUID, label: String)] = []
+        let labels: [(commandId: String, label: String)] = []
 
         // 1. {id#라벨} 또는 [id#라벨] 패턴 처리 (기존 라벨로 명령어 참조)
         let idLabelPatterns = ["\\{id#([^}]+)\\}", "\\[id#([^\\]]+)\\]"]
@@ -1616,12 +1598,7 @@ class CommandStore: ObservableObject {
 
                 // 라벨로 명령어 ID 조회
                 if let commandId = db.getCommandIdByLabel(label) {
-                    // shortId 조회
-                    if let shortId = db.getShortId(fullId: commandId.uuidString) {
-                        result.replaceSubrange(fullRange, with: "`id@\(shortId)`")  // 저장은 항상 @id
-                    } else {
-                        return LabelProcessResult(text: text, labels: [], error: "명령어 '\(label)'의 ID를 찾을 수 없습니다.", errorRange: match.range)
-                    }
+                    result.replaceSubrange(fullRange, with: "`id@\(commandId)`")  // 저장은 항상 @id
                 } else {
                     return LabelProcessResult(text: text, labels: [], error: "라벨 '\(label)'을(를) 가진 명령어를 찾을 수 없습니다.", errorRange: match.range)
                 }

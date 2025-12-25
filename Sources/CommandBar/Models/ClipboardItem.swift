@@ -1,43 +1,30 @@
 import Foundation
 
 struct ClipboardItem: Identifiable, Codable {
-    let id: UUID
+    var seq: Int?              // DB 내부 seq (auto-increment)
+    var id: String             // 6자리 외부 참조용 ID
     let content: String
     let timestamp: Date
     var isFavorite: Bool
     var copyCount: Int
     var firstCopiedAt: Date?
+    var deletedAt: Date?       // 삭제 시간 (휴지통)
 
-    init(content: String, isFavorite: Bool = false, copyCount: Int = 1, firstCopiedAt: Date? = nil) {
-        self.id = UUID()
+    init(seq: Int? = nil, id: String = "", content: String, timestamp: Date = Date(), isFavorite: Bool = false, copyCount: Int = 1, firstCopiedAt: Date? = nil, deletedAt: Date? = nil) {
+        self.seq = seq
+        self.id = id.isEmpty ? ClipboardItem.generateId() : id
         self.content = content
-        self.timestamp = Date()
-        self.isFavorite = isFavorite
-        self.copyCount = copyCount
-        self.firstCopiedAt = firstCopiedAt ?? Date()
-    }
-
-    init(id: UUID, timestamp: Date, content: String, isFavorite: Bool = false, copyCount: Int = 1, firstCopiedAt: Date? = nil) {
-        self.id = id
         self.timestamp = timestamp
-        self.content = content
         self.isFavorite = isFavorite
         self.copyCount = copyCount
-        self.firstCopiedAt = firstCopiedAt
+        self.firstCopiedAt = firstCopiedAt ?? timestamp
+        self.deletedAt = deletedAt
     }
 
-    enum CodingKeys: String, CodingKey {
-        case id, content, timestamp, isFavorite, copyCount, firstCopiedAt
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        content = try container.decode(String.self, forKey: .content)
-        timestamp = try container.decode(Date.self, forKey: .timestamp)
-        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
-        copyCount = try container.decodeIfPresent(Int.self, forKey: .copyCount) ?? 1
-        firstCopiedAt = try container.decodeIfPresent(Date.self, forKey: .firstCopiedAt)
+    /// 6자리 랜덤 ID 생성
+    static func generateId() -> String {
+        let chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+        return String((0..<6).map { _ in chars.randomElement()! })
     }
 
     var preview: String {

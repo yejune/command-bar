@@ -11,7 +11,7 @@ struct ClipboardDetailView: View {
     @State private var isEdited: Bool = false
 
     var shortId: String {
-        Database.shared.getShortId(fullId: item.id.uuidString) ?? String(item.id.uuidString.prefix(8)).lowercased()
+        item.id
     }
 
     var body: some View {
@@ -32,7 +32,7 @@ struct ClipboardDetailView: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .help("ID 복사: {id:\(item.id.uuidString)}")
+                    .help("ID 복사: {id:\(item.id)}")
                 }
                 Text(item.timestamp, format: .dateTime)
                     .font(.caption)

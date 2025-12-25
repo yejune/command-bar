@@ -6,7 +6,7 @@ struct AddCommandView: View {
 
     @State private var title = ""
     @State private var command = ""
-    @State private var groupId: UUID = CommandStore.defaultGroupId
+    @State private var groupSeq: Int? = nil
     @State private var executionType: ExecutionType = .terminal
     @State private var terminalApp: TerminalApp = .iterm2
     @State private var interval: String = "0"
@@ -80,13 +80,13 @@ struct AddCommandView: View {
                 Text(L.groupTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Picker("", selection: $groupId) {
+                Picker("", selection: $groupSeq) {
                     ForEach(store.groups) { group in
                         Label {
                             Text(" \(group.name)")
                         } icon: {
                             colorCircleImage(group.color, size: 8)
-                        }.tag(group.id)
+                        }.tag(group.seq as Int?)
                     }
                 }
                 .labelsHidden()
@@ -513,7 +513,7 @@ struct AddCommandView: View {
                     }
 
                     store.add(Command(
-                        groupId: groupId,
+                        groupSeq: groupSeq,
                         title: title,
                         command: command,
                         executionType: executionType,

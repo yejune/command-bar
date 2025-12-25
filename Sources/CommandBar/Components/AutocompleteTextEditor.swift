@@ -155,17 +155,7 @@ struct AutocompleteTextEditor: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? AutocompleteNSTextView else { return }
 
-            // {uuid:xxx} → {id:shortId} 자동 치환
-            let currentText = textView.string
-            if currentText.contains("{uuid:") {
-                let converted = Database.shared.convertUuidToShortId(in: currentText)
-                if converted != currentText {
-                    let cursorPos = textView.selectedRange().location
-                    let diff = currentText.count - converted.count
-                    textView.string = converted
-                    textView.setSelectedRange(NSRange(location: max(0, cursorPos - diff), length: 0))
-                }
-            }
+            // UUID 변환은 더 이상 필요 없음 (모든 ID가 이미 6자리 문자열)
 
             // attributedString에서 원본 텍스트 추출하여 바인딩 업데이트
             let storageText = BadgeUtils.convertToText(from: textView.attributedString())
@@ -524,13 +514,13 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 guard let cmdRange = triggerRange else { return }
                 let triggerStart = text.distance(from: text.startIndex, to: cmdRange.lowerBound)
                 let beforeTrigger = String(text.prefix(triggerStart))
-                // 라벨로 shortId 조회
-                if let shortId = Database.shared.getShortIdByLabel(suggestion) {
-                    // `command@shortId` 형태로 저장 (배지로 변환됨)
-                    let newText = beforeTrigger + "`command@\(shortId)`" + afterCursor
+                // 라벨로 command ID 조회
+                if let commandId = Database.shared.getCommandIdByLabel(suggestion) {
+                    // `command@id` 형태로 저장 (배지로 변환됨)
+                    let newText = beforeTrigger + "`command@\(commandId)`" + afterCursor
                     textView.string = newText
                     self.text = newText
-                    let newCursorPosition = triggerStart + 11 + shortId.count  // `command@ + shortId + `
+                    let newCursorPosition = triggerStart + 11 + commandId.count  // `command@ + id + `
                     textView.setSelectedRange(NSRange(location: newCursorPosition, length: 0))
                 }
 

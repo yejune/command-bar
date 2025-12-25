@@ -10,8 +10,8 @@ struct RightClickMenu: NSViewRepresentable {
     let onCopy: () -> Void
     let onDelete: () -> Void
     let groups: [Group]
-    let currentGroupId: UUID?
-    let onMoveToGroup: (UUID) -> Void
+    let currentGroupId: String?
+    let onMoveToGroup: (String) -> Void
 
     func makeNSView(context: Context) -> NSView {
         let view = RightClickMenuView()
@@ -51,8 +51,8 @@ struct RightClickMenu: NSViewRepresentable {
         var onCopy: (() -> Void)?
         var onDelete: (() -> Void)?
         var groups: [Group] = []
-        var currentGroupId: UUID?
-        var onMoveToGroup: ((UUID) -> Void)?
+        var currentGroupId: String?
+        var onMoveToGroup: ((String) -> Void)?
 
         override func rightMouseDown(with event: NSEvent) {
             showMenu(with: event)
@@ -174,14 +174,13 @@ struct RightClickMenu: NSViewRepresentable {
         @objc func copyAction() { onCopy?() }
         @objc func copyIdAction() {
             guard let cmd = cmd else { return }
-            let shortId = Database.shared.getShortId(fullId: cmd.id.uuidString) ?? String(cmd.id.uuidString.prefix(6))
-            let idString = "{command@\(shortId)}"
+            let idString = "{command@\(cmd.id)}"
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(idString, forType: .string)
         }
         @objc func deleteAction() { onDelete?() }
         @objc func moveToGroupAction(_ sender: NSMenuItem) {
-            if let groupId = sender.representedObject as? UUID {
+            if let groupId = sender.representedObject as? String {
                 onMoveToGroup?(groupId)
             }
         }

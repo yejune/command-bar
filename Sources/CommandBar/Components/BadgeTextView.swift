@@ -94,7 +94,7 @@ struct BadgeView: View {
                 return "\(type)#\(label)"
             }
         case "command":
-            if let label = db.getCommandLabelByShortId(id) {
+            if let label = db.getCommandLabelById(id) {
                 return "\(type)#\(label)"
             }
         case "var":

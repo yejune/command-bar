@@ -1,13 +1,14 @@
 import Foundation
 
 struct Command: Identifiable, Codable {
-    var id = UUID()
-    var groupId: UUID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+    var seq: Int?              // DB 내부 seq (auto-increment)
+    var id: String             // 6자리 외부 참조용 ID
+    var groupSeq: Int?         // groups.seq 참조
     var title: String
     var command: String
     var executionType: ExecutionType
     var terminalApp: TerminalApp = .iterm2
-    var interval: Int = 0  // 초 단위, 0이면 수동
+    var interval: Int = 0      // 초 단위, 0이면 수동
     var lastOutput: String?
     var lastExecutedAt: Date?  // 마지막 실행 시간
     var isRunning: Bool = false
@@ -20,8 +21,9 @@ struct Command: Identifiable, Codable {
     var alertedTimes: Set<Int> = []  // 이미 알림 준 시간들
     var historyLoggedTimes: Set<Int> = []  // 히스토리 기록된 시간들
     var acknowledged: Bool = false  // 클릭해서 확인함
-    var isInTrash: Bool = false  // 휴지통에 있음
-    var isFavorite: Bool = false  // 즐겨찾기
+    var isInTrash: Bool = false     // 휴지통에 있음
+    var isFavorite: Bool = false    // 즐겨찾기
+    var label: String?              // 체이닝용 라벨 (유니크)
     // API용
     var url: String = ""
     var httpMethod: HTTPMethod = .get
@@ -34,17 +36,18 @@ struct Command: Identifiable, Codable {
     var lastStatusCode: Int? = nil
 
     enum CodingKeys: String, CodingKey {
-        case id, groupId, title, command, executionType, terminalApp, interval
+        case seq, id, groupSeq, title, command, executionType, terminalApp, interval
         case lastOutput, lastExecutedAt, isRunning, scheduleDate, repeatType
         case alertState, reminderTimes, alertedTimes, historyLoggedTimes
-        case acknowledged, isInTrash, isFavorite
+        case acknowledged, isInTrash, isFavorite, label
         case url, httpMethod, headers, queryParams, bodyType, bodyData, fileParams
         case lastResponse, lastStatusCode
     }
 
-    init(id: UUID = UUID(), groupId: UUID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!, title: String, command: String, executionType: ExecutionType, terminalApp: TerminalApp = .iterm2, interval: Int = 0, lastOutput: String? = nil, lastExecutedAt: Date? = nil, isRunning: Bool = false, scheduleDate: Date? = nil, repeatType: RepeatType = .none, alertState: AlertState = .none, reminderTimes: Set<Int> = [], alertedTimes: Set<Int> = [], historyLoggedTimes: Set<Int> = [], acknowledged: Bool = false, isInTrash: Bool = false, isFavorite: Bool = false, url: String = "", httpMethod: HTTPMethod = .get, headers: [String: String] = [:], queryParams: [String: String] = [:], bodyType: BodyType = .none, bodyData: String = "", fileParams: [String: String] = [:], lastResponse: String? = nil, lastStatusCode: Int? = nil) {
-        self.id = id
-        self.groupId = groupId
+    init(seq: Int? = nil, id: String = "", groupSeq: Int? = nil, title: String, command: String, executionType: ExecutionType, terminalApp: TerminalApp = .iterm2, interval: Int = 0, lastOutput: String? = nil, lastExecutedAt: Date? = nil, isRunning: Bool = false, scheduleDate: Date? = nil, repeatType: RepeatType = .none, alertState: AlertState = .none, reminderTimes: Set<Int> = [], alertedTimes: Set<Int> = [], historyLoggedTimes: Set<Int> = [], acknowledged: Bool = false, isInTrash: Bool = false, isFavorite: Bool = false, label: String? = nil, url: String = "", httpMethod: HTTPMethod = .get, headers: [String: String] = [:], queryParams: [String: String] = [:], bodyType: BodyType = .none, bodyData: String = "", fileParams: [String: String] = [:], lastResponse: String? = nil, lastStatusCode: Int? = nil) {
+        self.seq = seq
+        self.id = id.isEmpty ? Command.generateId() : id
+        self.groupSeq = groupSeq
         self.title = title
         self.command = command
         self.executionType = executionType
@@ -62,6 +65,7 @@ struct Command: Identifiable, Codable {
         self.acknowledged = acknowledged
         self.isInTrash = isInTrash
         self.isFavorite = isFavorite
+        self.label = label
         self.url = url
         self.httpMethod = httpMethod
         self.headers = headers
@@ -73,36 +77,10 @@ struct Command: Identifiable, Codable {
         self.lastStatusCode = lastStatusCode
     }
 
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-        groupId = try container.decodeIfPresent(UUID.self, forKey: .groupId) ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
-        title = try container.decode(String.self, forKey: .title)
-        command = try container.decode(String.self, forKey: .command)
-        executionType = try container.decode(ExecutionType.self, forKey: .executionType)
-        terminalApp = try container.decodeIfPresent(TerminalApp.self, forKey: .terminalApp) ?? .iterm2
-        interval = try container.decodeIfPresent(Int.self, forKey: .interval) ?? 0
-        lastOutput = try container.decodeIfPresent(String.self, forKey: .lastOutput)
-        lastExecutedAt = try container.decodeIfPresent(Date.self, forKey: .lastExecutedAt)
-        isRunning = try container.decodeIfPresent(Bool.self, forKey: .isRunning) ?? false
-        scheduleDate = try container.decodeIfPresent(Date.self, forKey: .scheduleDate)
-        repeatType = try container.decodeIfPresent(RepeatType.self, forKey: .repeatType) ?? .none
-        alertState = try container.decodeIfPresent(AlertState.self, forKey: .alertState) ?? .none
-        reminderTimes = try container.decodeIfPresent(Set<Int>.self, forKey: .reminderTimes) ?? []
-        alertedTimes = try container.decodeIfPresent(Set<Int>.self, forKey: .alertedTimes) ?? []
-        historyLoggedTimes = try container.decodeIfPresent(Set<Int>.self, forKey: .historyLoggedTimes) ?? []
-        acknowledged = try container.decodeIfPresent(Bool.self, forKey: .acknowledged) ?? false
-        isInTrash = try container.decodeIfPresent(Bool.self, forKey: .isInTrash) ?? false
-        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
-        url = try container.decodeIfPresent(String.self, forKey: .url) ?? ""
-        httpMethod = try container.decodeIfPresent(HTTPMethod.self, forKey: .httpMethod) ?? .get
-        headers = try container.decodeIfPresent([String: String].self, forKey: .headers) ?? [:]
-        queryParams = try container.decodeIfPresent([String: String].self, forKey: .queryParams) ?? [:]
-        bodyType = try container.decodeIfPresent(BodyType.self, forKey: .bodyType) ?? .none
-        bodyData = try container.decodeIfPresent(String.self, forKey: .bodyData) ?? ""
-        fileParams = try container.decodeIfPresent([String: String].self, forKey: .fileParams) ?? [:]
-        lastResponse = try container.decodeIfPresent(String.self, forKey: .lastResponse)
-        lastStatusCode = try container.decodeIfPresent(Int.self, forKey: .lastStatusCode)
+    /// 6자리 랜덤 ID 생성
+    static func generateId() -> String {
+        let chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+        return String((0..<6).map { _ in chars.randomElement()! })
     }
 }
 
@@ -273,11 +251,11 @@ extension Command {
     }
 
     /// API 체이닝 참조 치환
-    func withAPIChainValues(_ resolver: (UUID, String?) -> String?) -> Command {
+    func withAPIChainValues(_ resolver: (String, String?) -> String?) -> Command {
         var result = self
 
         for ref in apiChainReferences {
-            guard let value = resolver(ref.commandId, ref.jsonPath) else { continue }
+            guard let value = resolver(ref.commandId.uuidString, ref.jsonPath) else { continue }
 
             result.url = result.url.replacingOccurrences(of: ref.fullMatch, with: value)
             result.bodyData = result.bodyData.replacingOccurrences(of: ref.fullMatch, with: value)

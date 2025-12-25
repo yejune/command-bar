@@ -5,7 +5,7 @@ struct HistoryOutputView: View {
     let onClose: () -> Void
 
     var executions: [Date] {
-        Database.shared.getHistoryExecutions(historyId: item.id.uuidString)
+        Database.shared.getHistoryExecutions(historyId: item.id)
     }
 
     var body: some View {

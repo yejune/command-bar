@@ -4,16 +4,17 @@ struct RestoreGroupSheet: View {
     @ObservedObject var store: CommandStore
     @Environment(\.dismiss) private var dismiss
     let command: Command
-    @State private var selectedGroupId: UUID
+    @State private var selectedGroupSeq: Int?
 
     init(store: CommandStore, command: Command) {
         self.store = store
         self.command = command
         // 기존 그룹이 유효하면 선택, 아니면 기본 그룹
-        let validGroupId = store.groups.contains(where: { $0.id == command.groupId })
-            ? command.groupId
-            : CommandStore.defaultGroupId
-        _selectedGroupId = State(initialValue: validGroupId)
+        let defaultSeq = store.groups.first(where: { $0.id == CommandStore.defaultGroupId })?.seq
+        let validGroupSeq = store.groups.contains(where: { $0.seq == command.groupSeq })
+            ? command.groupSeq
+            : defaultSeq
+        _selectedGroupSeq = State(initialValue: validGroupSeq)
     }
 
     var body: some View {
@@ -29,13 +30,13 @@ struct RestoreGroupSheet: View {
                 Text(L.groupTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Picker("", selection: $selectedGroupId) {
+                Picker("", selection: $selectedGroupSeq) {
                     ForEach(store.groups) { group in
                         Label {
                             Text(" \(group.name)")
                         } icon: {
                             colorCircleImage(group.color, size: 8)
-                        }.tag(group.id)
+                        }.tag(group.seq as Int?)
                     }
                 }
                 .labelsHidden()
@@ -50,7 +51,10 @@ struct RestoreGroupSheet: View {
                 .keyboardShortcut(.cancelAction)
 
                 Button(L.trashRestore) {
-                    store.restoreFromTrash(command, toGroupId: selectedGroupId)
+                    let groupId = selectedGroupSeq.flatMap { seq in
+                        store.groups.first(where: { $0.seq == seq })?.id
+                    }
+                    store.restoreFromTrash(command, toGroupId: groupId)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
