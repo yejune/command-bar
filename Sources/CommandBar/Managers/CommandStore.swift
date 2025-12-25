@@ -1343,37 +1343,97 @@ class CommandStore: ObservableObject {
         return shortId
     }
 
-    // MARK: - ID Chaining
+    // MARK: - Page Chaining
 
-    /// 문자열에서 {id:xxx} 또는 {id:xxx|path} 참조를 처리하여 값으로 치환
-    func resolveIdReferences(in text: String) -> String {
-        // {id:xxx} 또는 {id:xxx|path} 패턴
-        guard let regex = try? NSRegularExpression(pattern: "\\{id:([^}|]+)(?:\\|([^}]+))?\\}") else {
-            return text
+    /// 문자열에서 페이지 참조를 처리하여 값으로 치환
+    /// - `page@shortId` 또는 `page@shortId|path` (배지 저장 형식)
+    /// - {page#label} 또는 {page#label|path} (입력 형식)
+    func resolvePageReferences(in text: String) -> String {
+        var result = text
+
+        // 1. 배지 형식: `page@shortId` 또는 `page@shortId|path`
+        if let badgeRegex = try? NSRegularExpression(pattern: "`page@([^`|]+)(?:\\|([^`]+))?`") {
+            let range = NSRange(result.startIndex..., in: result)
+            let matches = badgeRegex.matches(in: result, range: range).reversed()
+
+            for match in matches {
+                guard let fullRange = Range(match.range, in: result),
+                      let shortIdRange = Range(match.range(at: 1), in: result) else { continue }
+
+                let shortId = String(result[shortIdRange])
+                let jsonPath: String?
+                if match.numberOfRanges > 2, let pathRange = Range(match.range(at: 2), in: result) {
+                    jsonPath = String(result[pathRange])
+                } else {
+                    jsonPath = nil
+                }
+
+                if let value = getValueFromPage(shortId: shortId, jsonPath: jsonPath) {
+                    result.replaceSubrange(fullRange, with: value)
+                }
+            }
         }
 
-        var result = text
-        let range = NSRange(text.startIndex..., in: text)
-        let matches = regex.matches(in: text, range: range).reversed()  // 뒤에서부터 치환
+        // 2. 입력 형식: {page#label} 또는 {page#label|path}
+        if let inputRegex = try? NSRegularExpression(pattern: "\\{page#([^}|]+)(?:\\|([^}]+))?\\}") {
+            let range = NSRange(result.startIndex..., in: result)
+            let matches = inputRegex.matches(in: result, range: range).reversed()
 
-        for match in matches {
-            guard let fullRange = Range(match.range, in: result),
-                  let shortIdRange = Range(match.range(at: 1), in: result) else { continue }
+            for match in matches {
+                guard let fullRange = Range(match.range, in: result),
+                      let labelRange = Range(match.range(at: 1), in: result) else { continue }
 
-            let shortId = String(result[shortIdRange])
-            let jsonPath: String?
-            if match.numberOfRanges > 2, let pathRange = Range(match.range(at: 2), in: result) {
-                jsonPath = String(result[pathRange])
-            } else {
-                jsonPath = nil
-            }
+                let label = String(result[labelRange])
+                let jsonPath: String?
+                if match.numberOfRanges > 2, let pathRange = Range(match.range(at: 2), in: result) {
+                    jsonPath = String(result[pathRange])
+                } else {
+                    jsonPath = nil
+                }
 
-            if let value = getValueFromId(shortId: shortId, jsonPath: jsonPath) {
-                result.replaceSubrange(fullRange, with: value)
+                // 라벨로 shortId 조회 후 값 가져오기
+                if let shortId = db.getShortIdByLabel(label),
+                   let value = getValueFromPage(shortId: shortId, jsonPath: jsonPath) {
+                    result.replaceSubrange(fullRange, with: value)
+                }
             }
         }
 
         return result
+    }
+
+    /// shortId로 페이지 결과값 조회
+    func getValueFromPage(shortId: String, jsonPath: String?) -> String? {
+        guard let fullIdStr = db.getFullId(shortId: shortId),
+              let fullId = UUID(uuidString: fullIdStr) else { return nil }
+
+        // Command에서 찾기
+        if let cmd = commands.first(where: { $0.id == fullId }) {
+            let response: String?
+            if cmd.executionType == .api {
+                response = cmd.lastResponse
+            } else {
+                response = cmd.lastOutput
+            }
+
+            guard let resp = response else { return nil }
+
+            // jsonPath가 있으면 JSON에서 값 추출
+            if let path = jsonPath, !path.isEmpty {
+                return extractValueFromJSON(resp, path: path)
+            }
+            return resp
+        }
+
+        // ClipboardItem에서 찾기
+        if let clip = clipboardItems.first(where: { $0.id == fullId }) {
+            if let path = jsonPath, !path.isEmpty {
+                return extractValueFromJSON(clip.content, path: path)
+            }
+            return clip.content
+        }
+
+        return nil
     }
 
     /// shortId로 값 조회 (Command의 lastOutput/lastResponse 또는 ClipboardItem의 content)

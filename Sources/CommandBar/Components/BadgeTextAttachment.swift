@@ -3,13 +3,13 @@ import AppKit
 /// 배지 타입
 enum BadgeType: String {
     case secure = "secure"
-    case id = "id"
+    case page = "page"
     case variable = "var"
 
     var color: NSColor {
         switch self {
         case .secure: return .systemPink
-        case .id: return .systemBlue
+        case .page: return .systemBlue
         case .variable: return .systemGreen
         }
     }
@@ -94,19 +94,19 @@ class BadgeTextAttachment: NSTextAttachment {
 struct BadgeUtils {
     /// 패턴 정의: 저장 형식 `type@id`
     static let securePattern = "`secure@([^`]+)`"
-    static let idPattern = "`id@([^`]+)`"
+    static let pagePattern = "`page@([^`]+)`"
     static let varPattern = "`var@([^`]+)`"
 
     /// 텍스트에서 배지로 변환 (표시용)
     static func convertToBadges(in attributedString: NSMutableAttributedString) {
         let db = Database.shared
 
-        // secure 배지 (라벨 조회) - 매번 현재 text 사용
+        // secure 배지 (라벨 조회)
         convertPattern(securePattern, type: .secure, in: attributedString) { refId in
             db.getSecureLabelById(refId)
         }
-        // id 배지 (라벨 조회)
-        convertPattern(idPattern, type: .id, in: attributedString) { refId in
+        // page 배지 (라벨 조회)
+        convertPattern(pagePattern, type: .page, in: attributedString) { refId in
             db.getCommandLabelByShortId(refId)
         }
         // var 배지 (라벨 조회)

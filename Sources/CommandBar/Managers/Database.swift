@@ -1212,8 +1212,8 @@ class Database {
 
     // MARK: - Short IDs
 
-    /// 유니크한 8자 short_id 생성
-    func generateUniqueShortId(length: Int = 8) -> String {
+    /// 유니크한 6자 short_id 생성
+    func generateUniqueShortId(length: Int = 6) -> String {
         let chars = "abcdefghijklmnopqrstuvwxyz0123456789"
         var shortId: String
         repeat {
@@ -2017,6 +2017,12 @@ class Database {
     /// 명령어 라벨 존재 여부 확인
     func commandLabelExists(_ label: String) -> Bool {
         return getCommandIdByLabel(label) != nil
+    }
+
+    /// 라벨로 shortId 조회 (page 체이닝용)
+    func getShortIdByLabel(_ label: String) -> String? {
+        guard let fullId = getCommandIdByLabel(label) else { return nil }
+        return getShortId(fullId: fullId.uuidString)
     }
 
     /// 모든 명령어 라벨 목록 조회
