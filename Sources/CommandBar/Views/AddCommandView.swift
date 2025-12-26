@@ -4,7 +4,7 @@ struct AddCommandView: View {
     @ObservedObject var store: CommandStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var title = ""
+    @State private var label = ""
     @State private var command = ""
     @State private var groupSeq: Int? = nil
     @State private var executionType: ExecutionType = .terminal
@@ -30,7 +30,7 @@ struct AddCommandView: View {
     @State private var fileParams: [KeyValuePair] = []
 
     var isValid: Bool {
-        if title.isEmpty { return false }
+        if label.isEmpty { return false }
         switch executionType {
         case .terminal, .background, .script:
             return !command.isEmpty
@@ -69,10 +69,10 @@ struct AddCommandView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(L.commandTitle)
+                        Text(L.commandLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                TextField("", text: $title)
+                TextField("", text: $label)
                     .textFieldStyle(.roundedBorder)
             }
 
@@ -514,7 +514,7 @@ struct AddCommandView: View {
 
                     store.add(Command(
                         groupSeq: groupSeq,
-                        title: title,
+                        label: label,
                         command: command,
                         executionType: executionType,
                         terminalApp: terminalApp,

@@ -10,7 +10,7 @@ struct APIParameterInputView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(command.title)
+            Text(command.label)
                 .font(.headline)
 
             Text(command.url)

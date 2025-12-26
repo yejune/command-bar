@@ -32,7 +32,7 @@ struct ClipboardDetailView: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .help("ID 복사: {id:\(item.id)}")
+                    .help("ID 복사: {clipboard@\(item.id)}")
                 }
                 Text(item.timestamp, format: .dateTime)
                     .font(.caption)
@@ -102,7 +102,7 @@ struct ClipboardDetailView: View {
     }
 
     func copyId() {
-        let idString = "{id:\(shortId)}"
+        let idString = "{clipboard@\(shortId)}"
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(idString, forType: .string)
     }

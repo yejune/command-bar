@@ -4,6 +4,10 @@ struct HistoryOutputView: View {
     let item: HistoryItem
     let onClose: () -> Void
 
+    @State private var showRawOutput = false
+    @State private var isEditing = false
+    @State private var editedOutput: String = ""
+
     var executions: [Date] {
         Database.shared.getHistoryExecutions(historyId: item.id)
     }
@@ -27,7 +31,7 @@ struct HistoryOutputView: View {
                     Text(L.commandInput)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(item.command)
+                    Text(BadgeUtils.convertToDisplayString(item.command))
                         .font(.system(.body, design: .monospaced))
                         .textSelection(.enabled)
                         .padding(8)
@@ -39,14 +43,59 @@ struct HistoryOutputView: View {
                 // 출력
                 if let output = item.output, !output.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(L.historyOutput)
+                        HStack {
+                            Text(L.historyOutput)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Toggle(L.historyShowRaw, isOn: $showRawOutput)
+                                .toggleStyle(.switch)
+                                .controlSize(.mini)
+                            Button(isEditing ? L.buttonCancel : L.buttonEdit) {
+                                if isEditing {
+                                    isEditing = false
+                                } else {
+                                    editedOutput = output
+                                    isEditing = true
+                                }
+                            }
+                            .buttonStyle(.borderless)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
-                        OutputTextView(text: output)
+                        }
+
+                        if isEditing {
+                            TextEditor(text: $editedOutput)
+                                .font(.system(.body, design: .monospaced))
+                                .padding(4)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(6)
+                            HStack {
+                                Spacer()
+                                Button(L.buttonSave) {
+                                    Database.shared.updateHistoryOutput(id: item.id, output: editedOutput)
+                                    isEditing = false
+                                }
+                                .buttonStyle(.borderedProminent)
+                            }
+                        } else if showRawOutput {
+                            ScrollView {
+                                Text(output)
+                                    .font(.system(.body, design: .monospaced))
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                             .padding(8)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(Color.gray.opacity(0.1))
                             .cornerRadius(6)
+                        } else {
+                            OutputTextView(text: output)
+                                .padding(8)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(6)
+                        }
                     }
                     .frame(maxHeight: .infinity)
                 }

@@ -65,6 +65,7 @@ enum HistoryType: String, Codable {
     case executed = "executed"
     case background = "background"
     case script = "script"
+    case api = "api"
     case scheduleAlert = "scheduleAlert"
     case reminder = "reminder"
     case added = "added"
@@ -77,6 +78,7 @@ enum HistoryType: String, Codable {
         case .executed: return L.historyExecuted
         case .background: return L.historyBackground
         case .script: return L.historyScript
+        case .api: return "API"
         case .scheduleAlert: return L.historyScheduleAlert
         case .reminder: return L.historyReminder
         case .added: return L.historyAdded

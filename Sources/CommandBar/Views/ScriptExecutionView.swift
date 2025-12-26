@@ -31,7 +31,7 @@ struct ScriptExecutionView: View {
             // 상단 헤더
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    Text(command.title)
+                    Text(command.label)
                         .font(.headline)
                     Spacer()
                     Button(action: copyId) {
@@ -40,7 +40,7 @@ struct ScriptExecutionView: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .help("ID 복사: {id:\(command.id)}")
+                    .help("ID 복사: {command@\(command.id)}")
                 }
 
                 Text(executedCommand ?? command.command)
@@ -127,7 +127,9 @@ struct ScriptExecutionView: View {
                         .buttonStyle(HoverTextButtonStyle())
                     Spacer()
                     Button(L.buttonRun) {
-                        executeScript()
+                        Task {
+                            await executeScript()
+                        }
                     }
                     .buttonStyle(HoverTextButtonStyle())
                     .keyboardShortcut(.return)
@@ -139,7 +141,7 @@ struct ScriptExecutionView: View {
         .frame(minWidth: 400, minHeight: 250)
     }
 
-    func executeScript() {
+    func executeScript() async {
         var finalValues = values
         for info in command.parameterInfos {
             if finalValues[info.name] == nil, let first = info.options.first {
@@ -148,8 +150,8 @@ struct ScriptExecutionView: View {
         }
         var finalCommand = command.commandWith(values: finalValues)
 
-        // {command#label} 또는 `command@id` 체이닝 처리
-        finalCommand = store.resolveCommandReferences(in: finalCommand)
+        // {command#label} 또는 `command@id` 체이닝 처리 (명령어 실행)
+        finalCommand = await store.resolveCommandReferences(in: finalCommand)
 
         // {var:xxx} 환경 변수 처리
         finalCommand = store.resolveVarReferences(in: finalCommand)
@@ -167,7 +169,7 @@ struct ScriptExecutionView: View {
         runner.run(command: finalCommand) { output in
             store.addHistory(HistoryItem(
                 timestamp: Date(),
-                title: command.title,
+                title: command.label,
                 command: finalCommand,
                 type: .script,
                 output: output,
@@ -177,7 +179,7 @@ struct ScriptExecutionView: View {
     }
 
     func copyId() {
-        let idString = "{id:\(shortId)}"
+        let idString = "{command@\(shortId)}"
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(idString, forType: .string)
     }

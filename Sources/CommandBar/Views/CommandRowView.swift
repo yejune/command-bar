@@ -166,7 +166,7 @@ struct CommandRowView: View {
                     Image(systemName: typeIcon)
                         .foregroundStyle(typeColor)
                         .frame(width: 14)
-                    Text(cmd.title)
+                    Text(cmd.label)
                         .lineLimit(1)
                         .fontWeight(isAlerting ? .bold : .regular)
                     ProgressView()

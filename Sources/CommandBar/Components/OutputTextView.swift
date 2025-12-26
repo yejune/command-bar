@@ -5,6 +5,24 @@ import AppKit
 struct OutputTextView: NSViewRepresentable {
     let text: String
 
+    /// 유니코드 이스케이프 시퀀스 디코딩 (\uXXXX → 한글)
+    private var decodedText: String {
+        // \uXXXX 패턴을 찾아서 유니코드로 변환
+        var result = text
+        let pattern = "\\\\u([0-9a-fA-F]{4})"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
+
+        let matches = regex.matches(in: result, range: NSRange(result.startIndex..., in: result)).reversed()
+        for match in matches {
+            guard let hexRange = Range(match.range(at: 1), in: result),
+                  let fullRange = Range(match.range, in: result),
+                  let codePoint = UInt32(String(result[hexRange]), radix: 16),
+                  let scalar = Unicode.Scalar(codePoint) else { continue }
+            result.replaceSubrange(fullRange, with: String(Character(scalar)))
+        }
+        return result
+    }
+
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
         scrollView.drawsBackground = false
@@ -27,7 +45,7 @@ struct OutputTextView: NSViewRepresentable {
         let textView = nsView.documentView as! NSTextView
         let shouldScroll = textView.visibleRect.maxY >= textView.bounds.maxY - 20
 
-        textView.string = text
+        textView.string = decodedText
 
         // 맨 아래로 스크롤
         if shouldScroll {

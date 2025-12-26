@@ -22,7 +22,7 @@ struct RestoreGroupSheet: View {
             Text(L.trashRestore)
                 .font(.headline)
 
-            Text(command.title)
+            Text(command.label)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 

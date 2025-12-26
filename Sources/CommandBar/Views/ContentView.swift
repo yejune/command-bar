@@ -333,7 +333,7 @@ struct ContentView: View {
                                         .foregroundStyle(trashItemColor(cmd))
                                         .frame(width: 14)
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(cmd.title)
+                                        Text(cmd.label)
                                         if cmd.executionType == .schedule {
                                             if let date = cmd.scheduleDate {
                                                 Text(formatScheduleDate(date, repeatType: cmd.repeatType))
@@ -875,7 +875,7 @@ struct ContentView: View {
             requestId: requestUUID,
             method: cmd.httpMethod.rawValue,
             url: cmd.url,
-            title: cmd.title
+            title: cmd.label
         )
 
         Task {
@@ -886,14 +886,18 @@ struct ContentView: View {
             var statusCode = 0
             var headers: [String: String] = [:]
             var responseBody = ""
+            let isSuccess: Bool
 
             if let httpResponse = result.response as? HTTPURLResponse {
                 statusCode = httpResponse.statusCode
+                isSuccess = (200..<300).contains(statusCode)
                 for (key, value) in httpResponse.allHeaderFields {
                     if let keyString = key as? String, let valueString = value as? String {
                         headers[keyString] = valueString
                     }
                 }
+            } else {
+                isSuccess = false
             }
 
             if let data = result.data {
@@ -910,6 +914,35 @@ struct ContentView: View {
                     responseBody: responseBody,
                     executionTime: executionTime
                 )
+
+                // 히스토리에 저장 (성공/실패 모두)
+                let headersJson = try? JSONSerialization.data(withJSONObject: cmd.headers, options: [])
+                let queryParamsJson = try? JSONSerialization.data(withJSONObject: cmd.queryParams, options: [])
+
+                // curl 형식으로 command 생성
+                var curlCommand = "curl -X \(cmd.httpMethod.rawValue) '\(cmd.url)'"
+                for (key, value) in cmd.headers {
+                    curlCommand += " -H '\(key): \(value)'"
+                }
+                if !cmd.bodyData.isEmpty {
+                    let escapedBody = cmd.bodyData.replacingOccurrences(of: "'", with: "'\\''")
+                    curlCommand += " -d '\(escapedBody)'"
+                }
+
+                store.addHistory(HistoryItem(
+                    timestamp: startTime,
+                    title: cmd.label,
+                    command: curlCommand,
+                    type: .api,
+                    output: responseBody,
+                    requestUrl: cmd.url,
+                    requestMethod: cmd.httpMethod.rawValue,
+                    requestHeaders: headersJson.flatMap { String(data: $0, encoding: .utf8) },
+                    requestBody: cmd.bodyData,
+                    requestQueryParams: queryParamsJson.flatMap { String(data: $0, encoding: .utf8) },
+                    statusCode: statusCode,
+                    isSuccess: isSuccess
+                ))
             }
         }
     }
@@ -919,6 +952,7 @@ struct ContentView: View {
         case .executed: return .blue
         case .background: return .orange
         case .script: return .green
+        case .api: return .cyan
         case .scheduleAlert: return .purple
         case .reminder: return .pink
         case .added: return .mint
@@ -933,6 +967,7 @@ struct ContentView: View {
         case .executed: return "terminal"
         case .background: return "arrow.clockwise"
         case .script: return "play.fill"
+        case .api: return "network"
         case .scheduleAlert: return "calendar"
         case .reminder: return "bell.fill"
         case .added: return "plus.circle"

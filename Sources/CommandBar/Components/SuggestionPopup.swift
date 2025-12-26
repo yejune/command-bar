@@ -115,6 +115,8 @@ struct SuggestionListView: View {
                 ForEach(Array(suggestions.enumerated()), id: \.offset) { index, suggestion in
                     Text(suggestion)
                         .font(.system(size: 12, design: .monospaced))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -123,6 +125,7 @@ struct SuggestionListView: View {
                         .onTapGesture {
                             onSelect(suggestion)
                         }
+                        .help(suggestion)  // 호버 시 전체 텍스트 표시
                 }
             }
         }

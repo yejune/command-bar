@@ -7,6 +7,7 @@ struct AutocompleteTextEditor: NSViewRepresentable {
     var idSuggestions: [(id: String, title: String)] = []  // {id: 트리거용
     var singleLine: Bool = false  // 한 줄 모드 (Enter 무시, 스크롤 없음)
     var placeholder: String = ""  // 플레이스홀더
+    var onBadgeEdit: ((BadgeEditInfo) -> Void)?  // 배지 더블클릭 콜백
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -36,6 +37,7 @@ struct AutocompleteTextEditor: NSViewRepresentable {
             guard let tv = textView else { return }
             context.coordinator.insertSuggestion(suggestion, into: tv)
         }
+        textView.onBadgeDoubleClick = context.coordinator.onBadgeEdit
 
         scrollView.documentView = textView
         scrollView.borderType = singleLine ? .bezelBorder : .noBorder
@@ -125,7 +127,7 @@ struct AutocompleteTextEditor: NSViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, suggestions: suggestions, idSuggestions: idSuggestions)
+        Coordinator(text: $text, suggestions: suggestions, idSuggestions: idSuggestions, onBadgeEdit: onBadgeEdit)
     }
 
     enum TriggerType {
@@ -141,13 +143,15 @@ struct AutocompleteTextEditor: NSViewRepresentable {
         @Binding var text: String
         var suggestions: [String]
         var idSuggestions: [(id: String, title: String)]
+        var onBadgeEdit: ((BadgeEditInfo) -> Void)?
         private let popupController = SuggestionPopupController()
         private var currentTrigger: TriggerType = .none
 
-        init(text: Binding<String>, suggestions: [String], idSuggestions: [(id: String, title: String)]) {
+        init(text: Binding<String>, suggestions: [String], idSuggestions: [(id: String, title: String)], onBadgeEdit: ((BadgeEditInfo) -> Void)?) {
             self._text = text
             self.suggestions = suggestions
             self.idSuggestions = idSuggestions
+            self.onBadgeEdit = onBadgeEdit
         }
 
         // NSTextAttachment 기반 배지 시스템 사용 (BadgeUtils)
@@ -310,12 +314,13 @@ struct AutocompleteTextEditor: NSViewRepresentable {
             let index = text.index(text.startIndex, offsetBy: cursorPosition)
             let beforeCursor = String(text[..<index])
 
-            // {command: 또는 {command# 트리거 체크
-            let commandTriggers = ["{command:", "{command#"]
+            // {command@ 또는 {command# 또는 [command@ 또는 [command# 트리거 체크
+            let commandTriggers = ["{command@", "{command#", "[command@", "[command#"]
             for trigger in commandTriggers {
                 if let cmdRange = beforeCursor.range(of: trigger, options: .backwards) {
                     let afterTrigger = String(beforeCursor[cmdRange.upperBound...])
-                    if !afterTrigger.contains("}") && !afterTrigger.contains(where: { $0.isWhitespace }) {
+                    let endChar = trigger.hasPrefix("{") ? "}" : "]"
+                    if !afterTrigger.contains(endChar) && !afterTrigger.contains(where: { $0.isWhitespace }) {
                         return .commandRef
                     }
                 }
@@ -391,8 +396,8 @@ struct AutocompleteTextEditor: NSViewRepresentable {
 
             switch currentTrigger {
             case .commandRef:
-                // {command: 또는 {command# 찾기
-                let commandTriggers = ["{command:", "{command#"]
+                // {command@ 또는 {command# 또는 [command@ 또는 [command# 찾기
+                let commandTriggers = ["{command@", "{command#", "[command@", "[command#"]
                 var afterTrigger = ""
                 for trigger in commandTriggers {
                     if let range = beforeCursor.range(of: trigger, options: .backwards) {
@@ -400,12 +405,13 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                         break
                     }
                 }
-                // idSuggestions에서 라벨(title)로 필터링
+                // idSuggestions에서 title로 필터링 (label 또는 title 표시)
                 let filtered = idSuggestions.filter { item in
                     afterTrigger.isEmpty ||
                     item.title.lowercased().contains(afterTrigger.lowercased())
                 }.prefix(maxSuggestions)
-                return filtered.map { $0.title }  // 라벨만 반환
+                // title만 표시 (id는 내부 조회)
+                return filtered.map { $0.title }
 
             case .varRef:
                 // {var: 또는 [var@ 또는 [var# 찾기
@@ -502,8 +508,8 @@ struct AutocompleteTextEditor: NSViewRepresentable {
 
             switch currentTrigger {
             case .commandRef:
-                // {command: 또는 {command# 찾기
-                let commandTriggers = ["{command:", "{command#"]
+                // {command@ 또는 {command# 또는 [command@ 또는 [command# 찾기
+                let commandTriggers = ["{command@", "{command#", "[command@", "[command#"]
                 var triggerRange: Range<String.Index>?
                 for trigger in commandTriggers {
                     if let range = beforeCursor.range(of: trigger, options: .backwards) {
@@ -514,15 +520,17 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 guard let cmdRange = triggerRange else { return }
                 let triggerStart = text.distance(from: text.startIndex, to: cmdRange.lowerBound)
                 let beforeTrigger = String(text.prefix(triggerStart))
-                // 라벨로 command ID 조회
-                if let commandId = Database.shared.getCommandIdByLabel(suggestion) {
-                    // `command@id` 형태로 저장 (배지로 변환됨)
-                    let newText = beforeTrigger + "`command@\(commandId)`" + afterCursor
-                    textView.string = newText
-                    self.text = newText
-                    let newCursorPosition = triggerStart + 11 + commandId.count  // `command@ + id + `
-                    textView.setSelectedRange(NSRange(location: newCursorPosition, length: 0))
-                }
+
+                // suggestion(title)으로 id 조회
+                guard let item = idSuggestions.first(where: { $0.title == suggestion }) else { return }
+                let commandId = item.id
+
+                // `command@id` 형식으로 저장 (표시는 배지로 label)
+                let newText = beforeTrigger + "`command@\(commandId)`" + afterCursor
+                textView.string = newText
+                self.text = newText
+                let newCursorPosition = triggerStart + 10 + commandId.count  // `command@ + id + `
+                textView.setSelectedRange(NSRange(location: newCursorPosition, length: 0))
 
             case .varRef:
                 guard let varRange = beforeCursor.range(of: "{var:", options: .backwards) else { return }
@@ -573,9 +581,48 @@ struct AutocompleteTextEditor: NSViewRepresentable {
 class AutocompleteNSTextView: NSTextView {
     var suggestionProvider: (() -> [String])?
     var onSuggestionSelected: ((String) -> Void)?
+    var onBadgeDoubleClick: ((BadgeEditInfo) -> Void)?
     var singleLineMode: Bool = false
     var placeholderString: String = ""
     var isArrowKeyMoving: Bool = false  // 화살표 키로 이동 중 플래그
+
+    override func mouseDown(with event: NSEvent) {
+        // 더블클릭 시 배지 편집
+        if event.clickCount == 2, let callback = onBadgeDoubleClick {
+            let point = convert(event.locationInWindow, from: nil)
+
+            // 클릭 위치의 문자 인덱스 찾기
+            guard let layoutManager = layoutManager,
+                  let textContainer = textContainer else {
+                super.mouseDown(with: event)
+                return
+            }
+
+            let textPoint = NSPoint(x: point.x - textContainerInset.width,
+                                    y: point.y - textContainerInset.height)
+            let charIndex = layoutManager.characterIndex(for: textPoint, in: textContainer,
+                                                          fractionOfDistanceBetweenInsertionPoints: nil)
+
+            if let storage = textStorage, charIndex < storage.length {
+                let attrs = storage.attributes(at: charIndex, effectiveRange: nil)
+                if let badge = attrs[.attachment] as? BadgeTextAttachment {
+                    // 배지 편집 콜백 호출
+                    // refId에서 순수 ID 추출 (path가 포함된 경우 분리)
+                    let pureId = BadgeEditInfo.extractPureId(badge.refId)
+                    let info = BadgeEditInfo(
+                        badgeType: badge.badgeType,
+                        refId: pureId,
+                        label: badge.labelText ?? pureId,
+                        jsonPath: badge.jsonPath ?? "",
+                        useJsonPath: badge.jsonPath != nil && !badge.jsonPath!.isEmpty
+                    )
+                    callback(info)
+                    return
+                }
+            }
+        }
+        super.mouseDown(with: event)
+    }
 
     override func keyDown(with event: NSEvent) {
         // Option+S: 선택된 텍스트를 {secure:}로 감싸기
@@ -696,6 +743,22 @@ class AutocompleteNSTextView: NSTextView {
     }
 
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
+        // 배지 위에서는 컨텍스트 메뉴 안 열기 (더블클릭으로만 편집)
+        let point = convert(event.locationInWindow, from: nil)
+        if let layoutManager = layoutManager, let textContainer = textContainer {
+            let textPoint = NSPoint(x: point.x - textContainerInset.width,
+                                    y: point.y - textContainerInset.height)
+            let charIndex = layoutManager.characterIndex(for: textPoint, in: textContainer,
+                                                          fractionOfDistanceBetweenInsertionPoints: nil)
+            if let storage = textStorage, charIndex < storage.length {
+                let attrs = storage.attributes(at: charIndex, effectiveRange: nil)
+                if attrs[.attachment] is BadgeTextAttachment {
+                    menu.cancelTracking()
+                    return
+                }
+            }
+        }
+
         // 기존 암호화 메뉴 제거 (중복 방지)
         menu.items.filter { $0.title.contains("암호화") }.forEach { menu.removeItem($0) }
 

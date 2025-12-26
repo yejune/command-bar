@@ -30,7 +30,7 @@ class ScriptExecutionWindowController {
         let hostingController = NSHostingController(rootView: contentView)
         let newPanel = NSPanel(contentViewController: hostingController)
 
-        newPanel.title = command.title
+        newPanel.title = command.label
         newPanel.styleMask = [.titled, .closable, .resizable]
         newPanel.setContentSize(NSSize(width: 450, height: initialHeight))
         newPanel.minSize = NSSize(width: 400, height: 150)
