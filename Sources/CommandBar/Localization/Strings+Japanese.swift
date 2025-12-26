@@ -90,6 +90,7 @@ extension LocalizedStrings {
         trashRestore: "復元",
 
         commandTitle: "タイトル",
+        commandLabel: "ラベル",
         commandCommand: "コマンド",
         commandType: "タイプ",
         commandTerminalApp: "ターミナルアプリ",
@@ -112,6 +113,7 @@ extension LocalizedStrings {
         historyOutput: "出力",
         historyTimes: "回",
         historyExecutions: "実行履歴",
+        historyShowRaw: "原文",
 
         searchPlaceholder: "検索...",
 
@@ -139,6 +141,20 @@ extension LocalizedStrings {
         languagePackExportSuccess: "言語パックテンプレートを保存しました",
         languagePackImportSuccess: "言語パックを適用しました",
         languagePackInvalidFormat: "無効な言語パック形式です",
+
+        badgeEditTitle: "バッジ編集",
+        badgeEditLabel: "ラベル",
+        badgeEditUseJsonPath: "JSONパスを使用",
+        badgeEditJsonPath: "JSONパス",
+        badgeEditJsonPathHint: "例: data.token, items[0].name",
+        badgeEditActualValue: "実際の値",
+        badgeEditActualValueHint: "このバッジが参照する実際のデータ（読み取り専用）",
+        badgeEditEditStorageFormat: "保存形式を直接編集",
+        badgeEditStorageFormat: "保存形式",
+        badgeEditStorageFormatHint: "保存時に使用される元のテキスト",
+        badgeEditConnectedCommands: "接続されたコマンド",
+        badgeEditSecureValueHint: "パスワードを変更するには入力してください",
+        badgeEditVariableValueHint: "変数を変更するには入力してください",
 
         scriptRunning: "実行中...",
         scriptCompleted: "完了",

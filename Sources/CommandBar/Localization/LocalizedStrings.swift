@@ -112,6 +112,7 @@ struct LocalizedStrings: Codable {
 
     // 명령
     var commandTitle: String
+    var commandLabel: String
     var commandCommand: String
     var commandType: String
     var commandTerminalApp: String
@@ -136,6 +137,7 @@ struct LocalizedStrings: Codable {
     var historyOutput: String
     var historyTimes: String
     var historyExecutions: String
+    var historyShowRaw: String
 
     // 검색
     var searchPlaceholder: String
@@ -168,6 +170,21 @@ struct LocalizedStrings: Codable {
     var languagePackExportSuccess: String
     var languagePackImportSuccess: String
     var languagePackInvalidFormat: String
+
+    // 배지 편집
+    var badgeEditTitle: String
+    var badgeEditLabel: String
+    var badgeEditUseJsonPath: String
+    var badgeEditJsonPath: String
+    var badgeEditJsonPathHint: String
+    var badgeEditActualValue: String
+    var badgeEditActualValueHint: String
+    var badgeEditEditStorageFormat: String
+    var badgeEditStorageFormat: String
+    var badgeEditStorageFormatHint: String
+    var badgeEditConnectedCommands: String
+    var badgeEditSecureValueHint: String
+    var badgeEditVariableValueHint: String
 
     // 스크립트
     var scriptRunning: String

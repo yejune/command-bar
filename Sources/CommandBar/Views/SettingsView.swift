@@ -118,6 +118,11 @@ struct SettingsView: View {
                         .pickerStyle(.segmented)
                         .frame(width: 120)
                     }
+                    SettingDivider()
+                    SettingRow(label: "Debug Logging") {
+                        Toggle("", isOn: $settings.debugLogging)
+                            .labelsHidden()
+                    }
                 } else if selectedTab == 1 {
                     // 클립보드 설정
                     SettingRow(label: L.settingsNotesFolderName) {

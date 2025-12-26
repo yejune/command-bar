@@ -72,6 +72,11 @@ class Settings: ObservableObject {
             db.setIntSetting("pageSize", value: pageSize)
         }
     }
+    @Published var debugLogging: Bool {
+        didSet {
+            db.setBoolSetting("debugLogging", value: debugLogging)
+        }
+    }
 
     private var appearanceObserver: NSObjectProtocol?
     private var resizeObserver: NSObjectProtocol?
@@ -102,6 +107,7 @@ class Settings: ObservableObject {
         self.doubleClickToRun = db.getBoolSetting("doubleClickToRun", defaultValue: true)
         self.useInfiniteScroll = db.getBoolSetting("useInfiniteScroll", defaultValue: true)
         self.pageSize = db.getIntSetting("pageSize", defaultValue: 50)
+        self.debugLogging = db.getBoolSetting("debugLogging", defaultValue: false)
 
         // 저장된 창 프레임 로드
         let x = db.getDoubleSetting("windowX", defaultValue: -1)

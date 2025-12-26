@@ -7,7 +7,7 @@ struct EditCommandView: View {
 
     let command: Command
     var onRun: ((Command) -> Void)? = nil
-    @State private var title: String
+    @State private var label: String
     @State private var commandText: String
     @State private var groupSeq: Int?
     @State private var executionType: ExecutionType
@@ -31,14 +31,14 @@ struct EditCommandView: View {
     @State private var bodyData: String
     @State private var bodyParams: [KeyValuePair]
     @State private var fileParams: [KeyValuePair]
-    @State private var shortIdText: String
-    @State private var shortIdError: String?
+    @State private var badgeEditInfo: BadgeEditInfo?
+    @State private var originalBadgeText: String = ""
 
     init(store: CommandStore, command: Command, onRun: ((Command) -> Void)? = nil) {
         self.store = store
         self.command = command
         self.onRun = onRun
-        _title = State(initialValue: command.title)
+        _label = State(initialValue: command.label)
         _commandText = State(initialValue: command.command)
         _groupSeq = State(initialValue: command.groupSeq)
         _executionType = State(initialValue: command.executionType)
@@ -68,13 +68,10 @@ struct EditCommandView: View {
         }
         _bodyParams = State(initialValue: initialBodyParams)
         _fileParams = State(initialValue: command.fileParams.map { KeyValuePair(key: $0.key, value: $0.value) })
-        // shortId 초기화
-        _shortIdText = State(initialValue: command.id)
-        _shortIdError = State(initialValue: nil)
     }
 
     var isValid: Bool {
-        if title.isEmpty { return false }
+        if label.isEmpty { return false }
         switch executionType {
         case .terminal, .background, .script:
             return !commandText.isEmpty
@@ -114,7 +111,7 @@ struct EditCommandView: View {
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
-                .help("ID 복사: {id:\(command.id)}")
+                .help("ID 복사: {command@\(command.id)}")
             }
 
             Divider()
@@ -123,34 +120,8 @@ struct EditCommandView: View {
                 Text(L.commandTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                TextField("", text: $title)
+                TextField("", text: $label)
                     .textFieldStyle(.roundedBorder)
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("ID")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                HStack(spacing: 4) {
-                    TextField("", text: $shortIdText)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 100)
-                        .onChange(of: shortIdText) { _, newValue in
-                            validateShortId(newValue)
-                        }
-                    Button(action: copyId) {
-                        Image(systemName: "doc.on.doc")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.plain)
-                    .help("ID 복사: {id:\(shortIdText)}")
-                    if let error = shortIdError {
-                        Text(error)
-                            .font(.caption2)
-                            .foregroundStyle(.red)
-                    }
-                    Spacer()
-                }
             }
 
             // 휴지통 아이템이 아닐 때만 그룹 선택 표시
@@ -265,7 +236,8 @@ struct EditCommandView: View {
                         suggestions: store.allEnvironmentVariableNames,
                         idSuggestions: store.allIdSuggestions,
                         singleLine: true,
-                        placeholder: "https://api.example.com/endpoint"
+                        placeholder: "https://api.example.com/endpoint",
+                        onBadgeEdit: handleBadgeEdit
                     )
                     .frame(height: 24)
                 }
@@ -307,7 +279,8 @@ struct EditCommandView: View {
                                         suggestions: store.allEnvironmentVariableNames,
                                         idSuggestions: store.allIdSuggestions,
                                         singleLine: true,
-                                        placeholder: "Key"
+                                        placeholder: "Key",
+                                        onBadgeEdit: handleBadgeEdit
                                     )
                                     .frame(width: 120, height: 24)
                                     AutocompleteTextEditor(
@@ -315,7 +288,8 @@ struct EditCommandView: View {
                                         suggestions: store.allEnvironmentVariableNames,
                                         idSuggestions: store.allIdSuggestions,
                                         singleLine: true,
-                                        placeholder: "Value"
+                                        placeholder: "Value",
+                                        onBadgeEdit: handleBadgeEdit
                                     )
                                     .frame(height: 24)
                                     Button(action: {
@@ -354,7 +328,8 @@ struct EditCommandView: View {
                                         suggestions: store.allEnvironmentVariableNames,
                                         idSuggestions: store.allIdSuggestions,
                                         singleLine: true,
-                                        placeholder: "Key"
+                                        placeholder: "Key",
+                                        onBadgeEdit: handleBadgeEdit
                                     )
                                     .frame(width: 120, height: 24)
                                     AutocompleteTextEditor(
@@ -362,7 +337,8 @@ struct EditCommandView: View {
                                         suggestions: store.allEnvironmentVariableNames,
                                         idSuggestions: store.allIdSuggestions,
                                         singleLine: true,
-                                        placeholder: "Value"
+                                        placeholder: "Value",
+                                        onBadgeEdit: handleBadgeEdit
                                     )
                                     .frame(height: 24)
                                     Button(action: {
@@ -402,7 +378,8 @@ struct EditCommandView: View {
                             AutocompleteTextEditor(
                                 text: $bodyData,
                                 suggestions: store.allEnvironmentVariableNames,
-                                idSuggestions: store.allIdSuggestions
+                                idSuggestions: store.allIdSuggestions,
+                                onBadgeEdit: handleBadgeEdit
                             )
                             .frame(height: 100)
                             .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.gray.opacity(0.3)))
@@ -430,7 +407,8 @@ struct EditCommandView: View {
                                                 suggestions: store.allEnvironmentVariableNames,
                                                 idSuggestions: store.allIdSuggestions,
                                                 singleLine: true,
-                                                placeholder: "Key"
+                                                placeholder: "Key",
+                                                onBadgeEdit: handleBadgeEdit
                                             )
                                             .frame(width: 120, height: 24)
                                             AutocompleteTextEditor(
@@ -438,7 +416,8 @@ struct EditCommandView: View {
                                                 suggestions: store.allEnvironmentVariableNames,
                                                 idSuggestions: store.allIdSuggestions,
                                                 singleLine: true,
-                                                placeholder: "Value"
+                                                placeholder: "Value",
+                                                onBadgeEdit: handleBadgeEdit
                                             )
                                             .frame(height: 24)
                                             Button(action: {
@@ -477,7 +456,8 @@ struct EditCommandView: View {
                                                 suggestions: store.allEnvironmentVariableNames,
                                                 idSuggestions: store.allIdSuggestions,
                                                 singleLine: true,
-                                                placeholder: "Key"
+                                                placeholder: "Key",
+                                                onBadgeEdit: handleBadgeEdit
                                             )
                                             .frame(width: 120, height: 24)
                                             AutocompleteTextEditor(
@@ -485,7 +465,8 @@ struct EditCommandView: View {
                                                 suggestions: store.allEnvironmentVariableNames,
                                                 idSuggestions: store.allIdSuggestions,
                                                 singleLine: true,
-                                                placeholder: "Value"
+                                                placeholder: "Value",
+                                                onBadgeEdit: handleBadgeEdit
                                             )
                                             .frame(height: 24)
                                             Button(action: {
@@ -566,7 +547,8 @@ struct EditCommandView: View {
                     AutocompleteTextEditor(
                         text: $commandText,
                         suggestions: store.allEnvironmentVariableNames,
-                        idSuggestions: store.allIdSuggestions
+                        idSuggestions: store.allIdSuggestions,
+                        onBadgeEdit: handleBadgeEdit
                     )
                     .frame(height: 80)
                     .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.gray.opacity(0.3)))
@@ -635,7 +617,7 @@ struct EditCommandView: View {
                 }
                 Button(L.buttonSave) {
                     var updated = command
-                    updated.title = title
+                    updated.label = label
                     updated.command = commandText
                     updated.groupSeq = groupSeq
                     updated.executionType = executionType
@@ -662,15 +644,15 @@ struct EditCommandView: View {
                                 finalBodyData = jsonString
                             }
                         }
-                        updated.bodyData = finalBodyData
+                        // {secure#label:value} → `secure@id` 변환
+                        updated.bodyData = BadgeUtils.convertSecureInputInString(finalBodyData)
                         updated.fileParams = Dictionary(uniqueKeysWithValues: fileParams.map { ($0.key, $0.value) })
                     }
                     store.update(updated)
-                    saveShortId()
                     dismiss()
                 }
                 .buttonStyle(HoverTextButtonStyle())
-                .disabled(!isValid || shortIdError != nil)
+                .disabled(!isValid)
             }
         }
         .padding()
@@ -678,6 +660,39 @@ struct EditCommandView: View {
         .sheet(isPresented: $showParamHelp) {
             ParameterHelpView()
         }
+        .sheet(item: $badgeEditInfo) { info in
+            BadgeEditSheet(badgeInfo: $badgeEditInfo) { updatedInfo in
+                // 모든 텍스트 필드에서 기존 배지를 새 배지로 교체
+                let oldText = originalBadgeText
+                let newText = updatedInfo.originalText
+                if oldText != newText {
+                    apiUrl = apiUrl.replacingOccurrences(of: oldText, with: newText)
+                    bodyData = bodyData.replacingOccurrences(of: oldText, with: newText)
+                    commandText = commandText.replacingOccurrences(of: oldText, with: newText)
+                    // headers, queryParams, bodyParams 업데이트
+                    headers = headers.map { pair in
+                        var p = pair
+                        p.value = p.value.replacingOccurrences(of: oldText, with: newText)
+                        return p
+                    }
+                    queryParams = queryParams.map { pair in
+                        var p = pair
+                        p.value = p.value.replacingOccurrences(of: oldText, with: newText)
+                        return p
+                    }
+                    bodyParams = bodyParams.map { pair in
+                        var p = pair
+                        p.value = p.value.replacingOccurrences(of: oldText, with: newText)
+                        return p
+                    }
+                }
+            }
+        }
+    }
+
+    private func handleBadgeEdit(_ info: BadgeEditInfo) {
+        originalBadgeText = info.originalText
+        badgeEditInfo = info
     }
 
     func colorFor(_ name: String) -> Color {
@@ -694,7 +709,7 @@ struct EditCommandView: View {
     }
 
     func resetToOriginal() {
-        title = command.title
+        label = command.label
         commandText = command.command
         groupSeq = command.groupSeq
         executionType = command.executionType
@@ -727,83 +742,8 @@ struct EditCommandView: View {
     }
 
     func copyId() {
-        let idString = "{id:\(shortIdText)}"
+        let idString = "{command@\(command.id)}"
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(idString, forType: .string)
-    }
-
-    func validateShortId(_ newValue: String) {
-        if newValue.isEmpty {
-            shortIdError = nil
-            return
-        }
-        // 현재 ID와 같으면 OK
-        if newValue == command.id {
-            shortIdError = nil
-            return
-        }
-        // 중복 체크
-        if store.commands.contains(where: { $0.id == newValue }) {
-            shortIdError = "중복"
-        } else {
-            shortIdError = nil
-        }
-    }
-
-    func saveShortId() {
-        guard !shortIdText.isEmpty, shortIdError == nil else { return }
-        if shortIdText != command.id {
-            // ID 업데이트 - Command의 id를 직접 변경하면 Database가 자동으로 업데이트됨
-            // 모든 명령어에서 참조 치환
-            replaceShortIdReferences(from: command.id, to: shortIdText)
-        }
-    }
-
-    func replaceShortIdReferences(from oldId: String, to newId: String) {
-        let oldPattern = "{id:\(oldId)}"
-        let newPattern = "{id:\(newId)}"
-
-        for cmd in store.commands {
-            var updated = cmd
-            var changed = false
-
-            // command 텍스트
-            if updated.command.contains(oldPattern) {
-                updated.command = updated.command.replacingOccurrences(of: oldPattern, with: newPattern)
-                changed = true
-            }
-            // URL
-            if updated.url.contains(oldPattern) {
-                updated.url = updated.url.replacingOccurrences(of: oldPattern, with: newPattern)
-                changed = true
-            }
-            // Headers
-            var newHeaders: [String: String] = [:]
-            for (key, value) in updated.headers {
-                let newKey = key.replacingOccurrences(of: oldPattern, with: newPattern)
-                let newValue = value.replacingOccurrences(of: oldPattern, with: newPattern)
-                newHeaders[newKey] = newValue
-                if newKey != key || newValue != value { changed = true }
-            }
-            updated.headers = newHeaders
-            // Query Params
-            var newQueryParams: [String: String] = [:]
-            for (key, value) in updated.queryParams {
-                let newKey = key.replacingOccurrences(of: oldPattern, with: newPattern)
-                let newValue = value.replacingOccurrences(of: oldPattern, with: newPattern)
-                newQueryParams[newKey] = newValue
-                if newKey != key || newValue != value { changed = true }
-            }
-            updated.queryParams = newQueryParams
-            // Body Data
-            if updated.bodyData.contains(oldPattern) {
-                updated.bodyData = updated.bodyData.replacingOccurrences(of: oldPattern, with: newPattern)
-                changed = true
-            }
-
-            if changed {
-                store.update(updated)
-            }
-        }
     }
 }

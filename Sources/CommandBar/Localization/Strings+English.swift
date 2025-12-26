@@ -90,6 +90,7 @@ extension LocalizedStrings {
         trashRestore: "Restore",
 
         commandTitle: "Title",
+        commandLabel: "Label",
         commandCommand: "Command",
         commandType: "Type",
         commandTerminalApp: "Terminal App",
@@ -112,6 +113,7 @@ extension LocalizedStrings {
         historyOutput: "Output",
         historyTimes: "times",
         historyExecutions: "Executions",
+        historyShowRaw: "Raw",
 
         searchPlaceholder: "Search...",
 
@@ -139,6 +141,20 @@ extension LocalizedStrings {
         languagePackExportSuccess: "Language pack template saved",
         languagePackImportSuccess: "Language pack applied",
         languagePackInvalidFormat: "Invalid language pack format",
+
+        badgeEditTitle: "Edit Badge",
+        badgeEditLabel: "Label",
+        badgeEditUseJsonPath: "Use JSON Path",
+        badgeEditJsonPath: "JSON Path",
+        badgeEditJsonPathHint: "e.g. data.token, items[0].name",
+        badgeEditActualValue: "Actual Value",
+        badgeEditActualValueHint: "The actual data this badge references (read-only)",
+        badgeEditEditStorageFormat: "Edit storage format",
+        badgeEditStorageFormat: "Storage Format",
+        badgeEditStorageFormatHint: "The raw text used when saving",
+        badgeEditConnectedCommands: "Connected Commands",
+        badgeEditSecureValueHint: "Enter new value to change password",
+        badgeEditVariableValueHint: "Enter new value to change variable",
 
         scriptRunning: "Running...",
         scriptCompleted: "Completed",

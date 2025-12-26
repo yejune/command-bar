@@ -312,10 +312,10 @@ class CommandStore: ObservableObject {
 
     func registerClipboardAsCommand(_ item: ClipboardItem, asLast: Bool = true, groupSeq: Int = CommandStore.defaultGroupSeq, terminalApp: TerminalApp = .iterm2) {
         let firstLine = item.content.components(separatedBy: .newlines).first ?? item.content
-        let title = String(firstLine.prefix(50))
+        let cmdLabel = String(firstLine.prefix(50))
         let cmd = Command(
             groupSeq: groupSeq,
-            title: title,
+            label: cmdLabel,
             command: item.content,
             executionType: .terminal,
             terminalApp: terminalApp
@@ -352,18 +352,26 @@ class CommandStore: ObservableObject {
     }
 
     func executeAPICommand(_ command: Command) async -> (data: Data?, response: URLResponse?, error: Error?) {
-        // {secure:refId} → 복호화된 값으로 치환
-        var processedCommand = command.withSecureValuesResolved()
+        // 1. 먼저 command@id 체이닝 처리 (명령어 실행)
+        var processedCommand = await resolveCommandChainingInCommand(command)
 
-        // 환경 변수 치환
+        // 2. {secure:refId} → 복호화된 값으로 치환
+        processedCommand = processedCommand.withSecureValuesResolved()
+
+        // 3. 환경 변수 치환
         if let env = activeEnvironment {
             processedCommand = processedCommand.withEnvironmentVariables(env.variables)
         }
 
-        // API 체이닝 참조 치환
-        processedCommand = processedCommand.withAPIChainValues { [weak self] commandIdStr, jsonPath in
-            self?.getValueFromAPIResponse(commandId: commandIdStr, jsonPath: jsonPath)
+        // 최종 curl 명령 로깅 (실제 값 포함)
+        var curlLog = "curl -X \(processedCommand.httpMethod.rawValue) '\(processedCommand.url)'"
+        for (key, value) in processedCommand.headers {
+            curlLog += " \\\n  -H '\(key): \(value)'"
         }
+        if !processedCommand.bodyData.isEmpty {
+            curlLog += " \\\n  -d '\(processedCommand.bodyData)'"
+        }
+        logChain("=== 최종 curl ===\n\(curlLog)\n=================")
 
         // URL 생성 (queryParams 적용)
         var urlComponents = URLComponents(string: processedCommand.url)
@@ -509,7 +517,7 @@ class CommandStore: ObservableObject {
                     // 히스토리 기록
                     addHistory(HistoryItem(
                         timestamp: Date(),
-                        title: commands[i].title,
+                        title: commands[i].label,
                         command: "지금!",
                         type: .scheduleAlert,
                         output: nil,
@@ -531,7 +539,7 @@ class CommandStore: ObservableObject {
                         // 히스토리 기록
                         addHistory(HistoryItem(
                             timestamp: Date(),
-                            title: commands[i].title,
+                            title: commands[i].label,
                             command: alertStateFor(seconds: reminderTime).rawValue,
                             type: .reminder,
                             output: nil,
@@ -674,7 +682,7 @@ class CommandStore: ObservableObject {
         }
         addHistory(HistoryItem(
             timestamp: Date(),
-            title: cmd.title,
+            title: cmd.label,
             command: cmd.command,
             type: .added,
             output: nil
@@ -684,7 +692,7 @@ class CommandStore: ObservableObject {
     func duplicate(_ cmd: Command) {
         var newCmd = cmd
         newCmd.id = Command.generateId()
-        newCmd.title = cmd.title + " (복사)"
+        newCmd.label = cmd.label + " (복사)"
         newCmd.isRunning = false
         newCmd.lastOutput = nil
         newCmd.alertState = .none
@@ -703,7 +711,7 @@ class CommandStore: ObservableObject {
         for i in offsets {
             addHistory(HistoryItem(
                 timestamp: Date(),
-                title: commands[i].title,
+                title: commands[i].label,
                 command: commands[i].command,
                 type: .deleted,
                 output: nil
@@ -719,7 +727,7 @@ class CommandStore: ObservableObject {
             save()
             addHistory(HistoryItem(
                 timestamp: Date(),
-                title: cmd.title,
+                title: cmd.label,
                 command: cmd.command,
                 type: .deleted,
                 output: nil
@@ -748,7 +756,7 @@ class CommandStore: ObservableObject {
             }
             addHistory(HistoryItem(
                 timestamp: Date(),
-                title: cmd.title,
+                title: cmd.label,
                 command: cmd.command,
                 type: .restored,
                 output: nil
@@ -759,18 +767,21 @@ class CommandStore: ObservableObject {
     func deletePermanently(_ cmd: Command) {
         addHistory(HistoryItem(
             timestamp: Date(),
-            title: cmd.title,
+            title: cmd.label,
             command: cmd.command,
             type: .permanentlyDeleted,
             output: nil
         ))
+        db.deleteCommand(cmd.id)
         commands.removeAll { $0.id == cmd.id }
-        save()
     }
 
     func emptyTrash() {
+        let trashIds = commands.filter { $0.isInTrash }.map { $0.id }
+        for id in trashIds {
+            db.deleteCommand(id)
+        }
         commands.removeAll { $0.isInTrash }
-        save()
     }
 
     var trashItems: [Command] {
@@ -923,7 +934,7 @@ class CommandStore: ObservableObject {
         }
         addHistory(HistoryItem(
             timestamp: Date(),
-            title: cmd.title,
+            title: cmd.label,
             command: cmd.command,
             type: .executed,
             output: output
@@ -967,7 +978,7 @@ class CommandStore: ObservableObject {
                     // 히스토리 기록
                     self.addHistory(HistoryItem(
                         timestamp: Date(),
-                        title: cmd.title,
+                        title: cmd.label,
                         command: cmd.command,
                         type: .background,
                         output: output
@@ -983,7 +994,7 @@ class CommandStore: ObservableObject {
                     // 히스토리 기록
                     self.addHistory(HistoryItem(
                         timestamp: Date(),
-                        title: cmd.title,
+                        title: cmd.label,
                         command: cmd.command,
                         type: .background,
                         output: errorMsg
@@ -1017,6 +1028,9 @@ class CommandStore: ObservableObject {
         for i in commands.indices where commands[i].groupSeq == groupSeq {
             commands[i].groupSeq = Self.defaultGroupSeq
         }
+        if let seq = group.seq {
+            db.deleteGroup(seq)
+        }
         groups.removeAll { $0.seq == group.seq }
         save()
     }
@@ -1031,6 +1045,9 @@ class CommandStore: ObservableObject {
         for i in commands.indices where commands[i].groupSeq == groupSeq {
             commands[i].isInTrash = true
         }
+        if let seq = group.seq {
+            db.deleteGroup(seq)
+        }
         groups.removeAll { $0.seq == group.seq }
         save()
     }
@@ -1044,6 +1061,9 @@ class CommandStore: ObservableObject {
         let groupSeq = group.seq
         for i in commands.indices where commands[i].groupSeq == groupSeq {
             commands[i].groupSeq = targetGroupSeq
+        }
+        if let seq = group.seq {
+            db.deleteGroup(seq)
         }
         groups.removeAll { $0.seq == group.seq }
         save()
@@ -1071,7 +1091,7 @@ class CommandStore: ObservableObject {
                 order: 0
             )
             groups.insert(defaultGroup, at: 0)
-            save()
+            db.saveGroups(groups)  // save() 대신 groups만 저장 (commands 삭제 방지)
         }
     }
 
@@ -1313,7 +1333,7 @@ class CommandStore: ObservableObject {
 
         // Commands
         for cmd in commands where !cmd.isInTrash {
-            result.append((id: cmd.id, title: cmd.title))
+            result.append((id: cmd.id, title: cmd.label))
         }
 
         // Clipboard items
@@ -1327,16 +1347,70 @@ class CommandStore: ObservableObject {
 
     // MARK: - Command Chaining
 
+    /// secure 값을 마스킹 (히스토리 저장용)
+    private func maskSecureValues(in text: String) -> String {
+        var result = text
+        // 복호화된 secure 값을 다시 `secure@id` 형식으로 변환하기는 어려움
+        // 대신 secure 패턴을 *** 로 마스킹
+        // 여기서는 일단 그대로 반환 (secure는 이미 withSecureValuesResolved로 치환됨)
+        // TODO: secure 값 추적해서 마스킹
+        return result
+    }
+
+    /// 체이닝 로그
+    private func logChaining(_ msg: String) {
+        logChain(msg)
+    }
+
+    /// Command 객체의 모든 필드에서 체이닝 처리
+    func resolveCommandChainingInCommand(_ command: Command) async -> Command {
+        var cmd = command
+
+        logChaining("Processing command: \(command.label)")
+        logChaining("Headers: \(cmd.headers)")
+
+        // URL 체이닝
+        cmd.url = await resolveCommandReferences(in: cmd.url)
+
+        // Headers 체이닝
+        var resolvedHeaders: [String: String] = [:]
+        for (key, value) in cmd.headers {
+            logChaining("Header \(key): \(value)")
+            let resolved = await resolveCommandReferences(in: value)
+            logChaining("Header \(key) resolved: \(resolved)")
+            resolvedHeaders[key] = resolved
+        }
+        cmd.headers = resolvedHeaders
+
+        // Body 체이닝
+        logChaining("Body: \(cmd.bodyData)")
+        cmd.bodyData = await resolveCommandReferences(in: cmd.bodyData)
+        logChaining("Body resolved: \(cmd.bodyData)")
+
+        // QueryParams 체이닝
+        var resolvedParams: [String: String] = [:]
+        for (key, value) in cmd.queryParams {
+            resolvedParams[key] = await resolveCommandReferences(in: value)
+        }
+        cmd.queryParams = resolvedParams
+
+        logChaining("Headers after: \(cmd.headers)")
+        return cmd
+    }
+
     /// 문자열에서 명령어 참조를 처리하여 값으로 치환
     /// - `command@id` 또는 `command@id|path` (배지 저장 형식)
     /// - {command#label} 또는 {command#label|path} (입력 형식)
-    func resolveCommandReferences(in text: String) -> String {
+    func resolveCommandReferences(in text: String) async -> String {
         var result = text
+
+        logChaining("Resolve input: \(text)")
 
         // 1. 배지 형식: `command@id` 또는 `command@id|path`
         if let badgeRegex = try? NSRegularExpression(pattern: "`command@([^`|]+)(?:\\|([^`]+))?`") {
             let range = NSRange(result.startIndex..., in: result)
             let matches = badgeRegex.matches(in: result, range: range).reversed()
+            logChaining("Found \(matches.count) matches in: \(text)")
 
             for match in matches {
                 guard let fullRange = Range(match.range, in: result),
@@ -1350,38 +1424,139 @@ class CommandStore: ObservableObject {
                     jsonPath = nil
                 }
 
-                if let value = getValueFromCommand(commandId: commandId, jsonPath: jsonPath) {
-                    result.replaceSubrange(fullRange, with: value)
-                }
-            }
-        }
-
-        // 2. 입력 형식: {command#label} 또는 {command#label|path}
-        if let inputRegex = try? NSRegularExpression(pattern: "\\{command#([^}|]+)(?:\\|([^}]+))?\\}") {
-            let range = NSRange(result.startIndex..., in: result)
-            let matches = inputRegex.matches(in: result, range: range).reversed()
-
-            for match in matches {
-                guard let fullRange = Range(match.range, in: result),
-                      let labelRange = Range(match.range(at: 1), in: result) else { continue }
-
-                let label = String(result[labelRange])
-                let jsonPath: String?
-                if match.numberOfRanges > 2, let pathRange = Range(match.range(at: 2), in: result) {
-                    jsonPath = String(result[pathRange])
-                } else {
-                    jsonPath = nil
-                }
-
-                // 라벨로 commandId 조회 후 값 가져오기
-                if let commandId = db.getCommandIdByLabel(label),
-                   let value = getValueFromCommand(commandId: commandId, jsonPath: jsonPath) {
+                if let value = await executeAndGetValue(commandId: commandId, jsonPath: jsonPath) {
                     result.replaceSubrange(fullRange, with: value)
                 }
             }
         }
 
         return result
+    }
+
+    /// 체이닝: 명령어 실행 후 결과 반환
+    func executeAndGetValue(commandId: String, jsonPath: String?) async -> String? {
+        // Command 찾기
+        guard let cmd = commands.first(where: { $0.id == commandId }) else {
+            // ClipboardItem에서 찾기
+            if let clip = clipboardItems.first(where: { $0.id == commandId }) {
+                if let path = jsonPath, !path.isEmpty {
+                    return extractValueFromJSON(clip.content, path: path)
+                }
+                return clip.content
+            }
+            return nil
+        }
+
+        // 명령어 실행
+        let response: String?
+        let startTime = Date()
+
+        switch cmd.executionType {
+        case .api:
+            let result = await executeAPICommand(cmd)
+            var statusCode = 0
+            var isSuccess = false
+
+            if let httpResponse = result.response as? HTTPURLResponse {
+                statusCode = httpResponse.statusCode
+                isSuccess = (200..<300).contains(statusCode)
+            }
+
+            if let data = result.data {
+                response = String(data: data, encoding: .utf8)
+                logChaining("API response data: \(response ?? "nil")")
+            } else if let error = result.error {
+                response = "Error: \(error.localizedDescription)"
+                logChaining("API error: \(response ?? "nil")")
+            } else {
+                response = nil
+                logChaining("API no data, no error")
+            }
+
+            // API 히스토리 저장
+            let headersJson = try? JSONSerialization.data(withJSONObject: cmd.headers, options: [])
+            let queryParamsJson = try? JSONSerialization.data(withJSONObject: cmd.queryParams, options: [])
+
+            // curl 형식으로 command 생성
+            var curlCommand = "curl -X \(cmd.httpMethod.rawValue) '\(cmd.url)'"
+            for (key, value) in cmd.headers {
+                curlCommand += " -H '\(key): \(value)'"
+            }
+            if !cmd.bodyData.isEmpty {
+                let escapedBody = cmd.bodyData.replacingOccurrences(of: "'", with: "'\\''")
+                curlCommand += " -d '\(escapedBody)'"
+            }
+
+            addHistory(HistoryItem(
+                timestamp: startTime,
+                title: cmd.label,
+                command: curlCommand,
+                type: .api,
+                output: response ?? "",
+                requestUrl: cmd.url,
+                requestMethod: cmd.httpMethod.rawValue,
+                requestHeaders: headersJson.flatMap { String(data: $0, encoding: .utf8) },
+                requestBody: cmd.bodyData,
+                requestQueryParams: queryParamsJson.flatMap { String(data: $0, encoding: .utf8) },
+                statusCode: statusCode,
+                isSuccess: isSuccess
+            ))
+
+        case .terminal, .background, .script, .schedule:
+            // 셸 명령어 동기 실행
+            response = executeShellCommand(cmd.command)
+        }
+
+        guard let resp = response else { return nil }
+
+        // 결과 저장
+        if let idx = commands.firstIndex(where: { $0.id == commandId }) {
+            if cmd.executionType == .api {
+                commands[idx].lastResponse = resp
+            } else {
+                commands[idx].lastOutput = resp
+            }
+            save()
+        }
+
+        // jsonPath 처리
+        if let path = jsonPath, !path.isEmpty {
+            return extractValueFromJSON(resp, path: path)
+        }
+        return resp
+    }
+
+    /// 동기 셸 명령어 실행
+    private func executeShellCommand(_ command: String) -> String? {
+        let process = Process()
+        let pipe = Pipe()
+
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-c", command]
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // 히스토리 저장
+            if let cmd = commands.first(where: { $0.command == command }) {
+                addHistory(HistoryItem(
+                    timestamp: Date(),
+                    title: cmd.label,
+                    command: command,
+                    type: .background,
+                    output: output
+                ))
+            }
+
+            return output
+        } catch {
+            return nil
+        }
     }
 
     /// commandId로 명령어 결과값 조회
@@ -1488,6 +1663,10 @@ class CommandStore: ObservableObject {
         let range = NSRange(text.startIndex..., in: text)
         let matches = regex.matches(in: text, range: range).reversed()
 
+        if !matches.isEmpty {
+            logChain("var 치환 시작: \(matches.count)개 발견")
+        }
+
         for match in matches {
             guard let fullRange = Range(match.range, in: result),
                   let varNameRange = Range(match.range(at: 1), in: result) else { continue }
@@ -1496,11 +1675,16 @@ class CommandStore: ObservableObject {
 
             // 1. 먼저 DB 변수에서 찾기 (6자리 ID 형식)
             if let value = db.getVariableValueById(varName) {
+                let label = db.getVariableLabelById(varName) ?? varName
+                logChain("var:\(varName) (\(label)) → \(value)")
                 result.replaceSubrange(fullRange, with: value)
             }
             // 2. 환경 변수에서 찾기
             else if let env = activeEnvironment, let value = env.variables[varName] {
+                logChain("var:\(varName) (env) → \(value)")
                 result.replaceSubrange(fullRange, with: value)
+            } else {
+                logChain("var:\(varName) → 값 없음")
             }
         }
 

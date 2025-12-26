@@ -4,7 +4,7 @@ struct Command: Identifiable, Codable {
     var seq: Int?              // DB 내부 seq (auto-increment)
     var id: String             // 6자리 외부 참조용 ID
     var groupSeq: Int?         // groups.seq 참조
-    var title: String
+    var label: String          // 명령어 이름
     var command: String
     var executionType: ExecutionType
     var terminalApp: TerminalApp = .iterm2
@@ -23,7 +23,6 @@ struct Command: Identifiable, Codable {
     var acknowledged: Bool = false  // 클릭해서 확인함
     var isInTrash: Bool = false     // 휴지통에 있음
     var isFavorite: Bool = false    // 즐겨찾기
-    var label: String?              // 체이닝용 라벨 (유니크)
     // API용
     var url: String = ""
     var httpMethod: HTTPMethod = .get
@@ -36,19 +35,19 @@ struct Command: Identifiable, Codable {
     var lastStatusCode: Int? = nil
 
     enum CodingKeys: String, CodingKey {
-        case seq, id, groupSeq, title, command, executionType, terminalApp, interval
+        case seq, id, groupSeq, label, command, executionType, terminalApp, interval
         case lastOutput, lastExecutedAt, isRunning, scheduleDate, repeatType
         case alertState, reminderTimes, alertedTimes, historyLoggedTimes
-        case acknowledged, isInTrash, isFavorite, label
+        case acknowledged, isInTrash, isFavorite
         case url, httpMethod, headers, queryParams, bodyType, bodyData, fileParams
         case lastResponse, lastStatusCode
     }
 
-    init(seq: Int? = nil, id: String = "", groupSeq: Int? = nil, title: String, command: String, executionType: ExecutionType, terminalApp: TerminalApp = .iterm2, interval: Int = 0, lastOutput: String? = nil, lastExecutedAt: Date? = nil, isRunning: Bool = false, scheduleDate: Date? = nil, repeatType: RepeatType = .none, alertState: AlertState = .none, reminderTimes: Set<Int> = [], alertedTimes: Set<Int> = [], historyLoggedTimes: Set<Int> = [], acknowledged: Bool = false, isInTrash: Bool = false, isFavorite: Bool = false, label: String? = nil, url: String = "", httpMethod: HTTPMethod = .get, headers: [String: String] = [:], queryParams: [String: String] = [:], bodyType: BodyType = .none, bodyData: String = "", fileParams: [String: String] = [:], lastResponse: String? = nil, lastStatusCode: Int? = nil) {
+    init(seq: Int? = nil, id: String = "", groupSeq: Int? = nil, label: String, command: String, executionType: ExecutionType, terminalApp: TerminalApp = .iterm2, interval: Int = 0, lastOutput: String? = nil, lastExecutedAt: Date? = nil, isRunning: Bool = false, scheduleDate: Date? = nil, repeatType: RepeatType = .none, alertState: AlertState = .none, reminderTimes: Set<Int> = [], alertedTimes: Set<Int> = [], historyLoggedTimes: Set<Int> = [], acknowledged: Bool = false, isInTrash: Bool = false, isFavorite: Bool = false, url: String = "", httpMethod: HTTPMethod = .get, headers: [String: String] = [:], queryParams: [String: String] = [:], bodyType: BodyType = .none, bodyData: String = "", fileParams: [String: String] = [:], lastResponse: String? = nil, lastStatusCode: Int? = nil) {
         self.seq = seq
         self.id = id.isEmpty ? Command.generateId() : id
         self.groupSeq = groupSeq
-        self.title = title
+        self.label = label
         self.command = command
         self.executionType = executionType
         self.terminalApp = terminalApp
@@ -65,7 +64,6 @@ struct Command: Identifiable, Codable {
         self.acknowledged = acknowledged
         self.isInTrash = isInTrash
         self.isFavorite = isFavorite
-        self.label = label
         self.url = url
         self.httpMethod = httpMethod
         self.headers = headers

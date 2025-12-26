@@ -90,6 +90,7 @@ extension LocalizedStrings {
         trashRestore: "복구",
 
         commandTitle: "제목",
+        commandLabel: "라벨",
         commandCommand: "명령",
         commandType: "타입",
         commandTerminalApp: "터미널 앱",
@@ -112,6 +113,7 @@ extension LocalizedStrings {
         historyOutput: "출력",
         historyTimes: "회",
         historyExecutions: "실행 이력",
+        historyShowRaw: "원문",
 
         searchPlaceholder: "검색...",
 
@@ -139,6 +141,20 @@ extension LocalizedStrings {
         languagePackExportSuccess: "언어팩 견본이 저장되었습니다",
         languagePackImportSuccess: "언어팩을 적용했습니다",
         languagePackInvalidFormat: "잘못된 언어팩 형식입니다",
+
+        badgeEditTitle: "배지 편집",
+        badgeEditLabel: "라벨",
+        badgeEditUseJsonPath: "JSON 경로 사용",
+        badgeEditJsonPath: "JSON 경로",
+        badgeEditJsonPathHint: "예: data.token, items[0].name",
+        badgeEditActualValue: "실제 값",
+        badgeEditActualValueHint: "이 배지가 참조하는 실제 데이터 (읽기 전용)",
+        badgeEditEditStorageFormat: "저장 형식 직접 편집",
+        badgeEditStorageFormat: "저장 형식",
+        badgeEditStorageFormatHint: "저장 시 사용되는 원본 텍스트",
+        badgeEditConnectedCommands: "연결된 명령어",
+        badgeEditSecureValueHint: "비밀번호를 변경하려면 입력하세요",
+        badgeEditVariableValueHint: "변수 값을 변경하려면 입력하세요",
 
         scriptRunning: "실행 중...",
         scriptCompleted: "완료",

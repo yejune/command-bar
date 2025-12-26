@@ -5,9 +5,6 @@ class Database {
     static let shared = Database()
     private var db: OpaquePointer?
 
-    // DB 버전 관리
-    private let currentDBVersion = 3  // ids 테이블 추가 및 Group.id 제거
-
     private var dbPath: URL {
         let configDir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".command_bar")
@@ -17,8 +14,6 @@ class Database {
     private init() {
         ensureConfigDir()
         openDatabase()
-        // 마이그레이션 확인 후 테이블 생성
-        performMigrationIfNeeded()
         createTables()
     }
 
@@ -32,603 +27,6 @@ class Database {
         if sqlite3_open(dbPath.path, &db) != SQLITE_OK {
             print("Failed to open database")
         }
-    }
-
-    // MARK: - Migration Logic
-
-    private func performMigrationIfNeeded() {
-        let version = getDBVersion()
-
-        if version < 2 {
-            print("Migrating database from version \(version) to 2")
-            migrateToSeqBasedSchema()
-            setDBVersion(2)
-        }
-
-        if version < 3 {
-            print("Migrating database from version \(version) to 3")
-            migrateToIdsTable()
-            setDBVersion(3)
-        }
-    }
-
-    private func getDBVersion() -> Int {
-        return getIntSetting("db_version", defaultValue: 1)
-    }
-
-    private func setDBVersion(_ version: Int) {
-        setIntSetting("db_version", value: version)
-    }
-
-    /// UUID 기반 스키마를 seq 기반 스키마로 마이그레이션
-    private func migrateToSeqBasedSchema() {
-        print("Starting migration to seq-based schema...")
-
-        // 1. 새 테이블 생성 (_new suffix)
-        let createNewTables = """
-        -- 그룹 (새 스키마)
-        CREATE TABLE IF NOT EXISTS groups_new (
-            seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            id TEXT UNIQUE NOT NULL,
-            name TEXT NOT NULL,
-            color TEXT NOT NULL,
-            sort_order INTEGER DEFAULT 0
-        );
-
-        -- 명령어 (새 스키마)
-        CREATE TABLE IF NOT EXISTS commands_new (
-            seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            id TEXT UNIQUE NOT NULL,
-            group_seq INTEGER,
-            title TEXT NOT NULL,
-            command TEXT NOT NULL,
-            execution_type TEXT NOT NULL,
-            terminal_app TEXT DEFAULT 'iterm2',
-            interval_seconds INTEGER DEFAULT 0,
-            is_running INTEGER DEFAULT 0,
-            schedule_date TEXT,
-            repeat_type TEXT DEFAULT 'none',
-            alert_state TEXT DEFAULT 'none',
-            reminder_times TEXT,
-            alerted_times TEXT,
-            history_logged_times TEXT,
-            acknowledged INTEGER DEFAULT 0,
-            is_in_trash INTEGER DEFAULT 0,
-            is_favorite INTEGER DEFAULT 0,
-            url TEXT,
-            http_method TEXT DEFAULT 'GET',
-            headers TEXT,
-            query_params TEXT,
-            body_type TEXT DEFAULT 'none',
-            body_data TEXT,
-            file_params TEXT,
-            last_response TEXT,
-            last_status_code INTEGER,
-            last_output TEXT,
-            last_executed_at TEXT,
-            label TEXT,
-            FOREIGN KEY (group_seq) REFERENCES groups_new(seq)
-        );
-
-        -- 히스토리 (새 스키마)
-        CREATE TABLE IF NOT EXISTS history_new (
-            seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            id TEXT UNIQUE NOT NULL,
-            timestamp TEXT NOT NULL,
-            title TEXT NOT NULL,
-            command TEXT NOT NULL,
-            type TEXT NOT NULL,
-            output TEXT,
-            count INTEGER DEFAULT 1,
-            end_timestamp TEXT,
-            command_seq INTEGER,
-            first_executed_at TEXT,
-            deleted_at TEXT,
-            FOREIGN KEY (command_seq) REFERENCES commands_new(seq)
-        );
-
-        -- 클립보드 (새 스키마)
-        CREATE TABLE IF NOT EXISTS clipboard_new (
-            seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            id TEXT UNIQUE NOT NULL,
-            timestamp TEXT NOT NULL,
-            content TEXT NOT NULL,
-            is_favorite INTEGER DEFAULT 0,
-            copy_count INTEGER DEFAULT 1,
-            first_copied_at TEXT,
-            deleted_at TEXT
-        );
-        """
-        executeStatements(createNewTables)
-
-        // 2. 기존 데이터를 새 테이블로 마이그레이션
-        migrateGroupsData()
-        migrateCommandsData()
-        migrateHistoryData()
-        migrateClipboardData()
-
-        // 3. 기존 테이블 삭제 및 새 테이블 이름 변경
-        executeStatements("DROP TABLE IF EXISTS groups")
-        executeStatements("DROP TABLE IF EXISTS commands")
-        executeStatements("DROP TABLE IF EXISTS history")
-        executeStatements("DROP TABLE IF EXISTS clipboard")
-
-        executeStatements("ALTER TABLE groups_new RENAME TO groups")
-        executeStatements("ALTER TABLE commands_new RENAME TO commands")
-        executeStatements("ALTER TABLE history_new RENAME TO history")
-        executeStatements("ALTER TABLE clipboard_new RENAME TO clipboard")
-
-        // 4. short_ids 테이블 제거
-        executeStatements("DROP TABLE IF EXISTS short_ids")
-
-        print("Migration completed successfully")
-    }
-
-    private func migrateGroupsData() {
-        let sql = "SELECT id, name, color, sort_order FROM groups ORDER BY sort_order"
-        var stmt: OpaquePointer?
-
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                guard let oldIdStr = sqlite3_column_text(stmt, 0),
-                      let namePtr = sqlite3_column_text(stmt, 1),
-                      let colorPtr = sqlite3_column_text(stmt, 2) else { continue }
-
-                let oldId = String(cString: oldIdStr)
-                let name = String(cString: namePtr)
-                let color = String(cString: colorPtr)
-                let sortOrder = Int(sqlite3_column_int(stmt, 3))
-
-                // short_id 가져오기 (있으면 사용, 없으면 UUID에서 6자리 생성)
-                let newId = getOldShortId(fullId: oldId) ?? generateShortIdFromUUID(oldId)
-
-                // 새 테이블에 삽입
-                let insertSql = "INSERT INTO groups_new (id, name, color, sort_order) VALUES (?, ?, ?, ?)"
-                var insertStmt: OpaquePointer?
-                if sqlite3_prepare_v2(db, insertSql, -1, &insertStmt, nil) == SQLITE_OK {
-                    sqlite3_bind_text(insertStmt, 1, newId, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 2, name, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 3, color, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_int(insertStmt, 4, Int32(sortOrder))
-                    sqlite3_step(insertStmt)
-                }
-                sqlite3_finalize(insertStmt)
-            }
-        }
-        sqlite3_finalize(stmt)
-    }
-
-    private func migrateCommandsData() {
-        let sql = "SELECT * FROM commands"
-        var stmt: OpaquePointer?
-
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                guard let oldIdStr = sqlite3_column_text(stmt, 0) else { continue }
-                let oldId = String(cString: oldIdStr)
-                let newId = getOldShortId(fullId: oldId) ?? generateShortIdFromUUID(oldId)
-
-                let oldGroupIdStr = sqlite3_column_text(stmt, 1).map { String(cString: $0) } ?? ""
-                let groupSeq = getGroupSeqByOldId(oldGroupIdStr)
-
-                let title = sqlite3_column_text(stmt, 2).map { String(cString: $0) } ?? ""
-                let command = sqlite3_column_text(stmt, 3).map { String(cString: $0) } ?? ""
-                let execType = sqlite3_column_text(stmt, 4).map { String(cString: $0) } ?? "terminal"
-                let terminalApp = sqlite3_column_text(stmt, 5).map { String(cString: $0) } ?? "iterm2"
-                let interval = Int(sqlite3_column_int(stmt, 6))
-                let isRunning = sqlite3_column_int(stmt, 7)
-                let scheduleDate = sqlite3_column_text(stmt, 8).map { String(cString: $0) }
-                let repeatType = sqlite3_column_text(stmt, 9).map { String(cString: $0) } ?? "none"
-                let alertState = sqlite3_column_text(stmt, 10).map { String(cString: $0) } ?? "none"
-                let reminderTimes = sqlite3_column_text(stmt, 11).map { String(cString: $0) } ?? "[]"
-                let alertedTimes = sqlite3_column_text(stmt, 12).map { String(cString: $0) } ?? "[]"
-                let historyLoggedTimes = sqlite3_column_text(stmt, 13).map { String(cString: $0) } ?? "[]"
-                let acknowledged = sqlite3_column_int(stmt, 14)
-                let isInTrash = sqlite3_column_int(stmt, 15)
-                let isFavorite = sqlite3_column_int(stmt, 16)
-                let url = sqlite3_column_text(stmt, 17).map { String(cString: $0) } ?? ""
-                let httpMethod = sqlite3_column_text(stmt, 18).map { String(cString: $0) } ?? "GET"
-                let headers = sqlite3_column_text(stmt, 19).map { String(cString: $0) } ?? "{}"
-                let queryParams = sqlite3_column_text(stmt, 20).map { String(cString: $0) } ?? "{}"
-                let bodyType = sqlite3_column_text(stmt, 21).map { String(cString: $0) } ?? "none"
-                let bodyData = sqlite3_column_text(stmt, 22).map { String(cString: $0) } ?? ""
-                let fileParams = sqlite3_column_text(stmt, 23).map { String(cString: $0) } ?? "{}"
-                let lastResponse = sqlite3_column_text(stmt, 24).map { String(cString: $0) }
-                let lastStatusCode = sqlite3_column_type(stmt, 25) != SQLITE_NULL ? sqlite3_column_int(stmt, 25) : -1
-                let lastOutput = sqlite3_column_text(stmt, 26).map { String(cString: $0) }
-                let lastExecutedAt = sqlite3_column_text(stmt, 27).map { String(cString: $0) }
-                let label = sqlite3_column_text(stmt, 28).map { String(cString: $0) }
-
-                let insertSql = """
-                INSERT INTO commands_new (
-                    id, group_seq, title, command, execution_type, terminal_app,
-                    interval_seconds, is_running, schedule_date, repeat_type, alert_state,
-                    reminder_times, alerted_times, history_logged_times, acknowledged,
-                    is_in_trash, is_favorite, url, http_method, headers, query_params,
-                    body_type, body_data, file_params, last_response, last_status_code,
-                    last_output, last_executed_at, label
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """
-                var insertStmt: OpaquePointer?
-                if sqlite3_prepare_v2(db, insertSql, -1, &insertStmt, nil) == SQLITE_OK {
-                    sqlite3_bind_text(insertStmt, 1, newId, -1, SQLITE_TRANSIENT)
-                    if let gs = groupSeq {
-                        sqlite3_bind_int(insertStmt, 2, Int32(gs))
-                    } else {
-                        sqlite3_bind_null(insertStmt, 2)
-                    }
-                    sqlite3_bind_text(insertStmt, 3, title, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 4, command, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 5, execType, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 6, terminalApp, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_int(insertStmt, 7, Int32(interval))
-                    sqlite3_bind_int(insertStmt, 8, isRunning)
-                    if let sd = scheduleDate {
-                        sqlite3_bind_text(insertStmt, 9, sd, -1, SQLITE_TRANSIENT)
-                    } else {
-                        sqlite3_bind_null(insertStmt, 9)
-                    }
-                    sqlite3_bind_text(insertStmt, 10, repeatType, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 11, alertState, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 12, reminderTimes, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 13, alertedTimes, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 14, historyLoggedTimes, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_int(insertStmt, 15, acknowledged)
-                    sqlite3_bind_int(insertStmt, 16, isInTrash)
-                    sqlite3_bind_int(insertStmt, 17, isFavorite)
-                    sqlite3_bind_text(insertStmt, 18, url, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 19, httpMethod, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 20, headers, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 21, queryParams, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 22, bodyType, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 23, bodyData, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 24, fileParams, -1, SQLITE_TRANSIENT)
-                    if let lr = lastResponse {
-                        sqlite3_bind_text(insertStmt, 25, lr, -1, SQLITE_TRANSIENT)
-                    } else {
-                        sqlite3_bind_null(insertStmt, 25)
-                    }
-                    if lastStatusCode != -1 {
-                        sqlite3_bind_int(insertStmt, 26, lastStatusCode)
-                    } else {
-                        sqlite3_bind_null(insertStmt, 26)
-                    }
-                    if let lo = lastOutput {
-                        sqlite3_bind_text(insertStmt, 27, lo, -1, SQLITE_TRANSIENT)
-                    } else {
-                        sqlite3_bind_null(insertStmt, 27)
-                    }
-                    if let lea = lastExecutedAt {
-                        sqlite3_bind_text(insertStmt, 28, lea, -1, SQLITE_TRANSIENT)
-                    } else {
-                        sqlite3_bind_null(insertStmt, 28)
-                    }
-                    if let lbl = label {
-                        sqlite3_bind_text(insertStmt, 29, lbl, -1, SQLITE_TRANSIENT)
-                    } else {
-                        sqlite3_bind_null(insertStmt, 29)
-                    }
-                    sqlite3_step(insertStmt)
-                }
-                sqlite3_finalize(insertStmt)
-            }
-        }
-        sqlite3_finalize(stmt)
-    }
-
-    private func migrateHistoryData() {
-        let sql = "SELECT * FROM history"
-        var stmt: OpaquePointer?
-
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                guard let oldIdStr = sqlite3_column_text(stmt, 0) else { continue }
-                let oldId = String(cString: oldIdStr)
-                let newId = getOldShortId(fullId: oldId) ?? generateShortIdFromUUID(oldId)
-
-                let timestamp = sqlite3_column_text(stmt, 1).map { String(cString: $0) } ?? ""
-                let title = sqlite3_column_text(stmt, 2).map { String(cString: $0) } ?? ""
-                let command = sqlite3_column_text(stmt, 3).map { String(cString: $0) } ?? ""
-                let type = sqlite3_column_text(stmt, 4).map { String(cString: $0) } ?? "executed"
-                let output = sqlite3_column_text(stmt, 5).map { String(cString: $0) }
-                let count = sqlite3_column_int(stmt, 6)
-                let endTimestamp = sqlite3_column_text(stmt, 7).map { String(cString: $0) }
-                let oldCommandIdStr = sqlite3_column_text(stmt, 8).map { String(cString: $0) }
-                let commandSeq = oldCommandIdStr.flatMap { getCommandSeqByOldId($0) }
-                let firstExecutedAt = sqlite3_column_text(stmt, 9).map { String(cString: $0) }
-                let deletedAt = sqlite3_column_text(stmt, 10).map { String(cString: $0) }
-
-                let insertSql = """
-                INSERT INTO history_new (
-                    id, timestamp, title, command, type, output, count, end_timestamp,
-                    command_seq, first_executed_at, deleted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """
-                var insertStmt: OpaquePointer?
-                if sqlite3_prepare_v2(db, insertSql, -1, &insertStmt, nil) == SQLITE_OK {
-                    sqlite3_bind_text(insertStmt, 1, newId, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 2, timestamp, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 3, title, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 4, command, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 5, type, -1, SQLITE_TRANSIENT)
-                    if let o = output {
-                        sqlite3_bind_text(insertStmt, 6, o, -1, SQLITE_TRANSIENT)
-                    } else {
-                        sqlite3_bind_null(insertStmt, 6)
-                    }
-                    sqlite3_bind_int(insertStmt, 7, count)
-                    if let et = endTimestamp {
-                        sqlite3_bind_text(insertStmt, 8, et, -1, SQLITE_TRANSIENT)
-                    } else {
-                        sqlite3_bind_null(insertStmt, 8)
-                    }
-                    if let cs = commandSeq {
-                        sqlite3_bind_int(insertStmt, 9, Int32(cs))
-                    } else {
-                        sqlite3_bind_null(insertStmt, 9)
-                    }
-                    if let fea = firstExecutedAt {
-                        sqlite3_bind_text(insertStmt, 10, fea, -1, SQLITE_TRANSIENT)
-                    } else {
-                        sqlite3_bind_null(insertStmt, 10)
-                    }
-                    if let da = deletedAt {
-                        sqlite3_bind_text(insertStmt, 11, da, -1, SQLITE_TRANSIENT)
-                    } else {
-                        sqlite3_bind_null(insertStmt, 11)
-                    }
-                    sqlite3_step(insertStmt)
-                }
-                sqlite3_finalize(insertStmt)
-            }
-        }
-        sqlite3_finalize(stmt)
-    }
-
-    private func migrateClipboardData() {
-        let sql = "SELECT * FROM clipboard"
-        var stmt: OpaquePointer?
-
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                guard let oldIdStr = sqlite3_column_text(stmt, 0) else { continue }
-                let oldId = String(cString: oldIdStr)
-                let newId = getOldShortId(fullId: oldId) ?? generateShortIdFromUUID(oldId)
-
-                let timestamp = sqlite3_column_text(stmt, 1).map { String(cString: $0) } ?? ""
-                let content = sqlite3_column_text(stmt, 2).map { String(cString: $0) } ?? ""
-                let isFavorite = sqlite3_column_int(stmt, 3)
-                let copyCount = sqlite3_column_int(stmt, 4)
-                let firstCopiedAt = sqlite3_column_text(stmt, 5).map { String(cString: $0) }
-                let deletedAt = sqlite3_column_text(stmt, 6).map { String(cString: $0) }
-
-                let insertSql = """
-                INSERT INTO clipboard_new (
-                    id, timestamp, content, is_favorite, copy_count, first_copied_at, deleted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """
-                var insertStmt: OpaquePointer?
-                if sqlite3_prepare_v2(db, insertSql, -1, &insertStmt, nil) == SQLITE_OK {
-                    sqlite3_bind_text(insertStmt, 1, newId, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 2, timestamp, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(insertStmt, 3, content, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_int(insertStmt, 4, isFavorite)
-                    sqlite3_bind_int(insertStmt, 5, copyCount)
-                    if let fca = firstCopiedAt {
-                        sqlite3_bind_text(insertStmt, 6, fca, -1, SQLITE_TRANSIENT)
-                    } else {
-                        sqlite3_bind_null(insertStmt, 6)
-                    }
-                    if let da = deletedAt {
-                        sqlite3_bind_text(insertStmt, 7, da, -1, SQLITE_TRANSIENT)
-                    } else {
-                        sqlite3_bind_null(insertStmt, 7)
-                    }
-                    sqlite3_step(insertStmt)
-                }
-                sqlite3_finalize(insertStmt)
-            }
-        }
-        sqlite3_finalize(stmt)
-    }
-
-    /// short_ids 테이블에서 기존 short_id 가져오기
-    private func getOldShortId(fullId: String) -> String? {
-        let sql = "SELECT short_id FROM short_ids WHERE full_id = ?"
-        var stmt: OpaquePointer?
-        var shortId: String?
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            sqlite3_bind_text(stmt, 1, fullId, -1, SQLITE_TRANSIENT)
-            if sqlite3_step(stmt) == SQLITE_ROW {
-                if let cStr = sqlite3_column_text(stmt, 0) {
-                    shortId = String(cString: cStr)
-                }
-            }
-        }
-        sqlite3_finalize(stmt)
-        return shortId
-    }
-
-    /// UUID에서 6자리 ID 생성 (중복 체크 포함)
-    private func generateShortIdFromUUID(_ uuid: String) -> String {
-        // UUID의 처음 6자리를 사용 (소문자)
-        let candidate = String(uuid.prefix(6).lowercased().filter { "abcdefghijklmnopqrstuvwxyz0123456789".contains($0) })
-        if candidate.count >= 6 {
-            return String(candidate.prefix(6))
-        }
-        // UUID에서 충분한 문자를 얻지 못한 경우 랜덤 생성
-        return generateUniqueShortId()
-    }
-
-    /// 기존 UUID로 group_seq 조회 (마이그레이션용)
-    private func getGroupSeqByOldId(_ oldId: String) -> Int? {
-        let sql = "SELECT seq FROM groups_new WHERE id IN (SELECT short_id FROM short_ids WHERE full_id = ?)"
-        var stmt: OpaquePointer?
-        var seq: Int?
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            sqlite3_bind_text(stmt, 1, oldId, -1, SQLITE_TRANSIENT)
-            if sqlite3_step(stmt) == SQLITE_ROW {
-                seq = Int(sqlite3_column_int(stmt, 0))
-            }
-        }
-        sqlite3_finalize(stmt)
-
-        // short_ids에 없으면 직접 id로 조회
-        if seq == nil {
-            let directSql = "SELECT seq FROM groups_new WHERE id = ?"
-            var directStmt: OpaquePointer?
-            if sqlite3_prepare_v2(db, directSql, -1, &directStmt, nil) == SQLITE_OK {
-                sqlite3_bind_text(directStmt, 1, oldId, -1, SQLITE_TRANSIENT)
-                if sqlite3_step(directStmt) == SQLITE_ROW {
-                    seq = Int(sqlite3_column_int(directStmt, 0))
-                }
-            }
-            sqlite3_finalize(directStmt)
-        }
-
-        return seq
-    }
-
-    /// 기존 UUID로 command_seq 조회 (마이그레이션용)
-    private func getCommandSeqByOldId(_ oldId: String) -> Int? {
-        let sql = "SELECT seq FROM commands_new WHERE id IN (SELECT short_id FROM short_ids WHERE full_id = ?)"
-        var stmt: OpaquePointer?
-        var seq: Int?
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            sqlite3_bind_text(stmt, 1, oldId, -1, SQLITE_TRANSIENT)
-            if sqlite3_step(stmt) == SQLITE_ROW {
-                seq = Int(sqlite3_column_int(stmt, 0))
-            }
-        }
-        sqlite3_finalize(stmt)
-
-        // short_ids에 없으면 직접 id로 조회
-        if seq == nil {
-            let directSql = "SELECT seq FROM commands_new WHERE id = ?"
-            var directStmt: OpaquePointer?
-            if sqlite3_prepare_v2(db, directSql, -1, &directStmt, nil) == SQLITE_OK {
-                sqlite3_bind_text(directStmt, 1, oldId, -1, SQLITE_TRANSIENT)
-                if sqlite3_step(directStmt) == SQLITE_ROW {
-                    seq = Int(sqlite3_column_int(directStmt, 0))
-                }
-            }
-            sqlite3_finalize(directStmt)
-        }
-
-        return seq
-    }
-
-    /// ids 테이블 추가 및 Group에서 id 제거하는 마이그레이션
-    private func migrateToIdsTable() {
-        print("Starting migration to ids table...")
-
-        // 1. ids 테이블 생성
-        let createIdsTable = """
-        CREATE TABLE IF NOT EXISTS ids (
-            id TEXT PRIMARY KEY,       -- 6자리 유니크 ID
-            type TEXT NOT NULL,        -- "command", "clipboard", "history", "secure", "var"
-            table_seq INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_ids_type_seq ON ids(type, table_seq);
-        """
-        executeStatements(createIdsTable)
-
-        // 2. 기존 테이블의 id들을 ids 테이블로 마이그레이션
-        migrateIdsFromTable(tableName: "commands", type: "command")
-        migrateIdsFromTable(tableName: "history", type: "history")
-        migrateIdsFromTable(tableName: "clipboard", type: "clipboard")
-
-        // 3. groups 테이블에서 8자리 id를 6자리로 변환
-        migrateGroupIds()
-
-        // 4. groups 테이블에서 id 컬럼 제거
-        let createGroupsNew = """
-        CREATE TABLE IF NOT EXISTS groups_v3 (
-            seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            color TEXT NOT NULL,
-            sort_order INTEGER DEFAULT 0
-        );
-        """
-        executeStatements(createGroupsNew)
-
-        // 5. 데이터 복사
-        let copyGroups = "INSERT INTO groups_v3 (seq, name, color, sort_order) SELECT seq, name, color, sort_order FROM groups"
-        executeStatements(copyGroups)
-
-        // 6. 기존 테이블 삭제 및 이름 변경
-        executeStatements("DROP TABLE IF EXISTS groups")
-        executeStatements("ALTER TABLE groups_v3 RENAME TO groups")
-
-        print("Migration to ids table completed successfully")
-    }
-
-    /// 특정 테이블의 id들을 ids 테이블로 마이그레이션
-    private func migrateIdsFromTable(tableName: String, type: String) {
-        let sql = "SELECT seq, id FROM \(tableName)"
-        var stmt: OpaquePointer?
-
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                let seq = Int(sqlite3_column_int(stmt, 0))
-                if let idStr = sqlite3_column_text(stmt, 1) {
-                    let id = String(cString: idStr)
-                    // 8자리 id를 6자리로 변환
-                    let newId = String(id.prefix(6))
-
-                    // ids 테이블에 삽입
-                    let insertSql = "INSERT OR IGNORE INTO ids (id, type, table_seq) VALUES (?, ?, ?)"
-                    var insertStmt: OpaquePointer?
-                    if sqlite3_prepare_v2(db, insertSql, -1, &insertStmt, nil) == SQLITE_OK {
-                        sqlite3_bind_text(insertStmt, 1, newId, -1, SQLITE_TRANSIENT)
-                        sqlite3_bind_text(insertStmt, 2, type, -1, SQLITE_TRANSIENT)
-                        sqlite3_bind_int(insertStmt, 3, Int32(seq))
-                        sqlite3_step(insertStmt)
-                    }
-                    sqlite3_finalize(insertStmt)
-
-                    // 원본 테이블의 id도 6자리로 업데이트
-                    let updateSql = "UPDATE \(tableName) SET id = ? WHERE seq = ?"
-                    var updateStmt: OpaquePointer?
-                    if sqlite3_prepare_v2(db, updateSql, -1, &updateStmt, nil) == SQLITE_OK {
-                        sqlite3_bind_text(updateStmt, 1, newId, -1, SQLITE_TRANSIENT)
-                        sqlite3_bind_int(updateStmt, 2, Int32(seq))
-                        sqlite3_step(updateStmt)
-                    }
-                    sqlite3_finalize(updateStmt)
-                }
-            }
-        }
-        sqlite3_finalize(stmt)
-    }
-
-    /// groups 테이블의 id를 ids 테이블로 마이그레이션
-    private func migrateGroupIds() {
-        let sql = "SELECT seq, id FROM groups"
-        var stmt: OpaquePointer?
-
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                let seq = Int(sqlite3_column_int(stmt, 0))
-                if let idStr = sqlite3_column_text(stmt, 1) {
-                    let id = String(cString: idStr)
-                    // 8자리 id를 6자리로 변환
-                    let newId = String(id.prefix(6))
-
-                    // ids 테이블에 삽입
-                    let insertSql = "INSERT OR IGNORE INTO ids (id, type, table_seq) VALUES (?, ?, ?)"
-                    var insertStmt: OpaquePointer?
-                    if sqlite3_prepare_v2(db, insertSql, -1, &insertStmt, nil) == SQLITE_OK {
-                        sqlite3_bind_text(insertStmt, 1, newId, -1, SQLITE_TRANSIENT)
-                        sqlite3_bind_text(insertStmt, 2, "group", -1, SQLITE_TRANSIENT)
-                        sqlite3_bind_int(insertStmt, 3, Int32(seq))
-                        sqlite3_step(insertStmt)
-                    }
-                    sqlite3_finalize(insertStmt)
-                }
-            }
-        }
-        sqlite3_finalize(stmt)
     }
 
     private func createTables() {
@@ -698,6 +96,13 @@ class Database {
             command_seq INTEGER,
             first_executed_at TEXT,
             deleted_at TEXT,
+            request_url TEXT,
+            request_method TEXT,
+            request_headers TEXT,
+            request_body TEXT,
+            request_query_params TEXT,
+            status_code INTEGER,
+            is_success INTEGER,
             FOREIGN KEY (command_seq) REFERENCES commands(seq)
         );
 
@@ -815,6 +220,33 @@ class Database {
         )
         """
         executeStatements(createSecureKeyVersionsTable)
+
+        // 마이그레이션: 기존 history 테이블에 새 컬럼 추가
+        migrateHistoryTable()
+    }
+
+    private func migrateHistoryTable() {
+        // 컬럼 존재 여부 확인 후 추가
+        let columns = [
+            ("request_url", "TEXT"),
+            ("request_method", "TEXT"),
+            ("request_headers", "TEXT"),
+            ("request_body", "TEXT"),
+            ("request_query_params", "TEXT"),
+            ("status_code", "INTEGER"),
+            ("is_success", "INTEGER")
+        ]
+
+        for (columnName, columnType) in columns {
+            let checkSQL = "SELECT \(columnName) FROM history LIMIT 1"
+            var stmt: OpaquePointer?
+            if sqlite3_prepare_v2(db, checkSQL, -1, &stmt, nil) != SQLITE_OK {
+                // 컬럼이 없으면 추가
+                let alterSQL = "ALTER TABLE history ADD COLUMN \(columnName) \(columnType)"
+                sqlite3_exec(db, alterSQL, nil, nil, nil)
+            }
+            sqlite3_finalize(stmt)
+        }
     }
 
     private func executeStatements(_ sql: String) {
@@ -830,21 +262,49 @@ class Database {
     // MARK: - Groups
 
     func saveGroups(_ groups: [Group]) {
-        executeStatements("DELETE FROM groups")
+        // DELETE 제거 - 개별 삭제는 deleteGroup 사용
         for (index, group) in groups.enumerated() {
-            let sql = """
-            INSERT INTO groups (name, color, sort_order)
-            VALUES (?, ?, ?)
-            """
-            var stmt: OpaquePointer?
-            if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-                sqlite3_bind_text(stmt, 1, group.name, -1, SQLITE_TRANSIENT)
-                sqlite3_bind_text(stmt, 2, group.color, -1, SQLITE_TRANSIENT)
-                sqlite3_bind_int(stmt, 3, Int32(index))
-                sqlite3_step(stmt)
+            if let seq = group.seq {
+                // 기존 그룹 업데이트
+                let sql = """
+                INSERT OR REPLACE INTO groups (seq, name, color, sort_order)
+                VALUES (?, ?, ?, ?)
+                """
+                var stmt: OpaquePointer?
+                if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+                    sqlite3_bind_int(stmt, 1, Int32(seq))
+                    sqlite3_bind_text(stmt, 2, group.name, -1, SQLITE_TRANSIENT)
+                    sqlite3_bind_text(stmt, 3, group.color, -1, SQLITE_TRANSIENT)
+                    sqlite3_bind_int(stmt, 4, Int32(index))
+                    sqlite3_step(stmt)
+                }
+                sqlite3_finalize(stmt)
+            } else {
+                // 새 그룹 추가
+                let sql = """
+                INSERT INTO groups (name, color, sort_order)
+                VALUES (?, ?, ?)
+                """
+                var stmt: OpaquePointer?
+                if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+                    sqlite3_bind_text(stmt, 1, group.name, -1, SQLITE_TRANSIENT)
+                    sqlite3_bind_text(stmt, 2, group.color, -1, SQLITE_TRANSIENT)
+                    sqlite3_bind_int(stmt, 3, Int32(index))
+                    sqlite3_step(stmt)
+                }
+                sqlite3_finalize(stmt)
             }
-            sqlite3_finalize(stmt)
         }
+    }
+
+    func deleteGroup(_ seq: Int) {
+        let sql = "DELETE FROM groups WHERE seq = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_int(stmt, 1, Int32(seq))
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
     }
 
     func loadGroups() -> [Group] {
@@ -870,7 +330,8 @@ class Database {
     // MARK: - Commands
 
     func saveCommands(_ commands: [Command]) {
-        executeStatements("DELETE FROM commands")
+        // DELETE 제거 - 개별 삭제는 deleteCommand 사용
+        // INSERT OR REPLACE로 upsert
         for command in commands {
             insertCommand(command)
         }
@@ -895,7 +356,7 @@ class Database {
             } else {
                 sqlite3_bind_null(stmt, 2)
             }
-            sqlite3_bind_text(stmt, 3, command.title, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 3, command.label, -1, SQLITE_TRANSIENT)
             sqlite3_bind_text(stmt, 4, command.command, -1, SQLITE_TRANSIENT)
             sqlite3_bind_text(stmt, 5, command.executionType.rawValue, -1, SQLITE_TRANSIENT)
             sqlite3_bind_text(stmt, 6, command.terminalApp.rawValue, -1, SQLITE_TRANSIENT)
@@ -941,11 +402,7 @@ class Database {
             } else {
                 sqlite3_bind_null(stmt, 28)
             }
-            if let label = command.label {
-                sqlite3_bind_text(stmt, 29, label, -1, SQLITE_TRANSIENT)
-            } else {
-                sqlite3_bind_null(stmt, 29)
-            }
+            sqlite3_bind_text(stmt, 29, command.label, -1, SQLITE_TRANSIENT)
             sqlite3_step(stmt)
         }
         sqlite3_finalize(stmt)
@@ -966,6 +423,20 @@ class Database {
         return commands
     }
 
+    func getCommandById(_ id: String) -> Command? {
+        let sql = "SELECT * FROM commands WHERE id = ?"
+        var stmt: OpaquePointer?
+        var result: Command?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, id, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                result = parseCommand(stmt)
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
     private func parseCommand(_ stmt: OpaquePointer?) -> Command? {
         guard let stmt = stmt,
               let idStr = sqlite3_column_text(stmt, 1) else { return nil }
@@ -973,7 +444,8 @@ class Database {
         let seq = Int(sqlite3_column_int(stmt, 0))
         let id = String(cString: idStr)
         let groupSeq = sqlite3_column_type(stmt, 2) != SQLITE_NULL ? Int(sqlite3_column_int(stmt, 2)) : nil
-        let title = sqlite3_column_text(stmt, 3).map { String(cString: $0) } ?? ""
+        // 컬럼 29(label)에서 읽기
+        let label = sqlite3_column_text(stmt, 29).map { String(cString: $0) } ?? ""
         let commandStr = sqlite3_column_text(stmt, 4).map { String(cString: $0) } ?? ""
         let execTypeStr = sqlite3_column_text(stmt, 5).map { String(cString: $0) } ?? "terminal"
         let terminalStr = sqlite3_column_text(stmt, 6).map { String(cString: $0) } ?? "iterm2"
@@ -999,7 +471,6 @@ class Database {
         let lastStatusCode = sqlite3_column_type(stmt, 26) != SQLITE_NULL ? Int(sqlite3_column_int(stmt, 26)) : nil
         let lastOutput = sqlite3_column_text(stmt, 27).map { String(cString: $0) }
         let lastExecutedAtStr = sqlite3_column_text(stmt, 28).map { String(cString: $0) }
-        let label = sqlite3_column_text(stmt, 29).map { String(cString: $0) }
 
         let scheduleDate = scheduleDateStr.flatMap { ISO8601DateFormatter().date(from: $0) }
         let lastExecutedAt = lastExecutedAtStr.flatMap { ISO8601DateFormatter().date(from: $0) }
@@ -1008,7 +479,7 @@ class Database {
             seq: seq,
             id: id,
             groupSeq: groupSeq,
-            title: title,
+            label: label,
             command: commandStr,
             executionType: ExecutionType(rawValue: execTypeStr) ?? .terminal,
             terminalApp: TerminalApp(rawValue: terminalStr) ?? .iterm2,
@@ -1025,7 +496,6 @@ class Database {
             acknowledged: acknowledged,
             isInTrash: isInTrash,
             isFavorite: isFavorite,
-            label: label,
             url: url,
             httpMethod: HTTPMethod(rawValue: httpMethodStr) ?? .get,
             headers: decodeDict(headersStr),
@@ -1052,8 +522,9 @@ class Database {
 
     func addHistory(_ item: HistoryItem) {
         let sql = """
-        INSERT INTO history (id, timestamp, title, command, type, output, count, end_timestamp, command_seq, first_executed_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO history (id, timestamp, title, command, type, output, count, end_timestamp, command_seq, first_executed_at,
+                            request_url, request_method, request_headers, request_body, request_query_params, status_code, is_success)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         var stmt: OpaquePointer?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
@@ -1083,6 +554,42 @@ class Database {
             } else {
                 sqlite3_bind_null(stmt, 10)
             }
+            // API 요청 정보
+            if let url = item.requestUrl {
+                sqlite3_bind_text(stmt, 11, url, -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 11)
+            }
+            if let method = item.requestMethod {
+                sqlite3_bind_text(stmt, 12, method, -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 12)
+            }
+            if let headers = item.requestHeaders {
+                sqlite3_bind_text(stmt, 13, headers, -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 13)
+            }
+            if let body = item.requestBody {
+                sqlite3_bind_text(stmt, 14, body, -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 14)
+            }
+            if let params = item.requestQueryParams {
+                sqlite3_bind_text(stmt, 15, params, -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 15)
+            }
+            if let code = item.statusCode {
+                sqlite3_bind_int(stmt, 16, Int32(code))
+            } else {
+                sqlite3_bind_null(stmt, 16)
+            }
+            if let success = item.isSuccess {
+                sqlite3_bind_int(stmt, 17, success ? 1 : 0)
+            } else {
+                sqlite3_bind_null(stmt, 17)
+            }
             sqlite3_step(stmt)
         }
         sqlite3_finalize(stmt)
@@ -1103,6 +610,17 @@ class Database {
             }
             sqlite3_bind_text(stmt, 3, ISO8601DateFormatter().string(from: item.timestamp), -1, SQLITE_TRANSIENT)
             sqlite3_bind_text(stmt, 4, item.id, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    func updateHistoryOutput(id: String, output: String) {
+        let sql = "UPDATE history SET output = ? WHERE id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, output, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, id, -1, SQLITE_TRANSIENT)
             sqlite3_step(stmt)
         }
         sqlite3_finalize(stmt)
@@ -1236,6 +754,15 @@ class Database {
         let firstExecStr = sqlite3_column_text(stmt, 10).map { String(cString: $0) }
         let deletedAtStr = sqlite3_column_text(stmt, 11).map { String(cString: $0) }
 
+        // API 요청 정보 (새 컬럼)
+        let requestUrl = sqlite3_column_text(stmt, 12).map { String(cString: $0) }
+        let requestMethod = sqlite3_column_text(stmt, 13).map { String(cString: $0) }
+        let requestHeaders = sqlite3_column_text(stmt, 14).map { String(cString: $0) }
+        let requestBody = sqlite3_column_text(stmt, 15).map { String(cString: $0) }
+        let requestQueryParams = sqlite3_column_text(stmt, 16).map { String(cString: $0) }
+        let statusCode = sqlite3_column_type(stmt, 17) != SQLITE_NULL ? Int(sqlite3_column_int(stmt, 17)) : nil
+        let isSuccess = sqlite3_column_type(stmt, 18) != SQLITE_NULL ? (sqlite3_column_int(stmt, 18) == 1) : nil
+
         let endTimestamp = endTsStr.flatMap { ISO8601DateFormatter().date(from: $0) }
         let firstExecutedAt = firstExecStr.flatMap { ISO8601DateFormatter().date(from: $0) }
         let deletedAt = deletedAtStr.flatMap { ISO8601DateFormatter().date(from: $0) }
@@ -1250,7 +777,14 @@ class Database {
             output: output,
             count: count,
             endTimestamp: endTimestamp,
-            commandSeq: commandSeq
+            commandSeq: commandSeq,
+            requestUrl: requestUrl,
+            requestMethod: requestMethod,
+            requestHeaders: requestHeaders,
+            requestBody: requestBody,
+            requestQueryParams: requestQueryParams,
+            statusCode: statusCode,
+            isSuccess: isSuccess
         )
         item.firstExecutedAt = firstExecutedAt
         item.deletedAt = deletedAt
@@ -1686,10 +1220,10 @@ class Database {
     // MARK: - Environments
 
     func saveEnvironments(_ environments: [APIEnvironment]) {
-        executeStatements("DELETE FROM environments")
+        // DELETE 제거 - INSERT OR REPLACE로 upsert
         for (index, env) in environments.enumerated() {
             let sql = """
-            INSERT INTO environments (id, name, color, variables, sort_order)
+            INSERT OR REPLACE INTO environments (id, name, color, variables, sort_order)
             VALUES (?, ?, ?, ?, ?)
             """
             var stmt: OpaquePointer?
@@ -1751,17 +1285,7 @@ class Database {
         sqlite3_finalize(stmt)
     }
 
-    func deleteEnvironment(_ id: UUID) {
-        let sql = "DELETE FROM environments WHERE id = ?"
-        var stmt: OpaquePointer?
-        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
-            sqlite3_bind_text(stmt, 1, id.uuidString, -1, SQLITE_TRANSIENT)
-            sqlite3_step(stmt)
-        }
-        sqlite3_finalize(stmt)
-    }
-
-    // MARK: - Migration
+    // MARK: - JSON Migration Check
 
     func needsMigration() -> Bool {
         let configDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".command_bar")
@@ -2352,6 +1876,34 @@ class Database {
         return getVariableIdByLabel(label) != nil
     }
 
+    /// 변수 라벨 업데이트
+    func updateVariableLabel(id: String, label: String?) {
+        let sql = "UPDATE variables SET label = ? WHERE id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            if let label = label {
+                sqlite3_bind_text(stmt, 1, label, -1, SQLITE_TRANSIENT)
+            } else {
+                sqlite3_bind_null(stmt, 1)
+            }
+            sqlite3_bind_text(stmt, 2, id, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
+    /// 변수 값 업데이트
+    func updateVariableValue(id: String, value: String) {
+        let sql = "UPDATE variables SET value = ? WHERE id = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, value, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, id, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
     /// 모든 변수 라벨 목록 조회
     func getAllVariableLabels() -> [String] {
         var result: [String] = []
@@ -2452,13 +2004,20 @@ class Database {
         sqlite3_finalize(stmt)
     }
 
-    /// 라벨로 명령어 ID 조회
+    /// 명령어 라벨 업데이트 (alias)
+    func updateCommandLabel(id: String, label: String?) {
+        setCommandLabel(commandId: id, label: label)
+    }
+
+    /// 라벨 또는 제목으로 명령어 ID 조회
     func getCommandIdByLabel(_ label: String) -> String? {
-        let sql = "SELECT id FROM commands WHERE label = ?"
+        // 먼저 label에서 찾고, 없으면 title에서 찾기
+        let sql = "SELECT id FROM commands WHERE label = ? OR title = ? LIMIT 1"
         var stmt: OpaquePointer?
         var result: String?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
             sqlite3_bind_text(stmt, 1, label, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, label, -1, SQLITE_TRANSIENT)
             if sqlite3_step(stmt) == SQLITE_ROW {
                 if let idCStr = sqlite3_column_text(stmt, 0) {
                     result = String(cString: idCStr)
@@ -2469,16 +2028,36 @@ class Database {
         return result
     }
 
-    /// ID로 명령어 라벨 조회
+    /// ID로 명령어 라벨 조회 (label이 없으면 title을 fallback으로 사용)
     func getCommandLabelById(_ commandId: String) -> String? {
-        let sql = "SELECT label FROM commands WHERE id = ?"
+        let sql = "SELECT label, title FROM commands WHERE id = ?"
         var stmt: OpaquePointer?
         var result: String?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
             sqlite3_bind_text(stmt, 1, commandId, -1, SQLITE_TRANSIENT)
             if sqlite3_step(stmt) == SQLITE_ROW {
+                // label이 있으면 label 사용, 없으면 title을 fallback으로 사용
                 if let labelCStr = sqlite3_column_text(stmt, 0) {
                     result = String(cString: labelCStr)
+                } else if let titleCStr = sqlite3_column_text(stmt, 1) {
+                    result = String(cString: titleCStr)
+                }
+            }
+        }
+        sqlite3_finalize(stmt)
+        return result
+    }
+
+    /// ID로 명령어 lastResponse 조회
+    func getCommandLastResponse(_ commandId: String) -> String? {
+        let sql = "SELECT last_response FROM commands WHERE id = ?"
+        var stmt: OpaquePointer?
+        var result: String?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, commandId, -1, SQLITE_TRANSIENT)
+            if sqlite3_step(stmt) == SQLITE_ROW {
+                if let responseCStr = sqlite3_column_text(stmt, 0) {
+                    result = String(cString: responseCStr)
                 }
             }
         }

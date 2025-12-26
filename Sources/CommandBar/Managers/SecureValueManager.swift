@@ -10,9 +10,11 @@ class SecureValueManager {
 
     private let db = Database.shared
     private let keychainService = "com.commandbar.securekey"
+    private var keyCache: [Int: Data] = [:]  // 키 캐시 (Keychain 접근 최소화)
 
     private init() {
         ensureActiveKey()
+        preloadKeys()  // 앱 시작 시 키 미리 로드
     }
 
     // MARK: - 초기화
@@ -24,10 +26,35 @@ class SecureValueManager {
         }
     }
 
+    /// 키 미리 로드 (Keychain 접근 지연 방지)
+    private func preloadKeys() {
+        let currentVersion = db.getCurrentKeyVersion()
+        for version in 1...currentVersion {
+            if let key = loadKeyFromKeychain(version: version) {
+                keyCache[version] = key
+            }
+        }
+        logInfo("SecureValueManager: \(keyCache.count)개 키 캐시됨")
+    }
+
     // MARK: - Keychain 키 관리
 
-    /// Keychain에서 키 조회
+    /// 키 조회 (캐시 우선)
     func getKey(version: Int) -> Data? {
+        // 캐시에서 먼저 조회
+        if let cached = keyCache[version] {
+            return cached
+        }
+        // 캐시에 없으면 Keychain에서 로드
+        if let key = loadKeyFromKeychain(version: version) {
+            keyCache[version] = key
+            return key
+        }
+        return nil
+    }
+
+    /// Keychain에서 키 직접 조회
+    private func loadKeyFromKeychain(version: Int) -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
@@ -64,6 +91,9 @@ class SecureValueManager {
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
         SecItemAdd(addQuery as CFDictionary, nil)
+
+        // 캐시에도 추가
+        keyCache[version] = key
     }
 
     /// 새 키 생성 및 등록
@@ -299,6 +329,10 @@ class SecureValueManager {
         let range = NSRange(result.startIndex..., in: result)
         let matches = regex.matches(in: result, range: range).reversed()
 
+        if !matches.isEmpty {
+            logChain("secure 치환 시작: \(matches.count)개 발견")
+        }
+
         for match in matches {
             guard let fullRange = Range(match.range, in: result),
                   let refIdRange = Range(match.range(at: 1), in: result) else {
@@ -306,10 +340,14 @@ class SecureValueManager {
             }
 
             let refId = String(result[refIdRange])
+            let label = Database.shared.getSecureLabelById(refId) ?? refId
 
             // 복호화
             if let plaintext = decrypt(refId: refId) {
+                logChain("secure@\(refId) (\(label)) → ****")
                 result.replaceSubrange(fullRange, with: plaintext)
+            } else {
+                logChain("secure@\(refId) (\(label)) → 복호화 실패")
             }
         }
 
