@@ -11,8 +11,13 @@ struct SettingsView: View {
     @State private var showImportChoice = false
     @State private var pendingImportData: Data?
 
+    @State private var showMasterPasswordInput = false
+    @State private var masterPassword = ""
+    @State private var masterPasswordConfirm = ""
+    @State private var mysqlPassword = ""
+
     private var tabTitles: [String] {
-        [L.settingsGeneral, L.settingsClipboardTab, L.settingsBackup, L.settingsLanguage]
+        [L.settingsGeneral, L.settingsClipboardTab, L.settingsBackup, "동기화", L.settingsLanguage]
     }
 
     var body: some View {
@@ -123,6 +128,15 @@ struct SettingsView: View {
                         Toggle("", isOn: $settings.debugLogging)
                             .labelsHidden()
                     }
+                    SettingDivider()
+                    // 패스워드 설정
+                    PasswordSettingRow(
+                        showPasswordInput: $showMasterPasswordInput,
+                        masterPassword: $masterPassword,
+                        masterPasswordConfirm: $masterPasswordConfirm,
+                        alertMessage: $alertMessage,
+                        showAlert: $showAlert
+                    )
                 } else if selectedTab == 1 {
                     // 클립보드 설정
                     SettingRow(label: L.settingsNotesFolderName) {
@@ -138,6 +152,13 @@ struct SettingsView: View {
                             Button(L.settingsImportFile) { loadFromFile() }
                         }
                     }
+                } else if selectedTab == 3 {
+                    // 클라우드 동기화 설정
+                    CloudSyncSettingsSection(
+                        mysqlPassword: $mysqlPassword,
+                        alertMessage: $alertMessage,
+                        showAlert: $showAlert
+                    )
                 } else {
                     // 언어 설정
                     SettingRow(label: L.settingsLanguage) {
@@ -534,5 +555,187 @@ class ClickableTextField: NSTextField {
 
     override func mouseDown(with event: NSEvent) {
         onMouseDown?()
+    }
+}
+
+// MARK: - 클라우드 동기화 설정
+
+struct CloudSyncSettingsSection: View {
+    @Binding var mysqlPassword: String
+    @Binding var alertMessage: String
+    @Binding var showAlert: Bool
+
+    @State private var mysqlHost: String = ""
+    @State private var mysqlPort: String = "3306"
+    @State private var mysqlDatabase: String = ""
+    @State private var mysqlUser: String = ""
+
+    private let keyService = KeyManagementService.shared
+    private let syncService = SyncService.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // MySQL 연결 설정
+            VStack(alignment: .leading, spacing: 0) {
+                Text("MySQL 연결")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 8)
+
+                SettingRow(label: "호스트") {
+                    TextField("예: localhost", text: $mysqlHost)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 180)
+                        .onAppear { mysqlHost = syncService.mysqlHost }
+                        .onChange(of: mysqlHost) { _, new in syncService.mysqlHost = new }
+                }
+
+                SettingRow(label: "포트") {
+                    TextField("3306", text: $mysqlPort)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                        .onAppear { mysqlPort = String(syncService.mysqlPort) }
+                        .onChange(of: mysqlPort) { _, new in
+                            if let port = Int(new) {
+                                syncService.mysqlPort = port
+                            }
+                        }
+                }
+
+                SettingRow(label: "데이터베이스") {
+                    TextField("commandbar", text: $mysqlDatabase)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 180)
+                        .onAppear { mysqlDatabase = syncService.mysqlDatabase }
+                        .onChange(of: mysqlDatabase) { _, new in syncService.mysqlDatabase = new }
+                }
+
+                SettingRow(label: "사용자") {
+                    TextField("root", text: $mysqlUser)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 180)
+                        .onAppear { mysqlUser = syncService.mysqlUser }
+                        .onChange(of: mysqlUser) { _, new in syncService.mysqlUser = new }
+                }
+
+                SettingRow(label: "비밀번호") {
+                    SecureField("세션 중 메모리만", text: $mysqlPassword)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 180)
+                        .onChange(of: mysqlPassword) { _, new in
+                            syncService.setMySQLPassword(new)
+                        }
+                }
+                SettingDivider()
+            }
+
+            // 동기화 버튼
+            SettingRow(label: "동기화") {
+                HStack(spacing: 8) {
+                    Button("지금 동기화") {
+                        performSync()
+                    }
+                    .disabled(!keyService.isCloudUnlocked || !syncService.isConfigured)
+
+                    if !keyService.isCloudUnlocked {
+                        Text("패스워드 필요")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    } else if !syncService.isConfigured {
+                        Text("MySQL 설정 필요")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
+        }
+    }
+
+    func performSync() {
+        Task {
+            let result = await syncService.sync()
+            await MainActor.run {
+                switch result {
+                case .success(let syncResult):
+                    alertMessage = "동기화 완료: \(syncResult.uploaded)개 업로드, \(syncResult.downloaded)개 다운로드"
+                case .failure(let error):
+                    alertMessage = error.localizedDescription
+                }
+                showAlert = true
+            }
+        }
+    }
+}
+
+// MARK: - 마스터 패스워드 입력 시트
+
+struct MasterPasswordSheet: View {
+    let isSetup: Bool
+    @Binding var password: String
+    @Binding var passwordConfirm: String
+    let onSave: (String) -> Void
+    let onCancel: () -> Void
+
+    var isValid: Bool {
+        if isSetup {
+            return password.count >= 8 && password == passwordConfirm
+        } else {
+            return !password.isEmpty
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(isSetup ? "마스터 패스워드 설정" : "마스터 패스워드 입력")
+                .font(.headline)
+                .padding()
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 12) {
+                if isSetup {
+                    Text("마스터 패스워드는 클라우드 동기화 시 데이터를 암호화하는 데 사용됩니다.\n이 패스워드를 잊으면 동기화된 데이터를 복구할 수 없습니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                SecureField("패스워드", text: $password)
+                    .textFieldStyle(.roundedBorder)
+
+                if isSetup {
+                    SecureField("패스워드 확인", text: $passwordConfirm)
+                        .textFieldStyle(.roundedBorder)
+
+                    if password.count > 0 && password.count < 8 {
+                        Text("최소 8자 이상 입력하세요")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+
+                    if passwordConfirm.count > 0 && password != passwordConfirm {
+                        Text("패스워드가 일치하지 않습니다")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .padding()
+
+            Divider()
+
+            HStack {
+                Button("취소", action: onCancel)
+                    .buttonStyle(HoverTextButtonStyle())
+                Spacer()
+                Button(isSetup ? "설정" : "확인") {
+                    onSave(password)
+                }
+                .buttonStyle(HoverTextButtonStyle())
+                .disabled(!isValid)
+            }
+            .padding()
+        }
+        .frame(width: 350)
     }
 }
