@@ -1,123 +1,223 @@
 import Foundation
 import CryptoKit
 import Security
+import CommonCrypto
 
 /// 민감한 데이터 암호화 관리자
-/// - {secure:평문} 입력 → 암호화 → `secure@refId` 저장
-/// - `secure@refId` 실행 시 → 복호화 → 원래 값
-/// - 로컬: 파일 기반 키 (Keychain 제거)
-/// - 클라우드: 패스워드 기반 키 (동기화용)
+/// - 패스워드 미설정: 평문 저장 (마스킹은 됨)
+/// - 패스워드 설정: PBKDF2 → AES-GCM 암호화
+/// - 패스워드 변경: key_version++, lazy migration
 class SecureValueManager {
     static let shared = SecureValueManager()
 
     private let db = Database.shared
-    private let keyService = KeyManagementService.shared
 
-    // Legacy Keychain (마이그레이션용)
-    private let legacyKeychainService = "com.commandbar.securekey"
-    private var legacyKeyCache: [Int: Data] = [:]
+    // 현재 세션의 암호화 키 (패스워드에서 파생)
+    private var currentKey: SymmetricKey?
+    private var currentKeyVersion: Int = 0
+
+    // PBKDF2 설정
+    private let pbkdf2Iterations: UInt32 = 100_000
+    private let keySize = 32  // 256 bits
 
     private init() {
-        migrateFromKeychainIfNeeded()
+        loadCurrentKeyVersion()
     }
 
-    // MARK: - 마이그레이션 (Keychain → LocalKeyStore)
+    // MARK: - 패스워드 관리
 
-    /// 기존 Keychain 데이터 마이그레이션
-    private func migrateFromKeychainIfNeeded() {
-        // 이미 마이그레이션 완료 여부 확인
-        if db.getBoolSetting("keychain_migrated", defaultValue: false) {
-            logInfo("SecureValueManager: 이미 마이그레이션 완료됨")
-            return
+    /// 패스워드 설정 여부
+    var isPasswordSet: Bool {
+        db.getSetting("encryption_salt") != nil
+    }
+
+    /// 현재 세션에서 인증됨
+    var isUnlocked: Bool {
+        currentKey != nil || !isPasswordSet
+    }
+
+    /// 현재 키 버전 로드
+    private func loadCurrentKeyVersion() {
+        currentKeyVersion = db.getCurrentKeyVersion()
+    }
+
+    /// 패스워드로 잠금 해제
+    func unlock(password: String) -> Bool {
+        guard let saltBase64 = db.getSetting("encryption_salt"),
+              let salt = Data(base64Encoded: saltBase64),
+              let verifierBase64 = db.getSetting("encryption_verifier"),
+              let storedVerifier = Data(base64Encoded: verifierBase64) else {
+            return false
         }
 
-        let allValues = db.getAllSecureValues()
-        if allValues.isEmpty {
-            // 마이그레이션할 데이터 없음
-            db.setBoolSetting("keychain_migrated", value: true)
-            return
+        // 키 파생
+        guard let keyData = deriveKey(password: password, salt: salt) else {
+            return false
         }
 
-        logInfo("SecureValueManager: Keychain에서 마이그레이션 시작 (\(allValues.count)개)")
+        // Verifier 확인
+        let verifier = SHA256.hash(data: keyData)
+        let verifierData = Data(verifier)
 
-        // 기존 Keychain 키들 로드
-        let maxVersion = allValues.map { $0.keyVersion }.max() ?? 0
-        for version in 1...maxVersion {
-            if let key = loadLegacyKeyFromKeychain(version: version) {
-                legacyKeyCache[version] = key
-            }
+        if verifierData == storedVerifier {
+            currentKey = SymmetricKey(data: keyData)
+            loadCurrentKeyVersion()
+            logInfo("SecureValueManager: 패스워드 인증 성공")
+            return true
         }
 
-        // 각 값을 새 로컬 키로 재암호화
-        var migrated = 0
-        for value in allValues {
-            if let plaintext = decryptWithLegacyKey(encrypted: value.encrypted, keyVersion: value.keyVersion) {
-                if let newEncrypted = keyService.encryptLocal(plaintext) {
-                    db.updateSecureValue(id: value.id, encryptedValue: newEncrypted, keyVersion: 0)  // version 0 = 로컬 키
-                    migrated += 1
+        logError("SecureValueManager: 패스워드 불일치")
+        return false
+    }
+
+    /// 패스워드 설정 (최초)
+    func setPassword(_ password: String) -> Bool {
+        guard !isPasswordSet else {
+            logError("SecureValueManager: 이미 패스워드 설정됨")
+            return false
+        }
+
+        // Salt 생성
+        var salt = Data(count: 32)
+        _ = salt.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
+
+        // 키 파생
+        guard let keyData = deriveKey(password: password, salt: salt) else {
+            return false
+        }
+
+        // Verifier 생성
+        let verifier = SHA256.hash(data: keyData)
+        let verifierData = Data(verifier)
+
+        // DB에 저장
+        db.setSetting("encryption_salt", value: salt.base64EncodedString())
+        db.setSetting("encryption_verifier", value: verifierData.base64EncodedString())
+
+        // 키 버전 설정
+        let keyHash = keyData.prefix(16).base64EncodedString()
+        let version = db.getNextKeyVersion()
+        db.insertKeyVersion(version: version, keyHash: keyHash)
+        db.setActiveKeyVersion(version: version)
+
+        currentKey = SymmetricKey(data: keyData)
+        currentKeyVersion = version
+
+        logInfo("SecureValueManager: 패스워드 설정 완료 (v\(version))")
+        return true
+    }
+
+    /// 패스워드 변경
+    func changePassword(oldPassword: String, newPassword: String) -> Bool {
+        // 기존 패스워드 확인
+        guard unlock(password: oldPassword) else {
+            logError("SecureValueManager: 기존 패스워드 불일치")
+            return false
+        }
+
+        let oldKey = currentKey
+
+        // 새 Salt 생성
+        var newSalt = Data(count: 32)
+        _ = newSalt.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
+
+        // 새 키 파생
+        guard let newKeyData = deriveKey(password: newPassword, salt: newSalt) else {
+            return false
+        }
+
+        // 새 Verifier 생성
+        let newVerifier = SHA256.hash(data: newKeyData)
+        let newVerifierData = Data(newVerifier)
+
+        // DB 업데이트
+        db.setSetting("encryption_salt", value: newSalt.base64EncodedString())
+        db.setSetting("encryption_verifier", value: newVerifierData.base64EncodedString())
+
+        // 새 키 버전
+        let keyHash = newKeyData.prefix(16).base64EncodedString()
+        let newVersion = db.getNextKeyVersion()
+        db.insertKeyVersion(version: newVersion, keyHash: keyHash)
+        db.setActiveKeyVersion(version: newVersion)
+
+        let newKey = SymmetricKey(data: newKeyData)
+        let oldVersion = currentKeyVersion
+
+        // 기존 데이터 마이그레이션 (즉시)
+        migrateAllValues(from: oldKey!, oldVersion: oldVersion, to: newKey, newVersion: newVersion)
+
+        currentKey = newKey
+        currentKeyVersion = newVersion
+
+        logInfo("SecureValueManager: 패스워드 변경 완료 (v\(oldVersion) → v\(newVersion))")
+        return true
+    }
+
+    /// 패스워드 초기화 (모든 암호화 데이터 삭제)
+    func resetPassword() {
+        db.deleteSetting("encryption_salt")
+        db.deleteSetting("encryption_verifier")
+        // 모든 secure values 삭제
+        for value in db.getAllSecureValues() {
+            db.deleteSecureValue(id: value.id)
+        }
+        currentKey = nil
+        currentKeyVersion = 0
+        logInfo("SecureValueManager: 패스워드 초기화됨")
+    }
+
+    // MARK: - PBKDF2 키 파생
+
+    private func deriveKey(password: String, salt: Data) -> Data? {
+        guard let passwordData = password.data(using: .utf8) else { return nil }
+
+        var derivedKey = Data(count: keySize)
+
+        let result = derivedKey.withUnsafeMutableBytes { derivedKeyBytes in
+            salt.withUnsafeBytes { saltBytes in
+                passwordData.withUnsafeBytes { passwordBytes in
+                    CCKeyDerivationPBKDF(
+                        CCPBKDFAlgorithm(kCCPBKDF2),
+                        passwordBytes.baseAddress?.assumingMemoryBound(to: Int8.self),
+                        passwordData.count,
+                        saltBytes.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                        salt.count,
+                        CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256),
+                        pbkdf2Iterations,
+                        derivedKeyBytes.baseAddress?.assumingMemoryBound(to: UInt8.self),
+                        keySize
+                    )
                 }
             }
         }
 
-        // Keychain 키 삭제 (선택사항 - 백업용으로 유지해도 됨)
-        // deleteAllLegacyKeys()
-
-        db.setBoolSetting("keychain_migrated", value: true)
-        legacyKeyCache.removeAll()
-
-        logInfo("SecureValueManager: 마이그레이션 완료 (\(migrated)/\(allValues.count))")
-    }
-
-    /// Legacy Keychain에서 키 로드
-    private func loadLegacyKeyFromKeychain(version: Int) -> Data? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: legacyKeychainService,
-            kSecAttrAccount as String: "v\(version)",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        if status == errSecSuccess, let data = result as? Data {
-            return data
-        }
-        return nil
-    }
-
-    /// Legacy 키로 복호화
-    private func decryptWithLegacyKey(encrypted: String, keyVersion: Int) -> String? {
-        guard let keyData = legacyKeyCache[keyVersion],
-              let encryptedData = Data(base64Encoded: encrypted) else {
-            return nil
-        }
-
-        let key = SymmetricKey(data: keyData)
-
-        do {
-            let sealedBox = try AES.GCM.SealedBox(combined: encryptedData)
-            let decryptedData = try AES.GCM.open(sealedBox, using: key)
-            return String(data: decryptedData, encoding: .utf8)
-        } catch {
-            logError("SecureValueManager: Legacy 복호화 실패 - \(error)")
-            return nil
-        }
+        return result == kCCSuccess ? derivedKey : nil
     }
 
     // MARK: - 암호화/복호화
 
     /// 평문 암호화
-    /// - Returns: (참조 ID, 암호화된 값)
-    func encrypt(_ plaintext: String) -> (refId: String, encrypted: String)? {
-        guard let encrypted = keyService.encryptLocal(plaintext) else {
-            logError("SecureValueManager: 암호화 실패")
-            return nil
-        }
-
+    func encrypt(_ plaintext: String) -> (refId: String, encrypted: String, keyVersion: Int)? {
         let refId = db.generateSecureId()
-        return (refId, encrypted)
+
+        if let key = currentKey {
+            // 패스워드 있음 → 암호화
+            guard let plaintextData = plaintext.data(using: .utf8) else { return nil }
+
+            do {
+                let sealedBox = try AES.GCM.seal(plaintextData, using: key)
+                guard let combined = sealedBox.combined else { return nil }
+                let encrypted = combined.base64EncodedString()
+                return (refId, encrypted, currentKeyVersion)
+            } catch {
+                logError("SecureValueManager: 암호화 실패 - \(error)")
+                return nil
+            }
+        } else {
+            // 패스워드 없음 → 평문 (base64)
+            let encoded = Data(plaintext.utf8).base64EncodedString()
+            return (refId, encoded, 0)  // version 0 = 평문
+        }
     }
 
     /// 암호화된 값 복호화
@@ -127,19 +227,71 @@ class SecureValueManager {
             return nil
         }
 
-        // keyVersion 0 = 로컬 키, 그 외 = legacy (마이그레이션 안 된 경우)
-        if stored.keyVersion == 0 {
-            return keyService.decryptLocal(stored.encrypted)
-        } else {
-            // Legacy fallback (마이그레이션 안 된 경우)
-            if legacyKeyCache.isEmpty {
-                // 키 다시 로드 시도
-                if let key = loadLegacyKeyFromKeychain(version: stored.keyVersion) {
-                    legacyKeyCache[stored.keyVersion] = key
-                }
-            }
-            return decryptWithLegacyKey(encrypted: stored.encrypted, keyVersion: stored.keyVersion)
+        return decryptValue(encrypted: stored.encrypted, keyVersion: stored.keyVersion)
+    }
+
+    /// 값 복호화 (내부용)
+    private func decryptValue(encrypted: String, keyVersion: Int) -> String? {
+        guard let encryptedData = Data(base64Encoded: encrypted) else {
+            return nil
         }
+
+        if keyVersion == 0 {
+            // 평문 (base64)
+            return String(data: encryptedData, encoding: .utf8)
+        }
+
+        guard let key = currentKey else {
+            logError("SecureValueManager: 키 없음 (잠금 상태)")
+            return nil
+        }
+
+        // Lazy migration: 현재 버전과 다르면 재암호화
+        // (여기서는 복호화만, 마이그레이션은 별도)
+
+        do {
+            let sealedBox = try AES.GCM.SealedBox(combined: encryptedData)
+            let decryptedData = try AES.GCM.open(sealedBox, using: key)
+            return String(data: decryptedData, encoding: .utf8)
+        } catch {
+            logError("SecureValueManager: 복호화 실패 - \(error)")
+            return nil
+        }
+    }
+
+    // MARK: - 마이그레이션
+
+    /// 모든 값을 새 키로 마이그레이션
+    private func migrateAllValues(from oldKey: SymmetricKey, oldVersion: Int, to newKey: SymmetricKey, newVersion: Int) {
+        let allValues = db.getAllSecureValues()
+        var migrated = 0
+
+        for value in allValues {
+            // 평문(v0)이거나 현재 버전이면 스킵
+            if value.keyVersion == 0 || value.keyVersion == newVersion {
+                continue
+            }
+
+            // 복호화
+            guard let encryptedData = Data(base64Encoded: value.encrypted) else { continue }
+
+            do {
+                let sealedBox = try AES.GCM.SealedBox(combined: encryptedData)
+                let decryptedData = try AES.GCM.open(sealedBox, using: oldKey)
+
+                // 새 키로 재암호화
+                let newSealedBox = try AES.GCM.seal(decryptedData, using: newKey)
+                guard let newCombined = newSealedBox.combined else { continue }
+
+                let newEncrypted = newCombined.base64EncodedString()
+                db.updateSecureValue(id: value.id, encryptedValue: newEncrypted, keyVersion: newVersion)
+                migrated += 1
+            } catch {
+                logError("SecureValueManager: 마이그레이션 실패 (\(value.id)) - \(error)")
+            }
+        }
+
+        logInfo("SecureValueManager: \(migrated)개 마이그레이션 완료")
     }
 
     // MARK: - 텍스트 처리
@@ -185,7 +337,7 @@ class SecureValueManager {
                     db.insertSecureValue(
                         id: encrypted.refId,
                         encryptedValue: encrypted.encrypted,
-                        keyVersion: 0,  // 로컬 키
+                        keyVersion: encrypted.keyVersion,
                         label: label
                     )
                     result.replaceSubrange(fullRange, with: "`secure@\(encrypted.refId)`")
@@ -235,7 +387,7 @@ class SecureValueManager {
                     db.insertSecureValue(
                         id: encrypted.refId,
                         encryptedValue: encrypted.encrypted,
-                        keyVersion: 0  // 로컬 키
+                        keyVersion: encrypted.keyVersion
                     )
                     result.replaceSubrange(fullRange, with: "`secure@\(encrypted.refId)`")
                 }
@@ -284,11 +436,11 @@ class SecureValueManager {
 
     /// 암호화된 값 수정 (새 평문으로 재암호화)
     func updateValue(refId: String, newPlaintext: String) -> Bool {
-        guard let encrypted = keyService.encryptLocal(newPlaintext) else {
+        guard let encrypted = encrypt(newPlaintext) else {
             return false
         }
 
-        db.updateSecureValue(id: refId, encryptedValue: encrypted, keyVersion: 0)
+        db.updateSecureValue(id: refId, encryptedValue: encrypted.encrypted, keyVersion: encrypted.keyVersion)
         return true
     }
 
@@ -305,28 +457,5 @@ class SecureValueManager {
     /// 모든 라벨 목록
     func getAllLabels() -> [String] {
         return db.getAllSecureLabels()
-    }
-
-    // MARK: - 클라우드 동기화용
-
-    /// 클라우드용으로 암호화
-    func encryptForCloud(_ plaintext: String) -> String? {
-        return keyService.encryptForCloud(plaintext)
-    }
-
-    /// 클라우드에서 복호화
-    func decryptFromCloud(_ ciphertext: String) -> String? {
-        return keyService.decryptFromCloud(ciphertext)
-    }
-
-    /// 로컬 → 클라우드용 재암호화
-    func reencryptForCloud(refId: String) -> String? {
-        guard let stored = db.getSecureValue(id: refId) else { return nil }
-        return keyService.reencryptForCloud(stored.encrypted)
-    }
-
-    /// 클라우드 → 로컬용 재암호화
-    func reencryptFromCloud(_ cloudCiphertext: String) -> String? {
-        return keyService.reencryptForLocal(cloudCiphertext)
     }
 }
