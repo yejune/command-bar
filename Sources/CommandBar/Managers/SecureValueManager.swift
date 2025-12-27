@@ -3,61 +3,76 @@ import CryptoKit
 import Security
 
 /// 민감한 데이터 암호화 관리자
-/// - {secure:평문} 입력 → 암호화 → {secure:refId} 저장
-/// - {secure:refId} 실행 시 → 복호화 → 원래 값
+/// - {secure:평문} 입력 → 암호화 → `secure@refId` 저장
+/// - `secure@refId` 실행 시 → 복호화 → 원래 값
+/// - 로컬: 파일 기반 키 (Keychain 제거)
+/// - 클라우드: 패스워드 기반 키 (동기화용)
 class SecureValueManager {
     static let shared = SecureValueManager()
 
     private let db = Database.shared
-    private let keychainService = "com.commandbar.securekey"
-    private var keyCache: [Int: Data] = [:]  // 키 캐시 (Keychain 접근 최소화)
+    private let keyService = KeyManagementService.shared
+
+    // Legacy Keychain (마이그레이션용)
+    private let legacyKeychainService = "com.commandbar.securekey"
+    private var legacyKeyCache: [Int: Data] = [:]
 
     private init() {
-        ensureActiveKey()
-        preloadKeys()  // 앱 시작 시 키 미리 로드
+        migrateFromKeychainIfNeeded()
     }
 
-    // MARK: - 초기화
+    // MARK: - 마이그레이션 (Keychain → LocalKeyStore)
 
-    /// 활성 키가 없으면 새로 생성
-    private func ensureActiveKey() {
-        if db.getCurrentKeyVersion() == 0 {
-            let _ = generateNewKey()
+    /// 기존 Keychain 데이터 마이그레이션
+    private func migrateFromKeychainIfNeeded() {
+        // 이미 마이그레이션 완료 여부 확인
+        if db.getBoolSetting("keychain_migrated", defaultValue: false) {
+            logInfo("SecureValueManager: 이미 마이그레이션 완료됨")
+            return
         }
-    }
 
-    /// 키 미리 로드 (Keychain 접근 지연 방지)
-    private func preloadKeys() {
-        let currentVersion = db.getCurrentKeyVersion()
-        for version in 1...currentVersion {
-            if let key = loadKeyFromKeychain(version: version) {
-                keyCache[version] = key
+        let allValues = db.getAllSecureValues()
+        if allValues.isEmpty {
+            // 마이그레이션할 데이터 없음
+            db.setBoolSetting("keychain_migrated", value: true)
+            return
+        }
+
+        logInfo("SecureValueManager: Keychain에서 마이그레이션 시작 (\(allValues.count)개)")
+
+        // 기존 Keychain 키들 로드
+        let maxVersion = allValues.map { $0.keyVersion }.max() ?? 0
+        for version in 1...maxVersion {
+            if let key = loadLegacyKeyFromKeychain(version: version) {
+                legacyKeyCache[version] = key
             }
         }
-        logInfo("SecureValueManager: \(keyCache.count)개 키 캐시됨")
+
+        // 각 값을 새 로컬 키로 재암호화
+        var migrated = 0
+        for value in allValues {
+            if let plaintext = decryptWithLegacyKey(encrypted: value.encrypted, keyVersion: value.keyVersion) {
+                if let newEncrypted = keyService.encryptLocal(plaintext) {
+                    db.updateSecureValue(id: value.id, encryptedValue: newEncrypted, keyVersion: 0)  // version 0 = 로컬 키
+                    migrated += 1
+                }
+            }
+        }
+
+        // Keychain 키 삭제 (선택사항 - 백업용으로 유지해도 됨)
+        // deleteAllLegacyKeys()
+
+        db.setBoolSetting("keychain_migrated", value: true)
+        legacyKeyCache.removeAll()
+
+        logInfo("SecureValueManager: 마이그레이션 완료 (\(migrated)/\(allValues.count))")
     }
 
-    // MARK: - Keychain 키 관리
-
-    /// 키 조회 (캐시 우선)
-    func getKey(version: Int) -> Data? {
-        // 캐시에서 먼저 조회
-        if let cached = keyCache[version] {
-            return cached
-        }
-        // 캐시에 없으면 Keychain에서 로드
-        if let key = loadKeyFromKeychain(version: version) {
-            keyCache[version] = key
-            return key
-        }
-        return nil
-    }
-
-    /// Keychain에서 키 직접 조회
-    private func loadKeyFromKeychain(version: Int) -> Data? {
+    /// Legacy Keychain에서 키 로드
+    private func loadLegacyKeyFromKeychain(version: Int) -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
+            kSecAttrService as String: legacyKeychainService,
             kSecAttrAccount as String: "v\(version)",
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
@@ -72,103 +87,10 @@ class SecureValueManager {
         return nil
     }
 
-    /// Keychain에 키 저장
-    func saveKey(_ key: Data, version: Int) {
-        // 기존 키 삭제 (있으면)
-        let deleteQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: "v\(version)"
-        ]
-        SecItemDelete(deleteQuery as CFDictionary)
-
-        // 새 키 저장
-        let addQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: "v\(version)",
-            kSecValueData as String: key,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        ]
-        SecItemAdd(addQuery as CFDictionary, nil)
-
-        // 캐시에도 추가
-        keyCache[version] = key
-    }
-
-    /// 새 키 생성 및 등록
-    @discardableResult
-    func generateNewKey() -> Int {
-        // 256비트 랜덤 키 생성
-        let key = SymmetricKey(size: .bits256)
-        let keyData = key.withUnsafeBytes { Data($0) }
-
-        // 다음 버전 번호
-        let version = db.getNextKeyVersion()
-
-        // Keychain에 저장
-        saveKey(keyData, version: version)
-
-        // 키 해시 생성 (처음 16바이트)
-        let keyHash = keyData.prefix(16).base64EncodedString()
-
-        // DB에 버전 등록 및 활성화
-        db.insertKeyVersion(version: version, keyHash: keyHash)
-        db.setActiveKeyVersion(version: version)
-
-        return version
-    }
-
-    // MARK: - 암호화/복호화
-
-    /// 평문 암호화
-    /// - Returns: (참조 ID, 암호화된 값, 키 버전)
-    func encrypt(_ plaintext: String) -> (refId: String, encrypted: String, keyVersion: Int)? {
-        let keyVersion = db.getCurrentKeyVersion()
-        guard keyVersion > 0,
-              let keyData = getKey(version: keyVersion) else {
-            print("SecureValueManager: 활성 키 없음")
-            return nil
-        }
-
-        let key = SymmetricKey(data: keyData)
-
-        guard let plaintextData = plaintext.data(using: .utf8) else {
-            return nil
-        }
-
-        do {
-            // AES-GCM 암호화 (nonce는 자동 생성)
-            let sealedBox = try AES.GCM.seal(plaintextData, using: key)
-
-            // nonce + ciphertext + tag 결합
-            guard let combined = sealedBox.combined else {
-                return nil
-            }
-
-            let encrypted = combined.base64EncodedString()
-            let refId = db.generateSecureId()
-
-            return (refId, encrypted, keyVersion)
-        } catch {
-            print("SecureValueManager: 암호화 실패 - \(error)")
-            return nil
-        }
-    }
-
-    /// 암호화된 값 복호화
-    func decrypt(refId: String) -> String? {
-        guard let stored = db.getSecureValue(id: refId) else {
-            print("SecureValueManager: refId \(refId) 없음")
-            return nil
-        }
-
-        guard let keyData = getKey(version: stored.keyVersion) else {
-            print("SecureValueManager: 키 버전 \(stored.keyVersion) 없음")
-            return nil
-        }
-
-        guard let encryptedData = Data(base64Encoded: stored.encrypted) else {
+    /// Legacy 키로 복호화
+    private func decryptWithLegacyKey(encrypted: String, keyVersion: Int) -> String? {
+        guard let keyData = legacyKeyCache[keyVersion],
+              let encryptedData = Data(base64Encoded: encrypted) else {
             return nil
         }
 
@@ -177,39 +99,46 @@ class SecureValueManager {
         do {
             let sealedBox = try AES.GCM.SealedBox(combined: encryptedData)
             let decryptedData = try AES.GCM.open(sealedBox, using: key)
-            let plaintext = String(data: decryptedData, encoding: .utf8)
-
-            // Lazy migration: 구버전 키면 신버전으로 재암호화
-            let currentVersion = db.getCurrentKeyVersion()
-            if stored.keyVersion < currentVersion {
-                migrateValue(refId: refId, plaintext: plaintext ?? "", toVersion: currentVersion)
-            }
-
-            return plaintext
+            return String(data: decryptedData, encoding: .utf8)
         } catch {
-            print("SecureValueManager: 복호화 실패 - \(error)")
+            logError("SecureValueManager: Legacy 복호화 실패 - \(error)")
             return nil
         }
     }
 
-    /// 값을 새 키 버전으로 마이그레이션
-    private func migrateValue(refId: String, plaintext: String, toVersion: Int) {
-        guard let keyData = getKey(version: toVersion),
-              let plaintextData = plaintext.data(using: .utf8) else {
-            return
+    // MARK: - 암호화/복호화
+
+    /// 평문 암호화
+    /// - Returns: (참조 ID, 암호화된 값)
+    func encrypt(_ plaintext: String) -> (refId: String, encrypted: String)? {
+        guard let encrypted = keyService.encryptLocal(plaintext) else {
+            logError("SecureValueManager: 암호화 실패")
+            return nil
         }
 
-        let key = SymmetricKey(data: keyData)
+        let refId = db.generateSecureId()
+        return (refId, encrypted)
+    }
 
-        do {
-            let sealedBox = try AES.GCM.seal(plaintextData, using: key)
-            guard let combined = sealedBox.combined else { return }
+    /// 암호화된 값 복호화
+    func decrypt(refId: String) -> String? {
+        guard let stored = db.getSecureValue(id: refId) else {
+            logError("SecureValueManager: refId \(refId) 없음")
+            return nil
+        }
 
-            let encrypted = combined.base64EncodedString()
-            db.updateSecureValue(id: refId, encryptedValue: encrypted, keyVersion: toVersion)
-            print("SecureValueManager: \(refId) 마이그레이션 완료 → v\(toVersion)")
-        } catch {
-            print("SecureValueManager: 마이그레이션 실패 - \(error)")
+        // keyVersion 0 = 로컬 키, 그 외 = legacy (마이그레이션 안 된 경우)
+        if stored.keyVersion == 0 {
+            return keyService.decryptLocal(stored.encrypted)
+        } else {
+            // Legacy fallback (마이그레이션 안 된 경우)
+            if legacyKeyCache.isEmpty {
+                // 키 다시 로드 시도
+                if let key = loadLegacyKeyFromKeychain(version: stored.keyVersion) {
+                    legacyKeyCache[stored.keyVersion] = key
+                }
+            }
+            return decryptWithLegacyKey(encrypted: stored.encrypted, keyVersion: stored.keyVersion)
         }
     }
 
@@ -223,9 +152,9 @@ class SecureValueManager {
     }
 
     /// 저장 전 처리:
-    /// - {secure:값}, [secure:값] → 암호화 → `secure:refId`
-    /// - {secure#라벨:값}, [secure#라벨:값] → 암호화 + 라벨 저장 → `secure:라벨`
-    /// - {secure#라벨}, [secure#라벨] → 기존 라벨 참조 → `secure:라벨`
+    /// - {secure:값}, [secure:값] → 암호화 → `secure@refId`
+    /// - {secure#라벨:값}, [secure#라벨:값] → 암호화 + 라벨 저장 → `secure@refId`
+    /// - {secure#라벨}, [secure#라벨] → 기존 라벨 참조 → `secure@id`
     func processForSave(_ text: String) -> ProcessResult {
         var result = text
 
@@ -251,15 +180,15 @@ class SecureValueManager {
                     return ProcessResult(text: text, error: "라벨 '\(label)'이(가) 이미 존재합니다.", errorRange: match.range)
                 }
 
-                // 암호화 (ID 생성, 라벨은 별도 저장)
+                // 암호화
                 if let encrypted = encrypt(plaintext) {
                     db.insertSecureValue(
                         id: encrypted.refId,
                         encryptedValue: encrypted.encrypted,
-                        keyVersion: encrypted.keyVersion,
-                        label: label  // 라벨은 별도 저장
+                        keyVersion: 0,  // 로컬 키
+                        label: label
                     )
-                    result.replaceSubrange(fullRange, with: "`secure@\(encrypted.refId)`")  // 저장은 항상 @id
+                    result.replaceSubrange(fullRange, with: "`secure@\(encrypted.refId)`")
                 }
             }
         }
@@ -279,9 +208,8 @@ class SecureValueManager {
 
                 let label = String(result[labelRange])
 
-                // 라벨로 ID 조회
                 if let existingId = db.getSecureIdByLabel(label) {
-                    result.replaceSubrange(fullRange, with: "`secure@\(existingId)`")  // 저장은 항상 @id
+                    result.replaceSubrange(fullRange, with: "`secure@\(existingId)`")
                 } else {
                     return ProcessResult(text: text, error: "라벨 '\(label)'을(를) 찾을 수 없습니다.", errorRange: match.range)
                 }
@@ -307,9 +235,9 @@ class SecureValueManager {
                     db.insertSecureValue(
                         id: encrypted.refId,
                         encryptedValue: encrypted.encrypted,
-                        keyVersion: encrypted.keyVersion
+                        keyVersion: 0  // 로컬 키
                     )
-                    result.replaceSubrange(fullRange, with: "`secure@\(encrypted.refId)`")  // ID는 @
+                    result.replaceSubrange(fullRange, with: "`secure@\(encrypted.refId)`")
                 }
             }
         }
@@ -321,7 +249,6 @@ class SecureValueManager {
     func processForExecution(_ text: String) -> String {
         var result = text
 
-        // `secure@xxx` 패턴 처리
         guard let regex = try? NSRegularExpression(pattern: "`secure@([^`]+)`") else {
             return result
         }
@@ -340,9 +267,8 @@ class SecureValueManager {
             }
 
             let refId = String(result[refIdRange])
-            let label = Database.shared.getSecureLabelById(refId) ?? refId
+            let label = db.getSecureLabelById(refId) ?? refId
 
-            // 복호화
             if let plaintext = decrypt(refId: refId) {
                 logChain("secure@\(refId) (\(label)) → ****")
                 result.replaceSubrange(fullRange, with: plaintext)
@@ -358,15 +284,11 @@ class SecureValueManager {
 
     /// 암호화된 값 수정 (새 평문으로 재암호화)
     func updateValue(refId: String, newPlaintext: String) -> Bool {
-        guard let encrypted = encrypt(newPlaintext) else {
+        guard let encrypted = keyService.encryptLocal(newPlaintext) else {
             return false
         }
 
-        db.updateSecureValue(
-            id: refId,
-            encryptedValue: encrypted.encrypted,
-            keyVersion: encrypted.keyVersion
-        )
+        db.updateSecureValue(id: refId, encryptedValue: encrypted, keyVersion: 0)
         return true
     }
 
@@ -385,31 +307,26 @@ class SecureValueManager {
         return db.getAllSecureLabels()
     }
 
-    // MARK: - 키 로테이션
+    // MARK: - 클라우드 동기화용
 
-    /// 새 키로 교체 (기존 값들은 Lazy migration)
-    func rotateKey() -> Int {
-        return generateNewKey()
+    /// 클라우드용으로 암호화
+    func encryptForCloud(_ plaintext: String) -> String? {
+        return keyService.encryptForCloud(plaintext)
     }
 
-    /// 모든 값을 현재 키로 강제 마이그레이션
-    func migrateAllToCurrentKey() {
-        let currentVersion = db.getCurrentKeyVersion()
-        let allValues = db.getAllSecureValues()
-
-        for value in allValues {
-            if value.keyVersion < currentVersion {
-                if let plaintext = decrypt(refId: value.id) {
-                    migrateValue(refId: value.id, plaintext: plaintext, toVersion: currentVersion)
-                }
-            }
-        }
+    /// 클라우드에서 복호화
+    func decryptFromCloud(_ ciphertext: String) -> String? {
+        return keyService.decryptFromCloud(ciphertext)
     }
 
-    /// 현재 키 버전 정보
-    func getCurrentKeyInfo() -> (version: Int, valueCount: Int) {
-        let version = db.getCurrentKeyVersion()
-        let count = db.getSecureValuesByKeyVersion(version: version).count
-        return (version, count)
+    /// 로컬 → 클라우드용 재암호화
+    func reencryptForCloud(refId: String) -> String? {
+        guard let stored = db.getSecureValue(id: refId) else { return nil }
+        return keyService.reencryptForCloud(stored.encrypted)
+    }
+
+    /// 클라우드 → 로컬용 재암호화
+    func reencryptFromCloud(_ cloudCiphertext: String) -> String? {
+        return keyService.reencryptForLocal(cloudCiphertext)
     }
 }

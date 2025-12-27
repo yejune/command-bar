@@ -1,5 +1,4 @@
 import SwiftUI
-import LocalAuthentication
 
 struct SecureValueItem: Identifiable, Hashable {
     let id: String
@@ -201,31 +200,23 @@ struct SecureListView: View {
     }
 
     func authenticateAndDecrypt(_ item: SecureValueItem) {
-        authenticate { success in
-            if success {
-                if let plaintext = SecureValueManager.shared.decrypt(refId: item.id) {
-                    decryptedValue = plaintext
-                    showDecryptedValue = true
-                } else {
-                    errorMessage = "복호화에 실패했습니다."
-                }
-            }
+        // 로컬 키 기반 - 인증 없이 즉시 복호화
+        if let plaintext = SecureValueManager.shared.decrypt(refId: item.id) {
+            decryptedValue = plaintext
+            showDecryptedValue = true
+        } else {
+            errorMessage = "복호화에 실패했습니다."
         }
     }
 
     func authenticateAndCopyToClipboard(_ item: SecureValueItem) {
-        authenticate { success in
-            if success {
-                if let plaintext = SecureValueManager.shared.decrypt(refId: item.id) {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(plaintext, forType: .string)
-
-                    // 성공 피드백 (선택적)
-                    NSSound.beep()
-                } else {
-                    errorMessage = "복호화에 실패했습니다."
-                }
-            }
+        // 로컬 키 기반 - 인증 없이 즉시 복호화
+        if let plaintext = SecureValueManager.shared.decrypt(refId: item.id) {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(plaintext, forType: .string)
+            NSSound.beep()
+        } else {
+            errorMessage = "복호화에 실패했습니다."
         }
     }
 
@@ -252,40 +243,6 @@ struct SecureListView: View {
         }
     }
 
-    func authenticate(completion: @escaping (Bool) -> Void) {
-        let context = LAContext()
-        var error: NSError?
-
-        // 생체 인증 가능 여부 확인
-        if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            let reason = "암호화된 값을 보려면 인증이 필요합니다"
-
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, authError in
-                DispatchQueue.main.async {
-                    if success {
-                        completion(true)
-                    } else {
-                        if let error = authError as? LAError {
-                            switch error.code {
-                            case .userCancel, .userFallback, .systemCancel:
-                                // 사용자가 취소한 경우
-                                break
-                            default:
-                                errorMessage = "인증에 실패했습니다: \(error.localizedDescription)"
-                            }
-                        }
-                        completion(false)
-                    }
-                }
-            }
-        } else {
-            // 인증 불가능한 경우
-            DispatchQueue.main.async {
-                errorMessage = "이 기기에서 인증을 사용할 수 없습니다."
-                completion(false)
-            }
-        }
-    }
 }
 
 struct SecureValueRow: View {
