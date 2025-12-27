@@ -221,17 +221,20 @@ struct APIResponseView: View {
                         Text(L.apiNoResponse)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .padding()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+                            .padding(.top, 4)
+                        Spacer()
                     } else {
                         OutputTextView(text: formattedBody)
                             .padding(8)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                             .background(Color.gray.opacity(0.1))
                             .cornerRadius(6)
                             .padding(.horizontal)
                     }
                 }
-                .frame(maxHeight: .infinity)
+                .frame(maxHeight: .infinity, alignment: .top)
                 .padding(.bottom, 8)
             }
 
