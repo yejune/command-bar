@@ -23,6 +23,13 @@ struct ContentView: View {
     @State private var registeringClipboardItem: ClipboardItem? = nil
     @State private var apiCommandWithParameters: Command? = nil
 
+    // 패스워드 인증
+    @State private var showPasswordPrompt = false
+    @State private var passwordInput = ""
+    @State private var keepSessionUnlocked = true
+    @State private var pendingCommand: Command? = nil
+    @State private var passwordError = ""
+
     // 휴지통 서브탭 (0: 목록, 1: 히스토리, 2: 클립보드)
     @State private var trashSubTab: Int = 0
 
@@ -781,6 +788,31 @@ struct ContentView: View {
                 executeAPIWithParameters(cmd, values: values)
             }
         }
+        .sheet(isPresented: $showPasswordPrompt) {
+            PasswordPromptView(
+                password: $passwordInput,
+                keepSession: $keepSessionUnlocked,
+                errorMessage: passwordError,
+                onSubmit: {
+                    let secureManager = SecureValueManager.shared
+                    if secureManager.unlock(password: passwordInput) {
+                        passwordInput = ""
+                        showPasswordPrompt = false
+                        if let cmd = pendingCommand {
+                            pendingCommand = nil
+                            executeCommand(cmd)
+                        }
+                    } else {
+                        passwordError = "패스워드가 올바르지 않습니다"
+                    }
+                },
+                onCancel: {
+                    passwordInput = ""
+                    pendingCommand = nil
+                    showPasswordPrompt = false
+                }
+            )
+        }
         .onAppear {
             settings.applyAlwaysOnTop()
             settings.applyBackgroundOpacity()
@@ -840,6 +872,19 @@ struct ContentView: View {
     }
 
     func handleRun(_ cmd: Command) {
+        // 패스워드 설정되어 있고 잠금 상태면 인증 요구
+        let secureManager = SecureValueManager.shared
+        if secureManager.isPasswordSet && !secureManager.isUnlocked {
+            pendingCommand = cmd
+            passwordError = ""
+            showPasswordPrompt = true
+            return
+        }
+
+        executeCommand(cmd)
+    }
+
+    private func executeCommand(_ cmd: Command) {
         if cmd.executionType == .script {
             ScriptExecutionWindowController.show(command: cmd, store: store)
         } else if cmd.executionType == .api {
@@ -1139,5 +1184,58 @@ struct SubtitleBar<Content: View>: View {
         }
         .frame(height: 22)
         .padding(.horizontal, 12)
+    }
+}
+
+// MARK: - 패스워드 입력 프롬프트
+
+struct PasswordPromptView: View {
+    @Binding var password: String
+    @Binding var keepSession: Bool
+    let errorMessage: String
+    let onSubmit: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("패스워드 입력")
+                .font(.headline)
+                .padding()
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("암호화된 데이터에 접근하려면 패스워드를 입력하세요.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                SecureField("패스워드", text: $password)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit(onSubmit)
+
+                if !errorMessage.isEmpty {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+
+                Toggle("세션 동안 잠금 해제 유지", isOn: $keepSession)
+                    .font(.caption)
+            }
+            .padding()
+
+            Divider()
+
+            HStack {
+                Button("취소", action: onCancel)
+                    .buttonStyle(HoverTextButtonStyle())
+                Spacer()
+                Button("확인", action: onSubmit)
+                    .buttonStyle(HoverTextButtonStyle())
+                    .disabled(password.isEmpty)
+            }
+            .padding()
+        }
+        .frame(width: 320)
     }
 }

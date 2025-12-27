@@ -9,7 +9,7 @@ class SyncService {
     static let shared = SyncService()
 
     private let db = Database.shared
-    private let keyService = KeyManagementService.shared
+    private let secureManager = SecureValueManager.shared
 
     // MySQL 연결 정보 (설정에서 로드)
     var mysqlHost: String {
@@ -71,7 +71,7 @@ class SyncService {
 
     /// 로컬 → 클라우드 동기화
     func syncToCloud() async -> Result<SyncResult, SyncError> {
-        guard keyService.isCloudUnlocked else {
+        guard secureManager.isUnlocked else {
             return .failure(.cloudKeyLocked)
         }
 
@@ -86,13 +86,10 @@ class SyncService {
         // 1. 로컬 데이터 수집
         let secureValues = db.getAllSecureValues()
 
-        // 2. 각 데이터를 클라우드 키로 암호화
-        for value in secureValues {
-            // secure 값은 이미 로컬 키로 암호화됨 → 클라우드 키로 재암호화
-            if let reencrypted = keyService.reencryptForCloud(value.encrypted) {
-                // TODO: MySQL에 upsert
-                result.uploaded += 1
-            }
+        // 2. 각 데이터를 업로드 (이미 암호화된 상태)
+        for _ in secureValues {
+            // TODO: MySQL에 upsert
+            result.uploaded += 1
         }
 
         // TODO: 그룹, 명령어 등 다른 데이터 동기화
@@ -104,7 +101,7 @@ class SyncService {
 
     /// 클라우드 → 로컬 동기화
     func syncFromCloud() async -> Result<SyncResult, SyncError> {
-        guard keyService.isCloudUnlocked else {
+        guard secureManager.isUnlocked else {
             return .failure(.cloudKeyLocked)
         }
 
@@ -128,7 +125,7 @@ class SyncService {
 
     /// 양방향 동기화 (충돌 해결 포함)
     func sync() async -> Result<SyncResult, SyncError> {
-        guard keyService.isCloudUnlocked else {
+        guard secureManager.isUnlocked else {
             return .failure(.cloudKeyLocked)
         }
 

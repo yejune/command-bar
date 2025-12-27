@@ -11,9 +11,11 @@ struct SettingsView: View {
     @State private var showImportChoice = false
     @State private var pendingImportData: Data?
 
-    @State private var showMasterPasswordInput = false
-    @State private var masterPassword = ""
-    @State private var masterPasswordConfirm = ""
+    @State private var showPasswordSheet = false
+    @State private var passwordSheetMode: PasswordSheetMode = .setup
+    @State private var currentPassword = ""
+    @State private var newPassword = ""
+    @State private var newPasswordConfirm = ""
     @State private var mysqlPassword = ""
 
     private var tabTitles: [String] {
@@ -130,13 +132,27 @@ struct SettingsView: View {
                     }
                     SettingDivider()
                     // 패스워드 설정
-                    PasswordSettingRow(
-                        showPasswordInput: $showMasterPasswordInput,
-                        masterPassword: $masterPassword,
-                        masterPasswordConfirm: $masterPasswordConfirm,
-                        alertMessage: $alertMessage,
-                        showAlert: $showAlert
-                    )
+                    SettingRow(label: "암호화 패스워드") {
+                        HStack(spacing: 8) {
+                            if SecureValueManager.shared.isPasswordSet {
+                                Button("변경") {
+                                    passwordSheetMode = .change
+                                    currentPassword = ""
+                                    newPassword = ""
+                                    newPasswordConfirm = ""
+                                    showPasswordSheet = true
+                                }
+                            } else {
+                                Button("설정") {
+                                    passwordSheetMode = .setup
+                                    currentPassword = ""
+                                    newPassword = ""
+                                    newPasswordConfirm = ""
+                                    showPasswordSheet = true
+                                }
+                            }
+                        }
+                    }
                 } else if selectedTab == 1 {
                     // 클립보드 설정
                     SettingRow(label: L.settingsNotesFolderName) {
@@ -210,6 +226,36 @@ struct SettingsView: View {
             Button(L.buttonCancel, role: .cancel) {
                 pendingImportData = nil
             }
+        }
+        .sheet(isPresented: $showPasswordSheet) {
+            PasswordSheet(
+                mode: passwordSheetMode,
+                currentPassword: $currentPassword,
+                newPassword: $newPassword,
+                newPasswordConfirm: $newPasswordConfirm,
+                onSave: {
+                    let secureManager = SecureValueManager.shared
+                    switch passwordSheetMode {
+                    case .setup:
+                        if secureManager.setPassword(newPassword) {
+                            alertMessage = "패스워드가 설정되었습니다."
+                        } else {
+                            alertMessage = "패스워드 설정에 실패했습니다."
+                        }
+                    case .change:
+                        if secureManager.changePassword(oldPassword: currentPassword, newPassword: newPassword) {
+                            alertMessage = "패스워드가 변경되었습니다."
+                        } else {
+                            alertMessage = "기존 패스워드가 일치하지 않습니다."
+                        }
+                    }
+                    showPasswordSheet = false
+                    showAlert = true
+                },
+                onCancel: {
+                    showPasswordSheet = false
+                }
+            )
         }
     }
 
@@ -570,7 +616,7 @@ struct CloudSyncSettingsSection: View {
     @State private var mysqlDatabase: String = ""
     @State private var mysqlUser: String = ""
 
-    private let keyService = KeyManagementService.shared
+    private let secureManager = SecureValueManager.shared
     private let syncService = SyncService.shared
 
     var body: some View {
@@ -635,9 +681,9 @@ struct CloudSyncSettingsSection: View {
                     Button("지금 동기화") {
                         performSync()
                     }
-                    .disabled(!keyService.isCloudUnlocked || !syncService.isConfigured)
+                    .disabled(!secureManager.isUnlocked || !syncService.isConfigured)
 
-                    if !keyService.isCloudUnlocked {
+                    if !secureManager.isUnlocked {
                         Text("패스워드 필요")
                             .font(.caption)
                             .foregroundStyle(.orange)
@@ -667,57 +713,67 @@ struct CloudSyncSettingsSection: View {
     }
 }
 
-// MARK: - 마스터 패스워드 입력 시트
+// MARK: - 패스워드 설정/변경 시트
 
-struct MasterPasswordSheet: View {
-    let isSetup: Bool
-    @Binding var password: String
-    @Binding var passwordConfirm: String
-    let onSave: (String) -> Void
+enum PasswordSheetMode {
+    case setup      // 최초 설정
+    case change     // 패스워드 변경
+}
+
+struct PasswordSheet: View {
+    let mode: PasswordSheetMode
+    @Binding var currentPassword: String
+    @Binding var newPassword: String
+    @Binding var newPasswordConfirm: String
+    let onSave: () -> Void
     let onCancel: () -> Void
 
+    private let secureManager = SecureValueManager.shared
+
     var isValid: Bool {
-        if isSetup {
-            return password.count >= 8 && password == passwordConfirm
-        } else {
-            return !password.isEmpty
+        switch mode {
+        case .setup:
+            return newPassword.count >= 8 && newPassword == newPasswordConfirm
+        case .change:
+            return !currentPassword.isEmpty && newPassword.count >= 8 && newPassword == newPasswordConfirm
         }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(isSetup ? "마스터 패스워드 설정" : "마스터 패스워드 입력")
+            Text(mode == .setup ? "패스워드 설정" : "패스워드 변경")
                 .font(.headline)
                 .padding()
 
             Divider()
 
             VStack(alignment: .leading, spacing: 12) {
-                if isSetup {
-                    Text("마스터 패스워드는 클라우드 동기화 시 데이터를 암호화하는 데 사용됩니다.\n이 패스워드를 잊으면 동기화된 데이터를 복구할 수 없습니다.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                Text("패스워드는 민감한 데이터를 암호화하는 데 사용됩니다.\n이 패스워드를 잊으면 암호화된 데이터를 복구할 수 없습니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if mode == .change {
+                    SecureField("기존 패스워드", text: $currentPassword)
+                        .textFieldStyle(.roundedBorder)
                 }
 
-                SecureField("패스워드", text: $password)
+                SecureField("새 패스워드", text: $newPassword)
                     .textFieldStyle(.roundedBorder)
 
-                if isSetup {
-                    SecureField("패스워드 확인", text: $passwordConfirm)
-                        .textFieldStyle(.roundedBorder)
+                SecureField("새 패스워드 확인", text: $newPasswordConfirm)
+                    .textFieldStyle(.roundedBorder)
 
-                    if password.count > 0 && password.count < 8 {
-                        Text("최소 8자 이상 입력하세요")
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
+                if newPassword.count > 0 && newPassword.count < 8 {
+                    Text("최소 8자 이상 입력하세요")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
 
-                    if passwordConfirm.count > 0 && password != passwordConfirm {
-                        Text("패스워드가 일치하지 않습니다")
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
+                if newPasswordConfirm.count > 0 && newPassword != newPasswordConfirm {
+                    Text("패스워드가 일치하지 않습니다")
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
             }
             .padding()
@@ -728,11 +784,9 @@ struct MasterPasswordSheet: View {
                 Button("취소", action: onCancel)
                     .buttonStyle(HoverTextButtonStyle())
                 Spacer()
-                Button(isSetup ? "설정" : "확인") {
-                    onSave(password)
-                }
-                .buttonStyle(HoverTextButtonStyle())
-                .disabled(!isValid)
+                Button(mode == .setup ? "설정" : "변경", action: onSave)
+                    .buttonStyle(HoverTextButtonStyle())
+                    .disabled(!isValid)
             }
             .padding()
         }
