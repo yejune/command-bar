@@ -1172,6 +1172,16 @@ class Database {
         setSetting(key, value: value ? "true" : "false")
     }
 
+    func deleteSetting(_ key: String) {
+        let sql = "DELETE FROM settings WHERE key = ?"
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+            sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT)
+            sqlite3_step(stmt)
+        }
+        sqlite3_finalize(stmt)
+    }
+
     func getDoubleSetting(_ key: String, defaultValue: Double = 0) -> Double {
         guard let value = getSetting(key), let num = Double(value) else { return defaultValue }
         return num
@@ -1631,16 +1641,18 @@ class Database {
     }
 
     /// 전체 암호화된 값 목록 (키 버전 포함)
-    func getAllSecureValues() -> [(id: String, keyVersion: Int)] {
-        var result: [(id: String, keyVersion: Int)] = []
-        let sql = "SELECT id, key_version FROM secure_values"
+    func getAllSecureValues() -> [(id: String, encrypted: String, keyVersion: Int)] {
+        var result: [(id: String, encrypted: String, keyVersion: Int)] = []
+        let sql = "SELECT id, encrypted_value, key_version FROM secure_values"
         var stmt: OpaquePointer?
         if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
             while sqlite3_step(stmt) == SQLITE_ROW {
-                if let idCStr = sqlite3_column_text(stmt, 0) {
+                if let idCStr = sqlite3_column_text(stmt, 0),
+                   let encCStr = sqlite3_column_text(stmt, 1) {
                     let id = String(cString: idCStr)
-                    let keyVersion = Int(sqlite3_column_int(stmt, 1))
-                    result.append((id, keyVersion))
+                    let encrypted = String(cString: encCStr)
+                    let keyVersion = Int(sqlite3_column_int(stmt, 2))
+                    result.append((id, encrypted, keyVersion))
                 }
             }
         }
