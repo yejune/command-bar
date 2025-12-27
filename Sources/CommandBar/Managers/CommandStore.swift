@@ -1435,17 +1435,24 @@ class CommandStore: ObservableObject {
 
     /// 체이닝: 명령어 실행 후 결과 반환
     func executeAndGetValue(commandId: String, jsonPath: String?) async -> String? {
+        logChaining("executeAndGetValue: commandId=\(commandId), jsonPath=\(jsonPath ?? "nil")")
+        logChaining("Available commands: \(commands.map { $0.id }.joined(separator: ", "))")
+
         // Command 찾기
         guard let cmd = commands.first(where: { $0.id == commandId }) else {
+            logChaining("Command not found in commands, checking clipboardItems...")
             // ClipboardItem에서 찾기
             if let clip = clipboardItems.first(where: { $0.id == commandId }) {
+                logChaining("Found in clipboardItems")
                 if let path = jsonPath, !path.isEmpty {
                     return extractValueFromJSON(clip.content, path: path)
                 }
                 return clip.content
             }
+            logChaining("Not found in clipboardItems either - returning nil")
             return nil
         }
+        logChaining("Found command: \(cmd.label)")
 
         // 명령어 실행
         let response: String?
