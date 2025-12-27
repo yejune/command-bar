@@ -209,7 +209,7 @@ struct BadgeUtils {
             } else {
                 // 새로 암호화하고 저장
                 guard let encResult = SecureValueManager.shared.encrypt(value) else { continue }
-                db.insertSecureValue(id: encResult.refId, encryptedValue: encResult.encrypted, keyVersion: encResult.keyVersion, label: label)
+                db.insertSecureValue(id: encResult.refId, encryptedValue: encResult.encrypted, keyVersion: 0, label: label)
                 secureId = encResult.refId
             }
 
@@ -241,7 +241,7 @@ struct BadgeUtils {
             } else {
                 // 새로 암호화하고 저장
                 guard let result = SecureValueManager.shared.encrypt(value) else { continue }
-                db.insertSecureValue(id: result.refId, encryptedValue: result.encrypted, keyVersion: result.keyVersion, label: label)
+                db.insertSecureValue(id: result.refId, encryptedValue: result.encrypted, keyVersion: 0, label: label)
                 secureId = result.refId
             }
 
