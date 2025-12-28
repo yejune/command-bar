@@ -290,8 +290,9 @@ struct BadgeEditSheet: View {
                 let key = String(part[..<bracketRange.lowerBound])
                 let indexStr = String(part[bracketRange.upperBound..<endBracket.lowerBound])
                 guard let index = Int(indexStr),
-                      let dict = current as? [String: Any],
-                      let array = (key.isEmpty ? current : dict[key]) as? [Any],
+                      let dict = current as? [String: Any] else { return nil }
+                let arraySource: Any? = key.isEmpty ? current : dict[key]
+                guard let array = arraySource as? [Any],
                       index < array.count else { return nil }
                 current = array[index]
             } else if let dict = current as? [String: Any], let value = dict[part] {

@@ -819,6 +819,9 @@ struct ShellEnvEditorView: View {
     @State private var entries: [(key: String, value: String)] = []
     @State private var newKey = ""
     @State private var newValue = ""
+    @State private var secureLabels: [String] = []
+
+    private let secureManager = SecureValueManager.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -843,6 +846,11 @@ struct ShellEnvEditorView: View {
                         TextField("VALUE", text: $entries[index].value)
                             .textFieldStyle(.roundedBorder)
 
+                        SecureLabelPickerButton(
+                            value: $entries[index].value,
+                            labels: secureLabels
+                        )
+
                         Button(action: {
                             entries.remove(at: index)
                         }) {
@@ -862,9 +870,16 @@ struct ShellEnvEditorView: View {
                     TextField("VALUE", text: $newValue)
                         .textFieldStyle(.roundedBorder)
 
+                    SecureLabelPickerButton(
+                        value: $newValue,
+                        labels: secureLabels
+                    )
+
                     Button(action: {
                         if !newKey.isEmpty {
-                            entries.append((key: newKey, value: newValue))
+                            // processForSave로 secure 패턴 처리
+                            let processed = secureManager.processForSave(newValue)
+                            entries.append((key: newKey, value: processed.text))
                             newKey = ""
                             newValue = ""
                         }
@@ -877,9 +892,14 @@ struct ShellEnvEditorView: View {
                 }
 
                 // 예시
-                Text("예: PATH = /opt/homebrew/opt/mysql-client/bin")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("예: PATH = /opt/homebrew/opt/mysql-client/bin")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("Secure 사용: {secure#라벨} 또는 잠금 버튼으로 선택")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding()
 
@@ -894,10 +914,11 @@ struct ShellEnvEditorView: View {
                 Spacer()
 
                 Button("저장") {
-                    // entries를 dictionary로 변환
+                    // entries를 dictionary로 변환, processForSave 적용
                     var dict: [String: String] = [:]
                     for entry in entries where !entry.key.isEmpty {
-                        dict[entry.key] = entry.value
+                        let processed = secureManager.processForSave(entry.value)
+                        dict[entry.key] = processed.text
                     }
                     environment = dict
                     dismiss()
@@ -906,9 +927,41 @@ struct ShellEnvEditorView: View {
             }
             .padding()
         }
-        .frame(width: 450)
+        .frame(width: 480)
         .onAppear {
             entries = environment.map { (key: $0.key, value: $0.value) }.sorted { $0.key < $1.key }
+            secureLabels = secureManager.getAllLabels()
         }
+    }
+}
+
+// MARK: - Secure 라벨 선택 버튼
+
+struct SecureLabelPickerButton: View {
+    @Binding var value: String
+    let labels: [String]
+
+    var body: some View {
+        Menu {
+            if labels.isEmpty {
+                Text("저장된 Secure 값이 없습니다")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(labels, id: \.self) { label in
+                    Button(action: {
+                        value = "{secure#\(label)}"
+                    }) {
+                        Text(label)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "lock.fill")
+                .foregroundColor(labels.isEmpty ? .secondary : .accentColor)
+        }
+        .menuStyle(.borderlessButton)
+        .frame(width: 24)
+        .help("Secure 값 선택")
+        .disabled(labels.isEmpty)
     }
 }

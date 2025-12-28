@@ -1350,7 +1350,7 @@ class CommandStore: ObservableObject {
 
     /// secure 값을 마스킹 (히스토리 저장용)
     private func maskSecureValues(in text: String) -> String {
-        var result = text
+        let result = text
         // 복호화된 secure 값을 다시 `secure@id` 형식으로 변환하기는 어려움
         // 대신 secure 패턴을 *** 로 마스킹
         // 여기서는 일단 그대로 반환 (secure는 이미 withSecureValuesResolved로 치환됨)

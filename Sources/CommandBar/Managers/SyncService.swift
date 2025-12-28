@@ -111,7 +111,7 @@ class SyncService {
 
         logInfo("SyncService: 클라우드에서 동기화 시작")
 
-        var result = SyncResult()
+        let result = SyncResult()
 
         // TODO: MySQL에서 데이터 가져오기
         // 1. 클라우드 키로 복호화
