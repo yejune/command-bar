@@ -698,12 +698,25 @@ struct CloudSyncSettingsSection: View {
                         suggestions: store.allEnvironmentVariableNames,
                         idSuggestions: store.allIdSuggestions,
                         singleLine: true,
-                        placeholder: "직접 입력 또는 {secure#라벨}",
+                        placeholder: "{secure#라벨} 또는 직접 입력",
                         onBadgeEdit: { editingBadge = $0 }
                     )
                     .frame(width: 200, height: 24)
+                    .onAppear { mysqlPassword = syncService.mysqlPasswordRef }
                     .onChange(of: mysqlPassword) { _, new in
-                        syncService.setMySQLPassword(new)
+                        syncService.mysqlPasswordRef = new
+                    }
+
+                    if !mysqlPassword.isEmpty {
+                        if mysqlPassword.contains("`secure@") || mysqlPassword.contains("`var@") {
+                            Text("저장됨")
+                                .font(.caption2)
+                                .foregroundStyle(.green)
+                        } else {
+                            Text("휘발성")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
                     }
                 }
                 SettingDivider()
