@@ -258,26 +258,26 @@ struct EnvironmentManagerView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
 
-            // 각 환경별 값
-            ForEach(store.environments) { env in
-                variableCell(env: env, varName: varName)
+            // 각 환경별 값 (인덱스 기반으로 정확한 바인딩)
+            ForEach(Array(store.environments.enumerated()), id: \.element.id) { index, env in
+                variableCellByIndex(envIndex: index, varName: varName)
             }
         }
         .background(Color.gray.opacity(0.02))
     }
 
-    // MARK: - 변수 셀
+    // MARK: - 변수 셀 (인덱스 기반)
 
-    func variableCell(env: APIEnvironment, varName: String) -> some View {
+    func variableCellByIndex(envIndex: Int, varName: String) -> some View {
+        let env = store.environments[envIndex]
         let value = env.variables[varName] ?? ""
 
         return AutocompleteTextEditor(
             text: Binding(
-                get: { env.variables[varName] ?? "" },
+                get: { store.environments[envIndex].variables[varName] ?? "" },
                 set: { newValue in
-                    var updatedEnv = env
-                    updatedEnv.variables[varName] = newValue
-                    store.updateEnvironment(updatedEnv)
+                    store.environments[envIndex].variables[varName] = newValue
+                    store.saveEnvironments()
                 }
             ),
             suggestions: store.allEnvironmentVariableNames,
@@ -289,6 +289,7 @@ struct EnvironmentManagerView: View {
         .padding(.horizontal, 4)
         .padding(.vertical, 2)
         .background(value.isEmpty ? Color.clear : colorFor(env.color).opacity(0.05))
+        .id("\(env.id)-\(varName)")  // 명시적 ID로 셀 구분
     }
 
     // MARK: - 변수 추가 팝오버
