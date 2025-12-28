@@ -618,11 +618,21 @@ class AutocompleteNSTextView: NSTextView {
 
         // 플레이스홀더 그리기
         if string.isEmpty && !placeholderString.isEmpty {
+            let placeholderFont = font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
             let attrs: [NSAttributedString.Key: Any] = [
                 .foregroundColor: NSColor.placeholderTextColor,
-                .font: font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+                .font: placeholderFont
             ]
-            let placeholderRect = bounds.insetBy(dx: textContainerInset.width + 5, dy: textContainerInset.height)
+
+            // 텍스트 높이 계산하여 수직 중앙 정렬
+            let textHeight = placeholderFont.ascender - placeholderFont.descender
+            let yOffset = (bounds.height - textHeight) / 2 - placeholderFont.descender
+            let placeholderRect = NSRect(
+                x: textContainerInset.width + 5,
+                y: yOffset,
+                width: bounds.width - textContainerInset.width - 10,
+                height: textHeight
+            )
             placeholderString.draw(in: placeholderRect, withAttributes: attrs)
         }
     }
