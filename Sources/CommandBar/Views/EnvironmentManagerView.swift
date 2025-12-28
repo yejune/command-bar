@@ -13,6 +13,7 @@ struct EnvironmentManagerView: View {
     @State private var showAddVariable = false
     @State private var newEnvName = ""
     @State private var newEnvColor = "blue"
+    @State private var editingBadge: BadgeEditInfo?
 
     // 모든 환경에서 사용되는 변수 이름 목록
     var allVariableNames: [String] {
@@ -184,6 +185,9 @@ struct EnvironmentManagerView: View {
             .padding()
         }
         .frame(minWidth: 600, minHeight: 400)
+        .sheet(item: $editingBadge) { info in
+            BadgeEditSheet(badgeInfo: $editingBadge) { _ in }
+        }
     }
 
     // MARK: - 환경 컬럼 헤더
@@ -267,19 +271,23 @@ struct EnvironmentManagerView: View {
     func variableCell(env: APIEnvironment, varName: String) -> some View {
         let value = env.variables[varName] ?? ""
 
-        return TextField("", text: Binding(
-            get: { env.variables[varName] ?? "" },
-            set: { newValue in
-                var updatedEnv = env
-                updatedEnv.variables[varName] = newValue
-                store.updateEnvironment(updatedEnv)
-            }
-        ))
-        .textFieldStyle(.plain)
-        .font(.caption)
-        .frame(width: 140, alignment: .leading)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        return AutocompleteTextEditor(
+            text: Binding(
+                get: { env.variables[varName] ?? "" },
+                set: { newValue in
+                    var updatedEnv = env
+                    updatedEnv.variables[varName] = newValue
+                    store.updateEnvironment(updatedEnv)
+                }
+            ),
+            suggestions: store.allEnvironmentVariableNames,
+            idSuggestions: store.allIdSuggestions,
+            singleLine: true,
+            onBadgeEdit: { editingBadge = $0 }
+        )
+        .frame(width: 140, height: 22)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
         .background(value.isEmpty ? Color.clear : colorFor(env.color).opacity(0.05))
     }
 
