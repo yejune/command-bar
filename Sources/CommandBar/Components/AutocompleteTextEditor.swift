@@ -338,8 +338,8 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 }
             }
 
-            // {secure: 또는 [secure@ 또는 [secure# 트리거 체크
-            let secureTriggers = ["{secure:", "[secure@", "[secure#"]
+            // secure 트리거 체크
+            let secureTriggers = ["{secure:", "{secure#", "{secure@", "[secure:", "[secure#", "[secure@"]
             for trigger in secureTriggers {
                 if let secureRange = beforeCursor.range(of: trigger, options: .backwards) {
                     let afterTrigger = String(beforeCursor[secureRange.upperBound...])
@@ -457,19 +457,28 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 return Array(filtered)
 
             case .secureRef:
-                // {secure: 또는 [secure@ 또는 [secure# 찾기
+                // secure 트리거 찾기: @는 ID, #/:는 라벨
                 var afterTrigger = ""
-                var isIdHint = false  // @는 ID, #는 라벨
+                var isIdHint = false
 
-                if let range = beforeCursor.range(of: "[secure@", options: .backwards) {
-                    afterTrigger = String(beforeCursor[range.upperBound...])
-                    isIdHint = true
-                } else if let range = beforeCursor.range(of: "[secure#", options: .backwards) {
-                    afterTrigger = String(beforeCursor[range.upperBound...])
-                    isIdHint = false
-                } else if let range = beforeCursor.range(of: "{secure:", options: .backwards) {
-                    afterTrigger = String(beforeCursor[range.upperBound...])
-                    isIdHint = false  // 기본은 라벨
+                let idTriggers = ["{secure@", "[secure@"]
+                let labelTriggers = ["{secure:", "{secure#", "[secure:", "[secure#"]
+
+                for trigger in idTriggers {
+                    if let range = beforeCursor.range(of: trigger, options: .backwards) {
+                        afterTrigger = String(beforeCursor[range.upperBound...])
+                        isIdHint = true
+                        break
+                    }
+                }
+                if afterTrigger.isEmpty {
+                    for trigger in labelTriggers {
+                        if let range = beforeCursor.range(of: trigger, options: .backwards) {
+                            afterTrigger = String(beforeCursor[range.upperBound...])
+                            isIdHint = false
+                            break
+                        }
+                    }
                 }
 
                 if isIdHint {
@@ -553,14 +562,34 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 textView.setSelectedRange(NSRange(location: newCursorPosition, length: 0))
 
             case .secureRef:
-                // {secure: → [secure#라벨] 형태로 변환 (기존 라벨 선택 시)
-                guard let secureRange = beforeCursor.range(of: "{secure:", options: .backwards) else { return }
+                // 모든 secure 트리거 지원
+                let allTriggers = ["{secure:", "{secure#", "{secure@", "[secure:", "[secure#", "[secure@"]
+                var foundRange: Range<String.Index>?
+                var foundTrigger = ""
+
+                for trigger in allTriggers {
+                    if let range = beforeCursor.range(of: trigger, options: .backwards) {
+                        foundRange = range
+                        foundTrigger = trigger
+                        break
+                    }
+                }
+
+                guard let secureRange = foundRange else { return }
                 let triggerStart = text.distance(from: text.startIndex, to: secureRange.lowerBound)
                 let beforeTrigger = String(text.prefix(triggerStart))
-                let newText = beforeTrigger + "[secure#\(suggestion)]" + afterCursor
+
+                // 입력된 형식 유지: {로 시작하면 }, [로 시작하면 ]
+                let isIdTrigger = foundTrigger.contains("@")
+                let closingBracket = foundTrigger.hasPrefix("{") ? "}" : "]"
+                let openingBracket = foundTrigger.hasPrefix("{") ? "{" : "["
+                let separator = isIdTrigger ? "@" : "#"
+
+                let replacement = "\(openingBracket)secure\(separator)\(suggestion)\(closingBracket)"
+                let newText = beforeTrigger + replacement + afterCursor
                 textView.string = newText
-                self.text = newText  // 입력 형식 그대로 저장
-                let newCursorPosition = triggerStart + 9 + suggestion.count  // [secure# + label + ]
+                self.text = newText
+                let newCursorPosition = triggerStart + replacement.count
                 textView.setSelectedRange(NSRange(location: newCursorPosition, length: 0))
 
             case .lockedRef:
