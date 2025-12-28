@@ -32,25 +32,19 @@ class SyncService {
         set { db.setSetting("mysql_user", value: newValue) }
     }
 
-    /// 비밀번호 참조 (배지 형식이면 저장, 평문이면 메모리만)
-    /// - 배지: `secure@id` 형식 → DB 저장 (안전)
-    /// - 평문: 메모리만 (보안상 저장 안 함)
+    /// 비밀번호 참조 ({secure#...} 형식만 저장)
     var mysqlPasswordRef: String {
         get { db.getSetting("mysql_password_ref") ?? "" }
         set {
-            // 배지 참조만 저장 (평문은 저장 안 함)
-            if newValue.contains("`secure@") || newValue.contains("`var@") {
+            // secure 배지 참조만 저장
+            if newValue.contains("`secure@") {
                 db.setSetting("mysql_password_ref", value: newValue)
             } else if newValue.isEmpty {
                 db.setSetting("mysql_password_ref", value: "")
             }
-            // 평문이면 DB에 저장하지 않고 메모리만
-            mysqlPassword = newValue
+            // 평문은 무시 (저장 안 함)
         }
     }
-
-    // 메모리 캐시 (평문 또는 참조)
-    private var mysqlPassword: String?
 
     var isConfigured: Bool {
         !mysqlHost.isEmpty && !mysqlDatabase.isEmpty && !mysqlUser.isEmpty
@@ -64,16 +58,9 @@ class SyncService {
 
     /// 실제 사용할 비밀번호 (배지 치환 적용)
     var resolvedMySQLPassword: String? {
-        guard let pwd = mysqlPassword, !pwd.isEmpty else { return nil }
-        return BadgeProcessor.shared.resolveForExecution(pwd)
-    }
-
-    /// 앱 시작 시 저장된 참조 로드
-    func loadSavedPasswordRef() {
-        let saved = mysqlPasswordRef
-        if !saved.isEmpty {
-            mysqlPassword = saved
-        }
+        let ref = mysqlPasswordRef
+        guard !ref.isEmpty else { return nil }
+        return BadgeProcessor.shared.resolveForExecution(ref)
     }
 
     /// 연결 테스트
@@ -82,7 +69,7 @@ class SyncService {
             return .failure(.notConfigured)
         }
 
-        guard mysqlPassword != nil else {
+        guard resolvedMySQLPassword != nil else {
             return .failure(.passwordRequired)
         }
 
