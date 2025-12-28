@@ -355,8 +355,8 @@ class CommandStore: ObservableObject {
         // 1. 먼저 command@id 체이닝 처리 (명령어 실행)
         var processedCommand = await resolveCommandChainingInCommand(command)
 
-        // 2. {secure:refId} → 복호화된 값으로 치환
-        processedCommand = processedCommand.withSecureValuesResolved()
+        // 2. 배지 값 치환 (`type@id` → 실제 값)
+        processedCommand = processedCommand.withBadgesResolved()
 
         // 3. 환경 변수 치환
         if let env = activeEnvironment {
@@ -1338,7 +1338,7 @@ class CommandStore: ObservableObject {
         let result = text
         // 복호화된 secure 값을 다시 `secure@id` 형식으로 변환하기는 어려움
         // 대신 secure 패턴을 *** 로 마스킹
-        // 여기서는 일단 그대로 반환 (secure는 이미 withSecureValuesResolved로 치환됨)
+        // 여기서는 일단 그대로 반환 (배지는 이미 withBadgesResolved로 치환됨)
         // TODO: secure 값 추적해서 마스킹
         return result
     }

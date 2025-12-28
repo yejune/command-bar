@@ -289,11 +289,6 @@ extension Command {
 
         return result
     }
-
-    /// 이전 함수명 호환성 유지
-    func withSecureValuesResolved() -> Command {
-        return withBadgesResolved()
-    }
 }
 
 // API 파라미터 관련 extension
