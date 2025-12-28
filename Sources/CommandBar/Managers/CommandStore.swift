@@ -286,8 +286,8 @@ class CommandStore: ObservableObject {
     }
 
     func updateClipboardContent(_ item: ClipboardItem, newContent: String) {
-        // {encrypt:xxx} → {secure:refId} 변환
-        let processResult = SecureValueManager.shared.processForSave(newContent)
+        // 통합 배지 처리
+        let processResult = BadgeProcessor.shared.convertToStorageFormat(newContent)
         db.updateClipboardContent(id: item.id, content: processResult.text)
         // 로컬 상태 업데이트
         if let index = clipboardItems.firstIndex(where: { $0.id == item.id }) {
@@ -657,24 +657,16 @@ class CommandStore: ObservableObject {
         var newCmd = cmd
         newCmd.command = normalizeQuotes(cmd.command)
 
-        // 1. {id#라벨}, {var#라벨:값}, {var#라벨} 처리
-        let labelResult = processIdVarLabels(newCmd.command)
-        if let error = labelResult.error {
-            print("Label processing error: \(error)")
-            // 에러가 있어도 계속 진행 (에러 처리는 UI에서 해야 함)
+        // 통합 배지 처리: {type#label:value}, {type#label}, {type:value} → `type@id`
+        let badgeProcessor = BadgeProcessor.shared
+        let cmdResult = badgeProcessor.convertToStorageFormat(newCmd.command)
+        if let error = cmdResult.error {
+            print("Badge processing error: \(error)")
         }
-        newCmd.command = labelResult.text
-
-        // 2. {secure:xxx}, {secure#라벨:xxx} → {secure:refId} 변환
-        let secureResult = SecureValueManager.shared.processForSave(newCmd.command)
-        if let error = secureResult.error {
-            print("Secure processing error: \(error)")
-        }
-        newCmd.command = secureResult.text
-        newCmd.url = SecureValueManager.shared.processForSave(newCmd.url).text
-        newCmd.bodyData = SecureValueManager.shared.processForSave(newCmd.bodyData).text
-        // 헤더 값도 처리
-        newCmd.headers = newCmd.headers.mapValues { SecureValueManager.shared.processForSave($0).text }
+        newCmd.command = cmdResult.text
+        newCmd.url = badgeProcessor.convertToStorageFormat(newCmd.url).text
+        newCmd.bodyData = badgeProcessor.convertToStorageFormat(newCmd.bodyData).text
+        newCmd.headers = newCmd.headers.mapValues { badgeProcessor.convertToStorageFormat($0).text }
 
         commands.append(newCmd)
         save()
@@ -802,19 +794,16 @@ class CommandStore: ObservableObject {
             var updated = cmd
             updated.command = normalizeQuotes(cmd.command)
 
-            // 1. {id#라벨}, {var#라벨:값}, {var#라벨} 처리
-            let labelResult = processIdVarLabels(updated.command)
-            if let error = labelResult.error {
-                print("Label processing error: \(error)")
-                // 에러가 있어도 계속 진행 (에러 처리는 UI에서 해야 함)
+            // 통합 배지 처리: {type#label:value}, {type#label}, {type:value} → `type@id`
+            let badgeProcessor = BadgeProcessor.shared
+            let cmdResult = badgeProcessor.convertToStorageFormat(updated.command)
+            if let error = cmdResult.error {
+                print("Badge processing error: \(error)")
             }
-            updated.command = labelResult.text
-
-            // 2. {secure:xxx} → {secure:refId} 변환
-            updated.command = SecureValueManager.shared.processForSave(updated.command).text
-            updated.url = SecureValueManager.shared.processForSave(updated.url).text
-            updated.bodyData = SecureValueManager.shared.processForSave(updated.bodyData).text
-            updated.headers = updated.headers.mapValues { SecureValueManager.shared.processForSave($0).text }
+            updated.command = cmdResult.text
+            updated.url = badgeProcessor.convertToStorageFormat(updated.url).text
+            updated.bodyData = badgeProcessor.convertToStorageFormat(updated.bodyData).text
+            updated.headers = updated.headers.mapValues { badgeProcessor.convertToStorageFormat($0).text }
 
             commands[i] = updated
             commands[i].alertedTimes = []  // 알림 상태 초기화
@@ -890,10 +879,8 @@ class CommandStore: ObservableObject {
     }
 
     private func runInTerminal(_ cmd: Command, app: String) {
-        // 1. {var:varId} or {var:envVar} → 실제 값으로 치환
-        var resolvedCommand = resolveVarReferences(in: cmd.command)
-        // 2. {secure:refId} → 복호화된 값으로 치환
-        resolvedCommand = SecureValueManager.shared.processForExecution(resolvedCommand)
+        // 배지 값 치환: `type@id` → 실제 값
+        let resolvedCommand = BadgeProcessor.shared.resolveForExecution(cmd.command)
         let escaped = resolvedCommand.replacingOccurrences(of: "\"", with: "\\\"")
         let script: String
 
@@ -948,10 +935,8 @@ class CommandStore: ObservableObject {
         commands[index].lastOutput = nil
         commands[index].lastExecutedAt = Date()
 
-        // 1. {var:varId} or {var:envVar} → 실제 값으로 치환
-        var resolvedCommand = resolveVarReferences(in: cmd.command)
-        // 2. {secure:refId} → 복호화된 값으로 치환
-        resolvedCommand = SecureValueManager.shared.processForExecution(resolvedCommand)
+        // 배지 값 치환: `type@id` → 실제 값
+        let resolvedCommand = BadgeProcessor.shared.resolveForExecution(cmd.command)
 
         DispatchQueue.global(qos: .userInitiated).async {
             let process = Process()

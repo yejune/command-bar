@@ -270,23 +270,29 @@ extension Command {
         return result
     }
 
-    /// {secure:refId} 치환 (복호화)
-    func withSecureValuesResolved() -> Command {
+    /// 배지 값 치환 (`type@id` → 실제 값)
+    func withBadgesResolved() -> Command {
         var result = self
+        let processor = BadgeProcessor.shared
 
-        result.url = SecureValueManager.shared.processForExecution(url)
-        result.bodyData = SecureValueManager.shared.processForExecution(bodyData)
-        result.command = SecureValueManager.shared.processForExecution(command)
+        result.url = processor.resolveForExecution(url)
+        result.bodyData = processor.resolveForExecution(bodyData)
+        result.command = processor.resolveForExecution(command)
 
         for (key, headerValue) in headers {
-            result.headers[key] = SecureValueManager.shared.processForExecution(headerValue)
+            result.headers[key] = processor.resolveForExecution(headerValue)
         }
 
         for (key, paramValue) in queryParams {
-            result.queryParams[key] = SecureValueManager.shared.processForExecution(paramValue)
+            result.queryParams[key] = processor.resolveForExecution(paramValue)
         }
 
         return result
+    }
+
+    /// 이전 함수명 호환성 유지
+    func withSecureValuesResolved() -> Command {
+        return withBadgesResolved()
     }
 }
 

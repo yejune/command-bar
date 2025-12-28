@@ -1,0 +1,217 @@
+# Badge System Documentation
+
+## Overview
+
+배지 시스템은 민감한 정보(secure), 변수(var), 명령어 참조(command)를 안전하게 관리하고 표시하는 통합 시스템입니다.
+
+## Badge Types
+
+| Type | Prefix | Color | 용도 |
+|------|--------|-------|------|
+| secure | `secure` | Pink | 암호화된 민감한 값 (비밀번호, API 키 등) |
+| command | `command` | Blue | 다른 명령어 참조/체이닝 |
+| variable | `var` | Green | 재사용 가능한 변수 |
+
+## Data Flow
+
+```
+[입력] → [저장] → [표시] → [실행]
+
+입력: {type#label:value} 또는 {type#label} 또는 {type:value}
+저장: `type@id` (6자리 고유 ID)
+표시: BadgeTextAttachment (라벨 또는 ID 표시)
+실행: 실제 값으로 치환
+```
+
+## Input Patterns
+
+### 새로 생성 (값 포함)
+```
+{secure#비밀번호:mySecret123}  → 암호화 후 `secure@abc123`
+[secure#비밀번호:mySecret123]  → 동일
+{var#서버주소:https://api.com}  → 저장 후 `var@def456`
+```
+
+### 기존 참조 (라벨로)
+```
+{secure#비밀번호}  → 기존 라벨 조회 → `secure@abc123`
+{command#API호출}  → 기존 라벨 조회 → `command@ghi789`
+{var#서버주소}     → 기존 라벨 조회 → `var@def456`
+```
+
+### 직접 ID 참조
+```
+{secure@abc123}  → `secure@abc123`
+{command@ghi789} → `command@ghi789`
+```
+
+### 값만 (라벨 없이)
+```
+{secure:mySecret}  → 암호화 후 `secure@xyz999` (라벨 없음)
+```
+
+## Trigger Syntax (자동완성)
+
+| 트리거 | 의미 | 자동완성 내용 |
+|--------|------|--------------|
+| `{type:` | 입력 모드 | 라벨 목록 |
+| `{type#` | 라벨 힌팅 | 라벨 목록 |
+| `{type@` | ID 힌팅 | ID 목록 |
+| `[type:` | 입력 모드 (대괄호) | 라벨 목록 |
+| `[type#` | 라벨 힌팅 (대괄호) | 라벨 목록 |
+| `[type@` | ID 힌팅 (대괄호) | ID 목록 |
+
+## Core Classes
+
+### BadgeProcessor (통합 처리)
+
+```swift
+class BadgeProcessor {
+    static let shared = BadgeProcessor()
+
+    // 저장 전 변환: {type#label:value} → `type@id`
+    func convertToStorageFormat(_ text: String) -> BadgeProcessResult
+
+    // 실행 전 변환: `type@id` → 실제 값
+    func resolveForExecution(_ text: String) -> String
+
+    // 표시용 변환: `type@id` → BadgeTextAttachment
+    func convertToBadges(in attrString: NSMutableAttributedString)
+
+    // 자동완성 제안
+    func getSuggestions(for type: BadgeType, isIdHint: Bool, filter: String) -> [String]
+}
+```
+
+### BadgeTextAttachment (UI 표시)
+
+```swift
+class BadgeTextAttachment: NSTextAttachment {
+    let badgeType: BadgeType
+    let refId: String
+    let labelText: String?
+    let originalText: String  // 저장 형식: `type@id`
+    let jsonPath: String?     // command 전용
+}
+```
+
+### BadgeType (타입 정의)
+
+```swift
+enum BadgeType: String {
+    case secure = "secure"
+    case command = "command"
+    case variable = "var"
+}
+```
+
+## Storage Format
+
+모든 배지는 `\`type@id\`` 형식으로 저장됩니다:
+- `\`secure@abc123\`` - 암호화된 값 참조
+- `\`command@def456\`` - 명령어 참조
+- `\`var@ghi789\`` - 변수 참조
+- `\`command@abc123|data.token\`` - JSON path 포함 (command 전용)
+
+## Database Tables
+
+### secure_values
+```sql
+CREATE TABLE secure_values (
+    id TEXT PRIMARY KEY,
+    encrypted_value TEXT NOT NULL,
+    key_version INTEGER DEFAULT 1,
+    label TEXT,
+    created_at TEXT
+);
+```
+
+### variables
+```sql
+CREATE TABLE variables (
+    id TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    label TEXT,
+    created_at TEXT,
+    updated_at TEXT
+);
+```
+
+### commands (label 컬럼 사용)
+```sql
+-- commands 테이블의 label 컬럼으로 참조
+```
+
+## Usage Examples
+
+### 저장 시
+```swift
+let result = BadgeProcessor.shared.convertToStorageFormat(inputText)
+if result.hasError {
+    // 에러 처리
+} else {
+    // result.text 저장
+}
+```
+
+### 실행 시
+```swift
+let resolved = BadgeProcessor.shared.resolveForExecution(storedText)
+// resolved에는 실제 값이 치환됨
+```
+
+### 표시 시
+```swift
+let attrString = NSMutableAttributedString(string: storedText)
+BadgeProcessor.shared.convertToBadges(in: attrString)
+// attrString에 배지가 포함됨
+```
+
+## Maintenance Guide
+
+### 새 배지 타입 추가 시
+
+1. `BadgeType` enum에 케이스 추가
+2. Database에 관련 테이블/메서드 추가
+3. `BadgeProcessor`에서 처리 로직 추가:
+   - `processXxxPatterns()` 메서드 추가
+   - `convertToStorageFormat()`에서 호출
+   - `resolveValue()`에 케이스 추가
+   - `getSuggestions()`에 케이스 추가
+
+### 입력 패턴 추가 시
+
+1. 정규식 패턴 정의
+2. `convertToStorageFormat()` 또는 해당 `processXxxPatterns()`에 추가
+3. `AutocompleteTextEditor`의 트리거에 추가
+
+### 테스트 항목
+
+1. 저장 → 표시 → 실행 전체 플로우
+2. 라벨 중복 에러
+3. 없는 라벨 참조 에러
+4. 여러 타입 혼합 사용
+5. JSON path 추출 (command)
+
+## File Structure
+
+```
+Sources/CommandBar/
+├── Managers/
+│   ├── BadgeProcessor.swift      # 통합 처리 (핵심)
+│   ├── SecureValueManager.swift  # 암호화 전담
+│   └── Database.swift            # 저장소
+├── Components/
+│   ├── BadgeTextAttachment.swift # UI 배지
+│   └── AutocompleteTextEditor.swift # 자동완성
+└── Models/
+    └── Command.swift             # 명령어 모델
+```
+
+## Migration Notes
+
+기존 분산된 로직을 `BadgeProcessor`로 통합:
+- `SecureValueManager.processForSave` → `BadgeProcessor.convertToStorageFormat`
+- `SecureValueManager.processForExecution` → `BadgeProcessor.resolveForExecution`
+- `BadgeUtils.convertToBadges` → `BadgeProcessor.convertToBadges`
+- `CommandStore.processIdVarLabels` → `BadgeProcessor.convertToStorageFormat`

@@ -109,37 +109,19 @@ struct BadgeUtils {
     /// {secure#label:value} 형식 - 라벨과 값 캡처
     private static let secureInputPattern = "\\{secure#([^:}]+):([^}]+)\\}"
 
-    /// 지원 문법 생성 함수
-    /// - `type@id` (백틱)
-    /// - {type@id} (중괄호)
-    /// - [type@id] (대괄호)
+    /// 텍스트에서 배지로 변환 (표시용)
+    /// BadgeProcessor로 위임
+    static func convertToBadges(in attributedString: NSMutableAttributedString) {
+        BadgeProcessor.shared.convertToBadges(in: attributedString)
+    }
+
+    /// 지원 문법 생성 함수 (하위 호환용)
     private static func patterns(for typeStr: String) -> [String] {
         return [
             "`\(typeStr)@([^`]+)`",           // `type@id`
             "\\{\(typeStr)@([^}]+)\\}",       // {type@id}
             "\\[\(typeStr)@([^\\]]+)\\]"      // [type@id]
         ]
-    }
-
-    /// 텍스트에서 배지로 변환 (표시용)
-    static func convertToBadges(in attributedString: NSMutableAttributedString) {
-        let db = Database.shared
-
-        // {secure#label:value} 형식 먼저 처리 (새로 저장하거나 기존 참조)
-        convertSecureInput(in: attributedString)
-
-        // 각 type에 대해 모든 문법 패턴 처리
-        let typeConfigs: [(typeStr: String, type: BadgeType, lookup: (String) -> String?)] = [
-            ("secure", .secure, { db.getSecureLabelById($0) }),
-            ("command", .command, { db.getCommandLabelById($0) }),
-            ("var", .variable, { db.getVariableLabelById($0) })
-        ]
-
-        for config in typeConfigs {
-            for pattern in patterns(for: config.typeStr) {
-                convertPattern(pattern, type: config.type, in: attributedString, labelLookup: config.lookup)
-            }
-        }
     }
 
     /// 문자열에서 `type@id` 형식을 [label] 형식으로 변환 (표시용)
