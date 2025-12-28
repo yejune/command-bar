@@ -130,13 +130,19 @@ struct AutocompleteTextEditor: NSViewRepresentable {
         Coordinator(text: $text, suggestions: suggestions, idSuggestions: idSuggestions, onBadgeEdit: onBadgeEdit)
     }
 
-    enum TriggerType {
-        case dollar       // $VAR
-        case commandRef   // {command:xxx} 또는 {command#label}
-        case varRef       // {var:xxx}
-        case secureRef    // {secure:xxx} - 입력용
-        case lockedRef    // {secure:xxx} - 저장된 형태
+    enum TriggerType: Equatable {
+        case dollar                              // $VAR
+        case badge(BadgeProcessor.TriggerInfo)   // secure/command/var 배지
         case none
+
+        static func == (lhs: TriggerType, rhs: TriggerType) -> Bool {
+            switch (lhs, rhs) {
+            case (.dollar, .dollar): return true
+            case (.none, .none): return true
+            case (.badge(let a), .badge(let b)): return a.type == b.type && a.trigger == b.trigger
+            default: return false
+            }
+        }
     }
 
     class Coordinator: NSObject, NSTextViewDelegate {
@@ -311,46 +317,15 @@ struct AutocompleteTextEditor: NSViewRepresentable {
 
             guard cursorPosition > 0, cursorPosition <= text.count else { return .none }
 
-            let index = text.index(text.startIndex, offsetBy: cursorPosition)
-            let beforeCursor = String(text[..<index])
-
-            // command 트리거 체크
-            let commandTriggers = ["{command:", "{command#", "{command@", "[command:", "[command#", "[command@"]
-            for trigger in commandTriggers {
-                if let cmdRange = beforeCursor.range(of: trigger, options: .backwards) {
-                    let afterTrigger = String(beforeCursor[cmdRange.upperBound...])
-                    let endChar = trigger.hasPrefix("{") ? "}" : "]"
-                    if !afterTrigger.contains(endChar) && !afterTrigger.contains(where: { $0.isWhitespace }) {
-                        return .commandRef
-                    }
-                }
-            }
-
-            // var 트리거 체크
-            let varTriggers = ["{var:", "{var#", "{var@", "[var:", "[var#", "[var@"]
-            for trigger in varTriggers {
-                if let varRange = beforeCursor.range(of: trigger, options: .backwards) {
-                    let afterTrigger = String(beforeCursor[varRange.upperBound...])
-                    let endChars = trigger.hasPrefix("{") ? "}" : "]"
-                    if !afterTrigger.contains(endChars) && !afterTrigger.contains(where: { $0.isWhitespace }) {
-                        return .varRef
-                    }
-                }
-            }
-
-            // secure 트리거 체크
-            let secureTriggers = ["{secure:", "{secure#", "{secure@", "[secure:", "[secure#", "[secure@"]
-            for trigger in secureTriggers {
-                if let secureRange = beforeCursor.range(of: trigger, options: .backwards) {
-                    let afterTrigger = String(beforeCursor[secureRange.upperBound...])
-                    let endChars = trigger.hasPrefix("{") ? "}" : "]"
-                    if !afterTrigger.contains(endChars) {
-                        return .secureRef
-                    }
-                }
+            // 배지 트리거 체크 (BadgeProcessor 사용)
+            if let triggerInfo = BadgeProcessor.shared.detectBadgeTrigger(in: text, cursorPosition: cursorPosition) {
+                return .badge(triggerInfo)
             }
 
             // $ 트리거 체크
+            let index = text.index(text.startIndex, offsetBy: cursorPosition)
+            let beforeCursor = String(text[..<index])
+
             if let lastDollar = beforeCursor.lastIndex(of: "$") {
                 let afterDollar = String(beforeCursor[beforeCursor.index(after: lastDollar)...])
                 if !afterDollar.contains(where: { $0.isWhitespace || "()[]{}'\"`".contains($0) }) {
@@ -390,71 +365,28 @@ struct AutocompleteTextEditor: NSViewRepresentable {
 
             guard cursorPosition > 0, cursorPosition <= text.count else { return [] }
 
-            let index = text.index(text.startIndex, offsetBy: cursorPosition)
-            let beforeCursor = String(text[..<index])
-            let maxSuggestions = 10
-
             switch currentTrigger {
-            case .commandRef:
-                // command 트리거 찾기
-                let commandTriggers = ["{command:", "{command#", "{command@", "[command:", "[command#", "[command@"]
-                var afterTrigger = ""
-                for trigger in commandTriggers {
-                    if let range = beforeCursor.range(of: trigger, options: .backwards) {
-                        afterTrigger = String(beforeCursor[range.upperBound...])
-                        break
-                    }
-                }
-                // idSuggestions에서 title로 필터링 (label 또는 title 표시)
-                let filtered = idSuggestions.filter { item in
-                    afterTrigger.isEmpty ||
-                    item.title.lowercased().contains(afterTrigger.lowercased())
-                }.prefix(maxSuggestions)
-                // title만 표시 (id는 내부 조회)
-                return filtered.map { $0.title }
-
-            case .varRef:
-                // var 트리거 찾기: @는 ID, #/:는 라벨
-                var afterTrigger = ""
-                var isIdHint = false
-
-                let idTriggers = ["{var@", "[var@"]
-                let labelTriggers = ["{var:", "{var#", "[var:", "[var#"]
-
-                for trigger in idTriggers {
-                    if let range = beforeCursor.range(of: trigger, options: .backwards) {
-                        afterTrigger = String(beforeCursor[range.upperBound...])
-                        isIdHint = true
-                        break
-                    }
-                }
-                if afterTrigger.isEmpty {
-                    for trigger in labelTriggers {
-                        if let range = beforeCursor.range(of: trigger, options: .backwards) {
-                            afterTrigger = String(beforeCursor[range.upperBound...])
-                            isIdHint = false
-                            break
-                        }
-                    }
+            case .badge(let triggerInfo):
+                // command는 idSuggestions 사용 (title 표시)
+                if triggerInfo.type == .command {
+                    let filtered = idSuggestions.filter { item in
+                        triggerInfo.filter.isEmpty ||
+                        item.title.lowercased().contains(triggerInfo.filter.lowercased())
+                    }.prefix(10)
+                    return filtered.map { $0.title }
                 }
 
-                if isIdHint {
-                    // ID 목록 조회
-                    let allVarIds = Database.shared.getAllVariableIds()
-                    let filtered = allVarIds.filter { id in
-                        afterTrigger.isEmpty || id.lowercased().hasPrefix(afterTrigger.lowercased())
-                    }.prefix(maxSuggestions)
-                    return Array(filtered)
-                } else {
-                    // 라벨 목록 조회
-                    let allVarLabels = Database.shared.getAllVariableLabels()
-                    let filtered = allVarLabels.filter { label in
-                        afterTrigger.isEmpty || label.lowercased().hasPrefix(afterTrigger.lowercased())
-                    }.prefix(maxSuggestions)
-                    return Array(filtered)
-                }
+                // var/secure는 BadgeProcessor 사용
+                return BadgeProcessor.shared.getSuggestions(
+                    for: triggerInfo.type,
+                    isIdHint: triggerInfo.isIdHint,
+                    filter: triggerInfo.filter
+                )
 
             case .dollar:
+                let index = text.index(text.startIndex, offsetBy: cursorPosition)
+                let beforeCursor = String(text[..<index])
+
                 guard let lastDollar = beforeCursor.lastIndex(of: "$") else { return [] }
                 let afterDollar = String(beforeCursor[beforeCursor.index(after: lastDollar)...])
                 if afterDollar.contains(where: { $0.isWhitespace || "()[]{}'\"`".contains($0) }) {
@@ -462,52 +394,8 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 }
                 let filtered = suggestions.filter { suggestion in
                     afterDollar.isEmpty || suggestion.lowercased().hasPrefix(afterDollar.lowercased())
-                }.prefix(maxSuggestions)
+                }.prefix(10)
                 return Array(filtered)
-
-            case .secureRef:
-                // secure 트리거 찾기: @는 ID, #/:는 라벨
-                var afterTrigger = ""
-                var isIdHint = false
-
-                let idTriggers = ["{secure@", "[secure@"]
-                let labelTriggers = ["{secure:", "{secure#", "[secure:", "[secure#"]
-
-                for trigger in idTriggers {
-                    if let range = beforeCursor.range(of: trigger, options: .backwards) {
-                        afterTrigger = String(beforeCursor[range.upperBound...])
-                        isIdHint = true
-                        break
-                    }
-                }
-                if afterTrigger.isEmpty {
-                    for trigger in labelTriggers {
-                        if let range = beforeCursor.range(of: trigger, options: .backwards) {
-                            afterTrigger = String(beforeCursor[range.upperBound...])
-                            isIdHint = false
-                            break
-                        }
-                    }
-                }
-
-                if isIdHint {
-                    // ID 목록 조회
-                    let allSecureIds = Database.shared.getAllSecureIds()
-                    let filtered = allSecureIds.filter { id in
-                        afterTrigger.isEmpty || id.lowercased().hasPrefix(afterTrigger.lowercased())
-                    }.prefix(maxSuggestions)
-                    return Array(filtered)
-                } else {
-                    // 라벨 목록 조회
-                    let allLabels = SecureValueManager.shared.getAllLabels()
-                    let filtered = allLabels.filter { label in
-                        afterTrigger.isEmpty || label.lowercased().hasPrefix(afterTrigger.lowercased())
-                    }.prefix(maxSuggestions)
-                    return Array(filtered)
-                }
-
-            case .lockedRef:
-                return []
 
             case .none:
                 return []
@@ -521,67 +409,34 @@ struct AutocompleteTextEditor: NSViewRepresentable {
             guard cursorPosition > 0, cursorPosition <= text.count else { return }
 
             let index = text.index(text.startIndex, offsetBy: cursorPosition)
-            let beforeCursor = String(text[..<index])
             let afterCursor = String(text[index...])
 
             switch currentTrigger {
-            case .commandRef:
-                // 모든 command 트리거 지원
-                let commandTriggers = ["{command:", "{command#", "{command@", "[command:", "[command#", "[command@"]
-                var triggerRange: Range<String.Index>?
-                for trigger in commandTriggers {
-                    if let range = beforeCursor.range(of: trigger, options: .backwards) {
-                        triggerRange = range
-                        break
-                    }
-                }
-                guard let cmdRange = triggerRange else { return }
-                let triggerStart = text.distance(from: text.startIndex, to: cmdRange.lowerBound)
-                let beforeTrigger = String(text.prefix(triggerStart))
+            case .badge(let triggerInfo):
+                let beforeTrigger = String(text.prefix(triggerInfo.triggerStart))
 
-                // suggestion(title)으로 id 조회
-                guard let item = idSuggestions.first(where: { $0.title == suggestion }) else { return }
-                let commandId = item.id
-
-                // `command@id` 형식으로 저장 (표시는 배지로 label)
-                let newText = beforeTrigger + "`command@\(commandId)`" + afterCursor
-                textView.string = newText
-                self.text = newText
-                let newCursorPosition = triggerStart + 10 + commandId.count  // `command@ + id + `
-                textView.setSelectedRange(NSRange(location: newCursorPosition, length: 0))
-
-            case .varRef:
-                // 모든 var 트리거 지원
-                let allTriggers = ["{var:", "{var#", "{var@", "[var:", "[var#", "[var@"]
-                var foundRange: Range<String.Index>?
-                var foundTrigger = ""
-
-                for trigger in allTriggers {
-                    if let range = beforeCursor.range(of: trigger, options: .backwards) {
-                        foundRange = range
-                        foundTrigger = trigger
-                        break
-                    }
+                // command는 title로 id 조회
+                var commandId: String?
+                if triggerInfo.type == .command {
+                    guard let item = idSuggestions.first(where: { $0.title == suggestion }) else { return }
+                    commandId = item.id
                 }
 
-                guard let varRange = foundRange else { return }
-                let triggerStart = text.distance(from: text.startIndex, to: varRange.lowerBound)
-                let beforeTrigger = String(text.prefix(triggerStart))
+                // BadgeProcessor로 대체 텍스트 생성
+                let replacement = BadgeProcessor.shared.buildReplacement(
+                    for: triggerInfo,
+                    suggestion: suggestion,
+                    commandId: commandId
+                )
 
-                // 입력된 형식 유지
-                let isIdTrigger = foundTrigger.contains("@")
-                let closingBracket = foundTrigger.hasPrefix("{") ? "}" : "]"
-                let openingBracket = foundTrigger.hasPrefix("{") ? "{" : "["
-                let separator = isIdTrigger ? "@" : "#"
-
-                let replacement = "\(openingBracket)var\(separator)\(suggestion)\(closingBracket)"
                 let newText = beforeTrigger + replacement + afterCursor
                 textView.string = newText
                 self.text = newText
-                let newCursorPosition = triggerStart + replacement.count
+                let newCursorPosition = triggerInfo.triggerStart + replacement.count
                 textView.setSelectedRange(NSRange(location: newCursorPosition, length: 0))
 
             case .dollar:
+                let beforeCursor = String(text[..<index])
                 guard let lastDollar = beforeCursor.lastIndex(of: "$") else { return }
                 let dollarPosition = text.distance(from: text.startIndex, to: lastDollar)
                 let beforeDollar = String(text.prefix(dollarPosition))
@@ -591,46 +446,11 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 let newCursorPosition = dollarPosition + 1 + suggestion.count
                 textView.setSelectedRange(NSRange(location: newCursorPosition, length: 0))
 
-            case .secureRef:
-                // 모든 secure 트리거 지원
-                let allTriggers = ["{secure:", "{secure#", "{secure@", "[secure:", "[secure#", "[secure@"]
-                var foundRange: Range<String.Index>?
-                var foundTrigger = ""
-
-                for trigger in allTriggers {
-                    if let range = beforeCursor.range(of: trigger, options: .backwards) {
-                        foundRange = range
-                        foundTrigger = trigger
-                        break
-                    }
-                }
-
-                guard let secureRange = foundRange else { return }
-                let triggerStart = text.distance(from: text.startIndex, to: secureRange.lowerBound)
-                let beforeTrigger = String(text.prefix(triggerStart))
-
-                // 입력된 형식 유지: {로 시작하면 }, [로 시작하면 ]
-                let isIdTrigger = foundTrigger.contains("@")
-                let closingBracket = foundTrigger.hasPrefix("{") ? "}" : "]"
-                let openingBracket = foundTrigger.hasPrefix("{") ? "{" : "["
-                let separator = isIdTrigger ? "@" : "#"
-
-                let replacement = "\(openingBracket)secure\(separator)\(suggestion)\(closingBracket)"
-                let newText = beforeTrigger + replacement + afterCursor
-                textView.string = newText
-                self.text = newText
-                let newCursorPosition = triggerStart + replacement.count
-                textView.setSelectedRange(NSRange(location: newCursorPosition, length: 0))
-
-            case .lockedRef:
-                break
-
             case .none:
                 break
             }
 
             popupController.hide()
-            // 삽입 후 구문 강조 적용
             applySyntaxHighlighting(to: textView)
         }
     }

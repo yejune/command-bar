@@ -492,4 +492,76 @@ class BadgeProcessor {
     func isIdTrigger(_ trigger: String) -> Bool {
         trigger.contains("@")
     }
+
+    // MARK: - 자동완성 트리거 감지
+
+    /// 트리거 정보
+    struct TriggerInfo {
+        let type: BadgeType
+        let trigger: String      // 원본 트리거 문자열 ({command:, [var#, 등)
+        let filter: String       // 트리거 이후 입력된 필터 텍스트
+        let isIdHint: Bool       // @ 트리거 여부
+        let triggerStart: Int    // 트리거 시작 위치
+    }
+
+    /// 커서 위치에서 배지 트리거 감지
+    func detectBadgeTrigger(in text: String, cursorPosition: Int) -> TriggerInfo? {
+        guard cursorPosition > 0, cursorPosition <= text.count else { return nil }
+
+        let index = text.index(text.startIndex, offsetBy: cursorPosition)
+        let beforeCursor = String(text[..<index])
+
+        // 모든 배지 타입 검사
+        for type in [BadgeType.command, .variable, .secure] {
+            let allTriggers = Self.triggers(for: type)
+
+            for trigger in allTriggers {
+                if let range = beforeCursor.range(of: trigger, options: .backwards) {
+                    let afterTrigger = String(beforeCursor[range.upperBound...])
+                    let endChar = trigger.hasPrefix("{") ? "}" : "]"
+
+                    // 트리거가 닫히지 않았고, 공백이 없으면 활성 트리거
+                    let containsEnd = afterTrigger.contains(endChar)
+                    let containsWhitespace = afterTrigger.contains(where: { $0.isWhitespace })
+
+                    // secure는 공백 허용 (값 입력 때문)
+                    let isValid = type == .secure
+                        ? !containsEnd
+                        : !containsEnd && !containsWhitespace
+
+                    if isValid {
+                        let triggerStart = text.distance(from: text.startIndex, to: range.lowerBound)
+                        return TriggerInfo(
+                            type: type,
+                            trigger: trigger,
+                            filter: afterTrigger,
+                            isIdHint: trigger.contains("@"),
+                            triggerStart: triggerStart
+                        )
+                    }
+                }
+            }
+        }
+
+        return nil
+    }
+
+    /// 제안 선택 시 대체 텍스트 생성
+    func buildReplacement(for triggerInfo: TriggerInfo, suggestion: String, commandId: String? = nil) -> String {
+        let type = triggerInfo.type
+
+        // command는 항상 `command@id` 형식으로 저장
+        if type == .command {
+            guard let id = commandId else { return "" }
+            return "`command@\(id)`"
+        }
+
+        // var/secure: 입력 형식 유지
+        let isIdTrigger = triggerInfo.isIdHint
+        let closingBracket = triggerInfo.trigger.hasPrefix("{") ? "}" : "]"
+        let openingBracket = triggerInfo.trigger.hasPrefix("{") ? "{" : "["
+        let separator = isIdTrigger ? "@" : "#"
+
+        return "\(openingBracket)\(type.rawValue)\(separator)\(suggestion)\(closingBracket)"
+    }
 }
