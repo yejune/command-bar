@@ -454,14 +454,20 @@ class Settings: ObservableObject {
     }
 
     /// 쉘 실행용 환경변수 (기존 환경 + 사용자 설정 병합)
+    /// - secure 배지 (`secure@id`) 복호화 적용
     func mergedShellEnvironment() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
+        let secureManager = SecureValueManager.shared
+
         for (key, value) in shellEnvironment {
-            if key == "PATH" && !value.isEmpty {
+            // secure 배지 복호화
+            let processed = secureManager.processForExecution(value)
+
+            if key == "PATH" && !processed.isEmpty {
                 // PATH는 앞에 추가
-                env["PATH"] = value + ":" + (env["PATH"] ?? "")
-            } else if !value.isEmpty {
-                env[key] = value
+                env["PATH"] = processed + ":" + (env["PATH"] ?? "")
+            } else if !processed.isEmpty {
+                env[key] = processed
             }
         }
         return env
