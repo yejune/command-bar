@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var newPassword = ""
     @State private var newPasswordConfirm = ""
     @State private var mysqlPassword = ""
+    @State private var editingBadge: BadgeEditInfo?
 
     private var tabTitles: [String] {
         [L.settingsGeneral, L.settingsClipboardTab, L.settingsBackup, "동기화", L.settingsLanguage]
@@ -184,9 +185,11 @@ struct SettingsView: View {
                 } else if selectedTab == 3 {
                     // 클라우드 동기화 설정
                     CloudSyncSettingsSection(
+                        store: store,
                         mysqlPassword: $mysqlPassword,
                         alertMessage: $alertMessage,
-                        showAlert: $showAlert
+                        showAlert: $showAlert,
+                        editingBadge: $editingBadge
                     )
                 } else {
                     // 언어 설정
@@ -272,6 +275,13 @@ struct SettingsView: View {
                     showPasswordSheet = false
                 }
             )
+        }
+        .sheet(item: $editingBadge) { info in
+            BadgeEditSheet(badgeInfo: $editingBadge) { updatedInfo in
+                if mysqlPassword.contains(info.originalText) {
+                    mysqlPassword = mysqlPassword.replacingOccurrences(of: info.originalText, with: updatedInfo.originalText)
+                }
+            }
         }
     }
 
@@ -623,9 +633,11 @@ class ClickableTextField: NSTextField {
 // MARK: - 클라우드 동기화 설정
 
 struct CloudSyncSettingsSection: View {
+    @ObservedObject var store: CommandStore
     @Binding var mysqlPassword: String
     @Binding var alertMessage: String
     @Binding var showAlert: Bool
+    @Binding var editingBadge: BadgeEditInfo?
 
     @State private var mysqlHost: String = ""
     @State private var mysqlPort: String = "3306"
@@ -681,12 +693,18 @@ struct CloudSyncSettingsSection: View {
                 }
 
                 SettingRow(label: "비밀번호") {
-                    SecureField("세션 중 메모리만", text: $mysqlPassword)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 180)
-                        .onChange(of: mysqlPassword) { _, new in
-                            syncService.setMySQLPassword(new)
-                        }
+                    AutocompleteTextEditor(
+                        text: $mysqlPassword,
+                        suggestions: store.allEnvironmentVariableNames,
+                        idSuggestions: store.allIdSuggestions,
+                        singleLine: true,
+                        placeholder: "직접 입력 또는 {secure#라벨}",
+                        onBadgeEdit: { editingBadge = $0 }
+                    )
+                    .frame(width: 200, height: 24)
+                    .onChange(of: mysqlPassword) { _, new in
+                        syncService.setMySQLPassword(new)
+                    }
                 }
                 SettingDivider()
             }

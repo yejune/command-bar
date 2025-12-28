@@ -45,9 +45,15 @@ class SyncService {
 
     // MARK: - 연결 관리
 
-    /// MySQL 비밀번호 설정 (세션 중 메모리만)
+    /// MySQL 비밀번호 설정 (세션 중 메모리만, 배지 지원)
     func setMySQLPassword(_ password: String) {
         mysqlPassword = password
+    }
+
+    /// 실제 사용할 비밀번호 (배지 치환 적용)
+    var resolvedMySQLPassword: String? {
+        guard let pwd = mysqlPassword else { return nil }
+        return BadgeProcessor.shared.resolveForExecution(pwd)
     }
 
     /// 연결 테스트
