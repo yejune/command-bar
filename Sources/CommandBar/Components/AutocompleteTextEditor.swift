@@ -346,7 +346,7 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                     popupController.moveSelectionDown()
                     return true
                 case #selector(NSResponder.insertTab(_:)),
-                     #selector(NSResponder.insertNewline(_:)):  // Enter 키 추가
+                     #selector(NSResponder.insertNewline(_:)):
                     popupController.selectCurrent()
                     return true
                 case #selector(NSResponder.cancelOperation(_:)):
@@ -356,6 +356,18 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                     break
                 }
             }
+
+            // singleLine 모드: Tab/Shift+Tab으로 다음/이전 필드 이동
+            if let acTextView = textView as? AutocompleteNSTextView, acTextView.singleLineMode {
+                if commandSelector == #selector(NSResponder.insertTab(_:)) {
+                    textView.window?.selectNextKeyView(nil)
+                    return true
+                } else if commandSelector == #selector(NSResponder.insertBacktab(_:)) {
+                    textView.window?.selectPreviousKeyView(nil)
+                    return true
+                }
+            }
+
             return false
         }
 
