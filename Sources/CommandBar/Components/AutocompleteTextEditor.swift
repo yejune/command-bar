@@ -314,8 +314,8 @@ struct AutocompleteTextEditor: NSViewRepresentable {
             let index = text.index(text.startIndex, offsetBy: cursorPosition)
             let beforeCursor = String(text[..<index])
 
-            // {command@ 또는 {command# 또는 [command@ 또는 [command# 트리거 체크
-            let commandTriggers = ["{command@", "{command#", "[command@", "[command#"]
+            // command 트리거 체크
+            let commandTriggers = ["{command:", "{command#", "{command@", "[command:", "[command#", "[command@"]
             for trigger in commandTriggers {
                 if let cmdRange = beforeCursor.range(of: trigger, options: .backwards) {
                     let afterTrigger = String(beforeCursor[cmdRange.upperBound...])
@@ -326,8 +326,8 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 }
             }
 
-            // {var: 또는 [var@ 또는 [var# 트리거 체크
-            let varTriggers = ["{var:", "[var@", "[var#"]
+            // var 트리거 체크
+            let varTriggers = ["{var:", "{var#", "{var@", "[var:", "[var#", "[var@"]
             for trigger in varTriggers {
                 if let varRange = beforeCursor.range(of: trigger, options: .backwards) {
                     let afterTrigger = String(beforeCursor[varRange.upperBound...])
@@ -396,8 +396,8 @@ struct AutocompleteTextEditor: NSViewRepresentable {
 
             switch currentTrigger {
             case .commandRef:
-                // {command@ 또는 {command# 또는 [command@ 또는 [command# 찾기
-                let commandTriggers = ["{command@", "{command#", "[command@", "[command#"]
+                // command 트리거 찾기
+                let commandTriggers = ["{command:", "{command#", "{command@", "[command:", "[command#", "[command@"]
                 var afterTrigger = ""
                 for trigger in commandTriggers {
                     if let range = beforeCursor.range(of: trigger, options: .backwards) {
@@ -414,19 +414,28 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 return filtered.map { $0.title }
 
             case .varRef:
-                // {var: 또는 [var@ 또는 [var# 찾기
+                // var 트리거 찾기: @는 ID, #/:는 라벨
                 var afterTrigger = ""
-                var isIdHint = false  // @는 ID, #는 라벨
+                var isIdHint = false
 
-                if let range = beforeCursor.range(of: "[var@", options: .backwards) {
-                    afterTrigger = String(beforeCursor[range.upperBound...])
-                    isIdHint = true
-                } else if let range = beforeCursor.range(of: "[var#", options: .backwards) {
-                    afterTrigger = String(beforeCursor[range.upperBound...])
-                    isIdHint = false
-                } else if let range = beforeCursor.range(of: "{var:", options: .backwards) {
-                    afterTrigger = String(beforeCursor[range.upperBound...])
-                    isIdHint = false  // 기본은 라벨
+                let idTriggers = ["{var@", "[var@"]
+                let labelTriggers = ["{var:", "{var#", "[var:", "[var#"]
+
+                for trigger in idTriggers {
+                    if let range = beforeCursor.range(of: trigger, options: .backwards) {
+                        afterTrigger = String(beforeCursor[range.upperBound...])
+                        isIdHint = true
+                        break
+                    }
+                }
+                if afterTrigger.isEmpty {
+                    for trigger in labelTriggers {
+                        if let range = beforeCursor.range(of: trigger, options: .backwards) {
+                            afterTrigger = String(beforeCursor[range.upperBound...])
+                            isIdHint = false
+                            break
+                        }
+                    }
                 }
 
                 if isIdHint {
@@ -517,8 +526,8 @@ struct AutocompleteTextEditor: NSViewRepresentable {
 
             switch currentTrigger {
             case .commandRef:
-                // {command@ 또는 {command# 또는 [command@ 또는 [command# 찾기
-                let commandTriggers = ["{command@", "{command#", "[command@", "[command#"]
+                // 모든 command 트리거 지원
+                let commandTriggers = ["{command:", "{command#", "{command@", "[command:", "[command#", "[command@"]
                 var triggerRange: Range<String.Index>?
                 for trigger in commandTriggers {
                     if let range = beforeCursor.range(of: trigger, options: .backwards) {
@@ -542,13 +551,34 @@ struct AutocompleteTextEditor: NSViewRepresentable {
                 textView.setSelectedRange(NSRange(location: newCursorPosition, length: 0))
 
             case .varRef:
-                guard let varRange = beforeCursor.range(of: "{var:", options: .backwards) else { return }
+                // 모든 var 트리거 지원
+                let allTriggers = ["{var:", "{var#", "{var@", "[var:", "[var#", "[var@"]
+                var foundRange: Range<String.Index>?
+                var foundTrigger = ""
+
+                for trigger in allTriggers {
+                    if let range = beforeCursor.range(of: trigger, options: .backwards) {
+                        foundRange = range
+                        foundTrigger = trigger
+                        break
+                    }
+                }
+
+                guard let varRange = foundRange else { return }
                 let triggerStart = text.distance(from: text.startIndex, to: varRange.lowerBound)
                 let beforeTrigger = String(text.prefix(triggerStart))
-                let newText = beforeTrigger + "[var#" + suggestion + "]" + afterCursor
+
+                // 입력된 형식 유지
+                let isIdTrigger = foundTrigger.contains("@")
+                let closingBracket = foundTrigger.hasPrefix("{") ? "}" : "]"
+                let openingBracket = foundTrigger.hasPrefix("{") ? "{" : "["
+                let separator = isIdTrigger ? "@" : "#"
+
+                let replacement = "\(openingBracket)var\(separator)\(suggestion)\(closingBracket)"
+                let newText = beforeTrigger + replacement + afterCursor
                 textView.string = newText
-                self.text = newText  // 입력 형식 그대로 저장
-                let newCursorPosition = triggerStart + 5 + suggestion.count  // [var# + suggestion + ]
+                self.text = newText
+                let newCursorPosition = triggerStart + replacement.count
                 textView.setSelectedRange(NSRange(location: newCursorPosition, length: 0))
 
             case .dollar:
