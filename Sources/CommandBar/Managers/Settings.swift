@@ -78,6 +78,13 @@ class Settings: ObservableObject {
         }
     }
 
+    // 쉘 환경변수
+    @Published var shellEnvironment: [String: String] {
+        didSet {
+            saveShellEnvironment()
+        }
+    }
+
     private var appearanceObserver: NSObjectProtocol?
     private var resizeObserver: NSObjectProtocol?
     private var moveObserver: NSObjectProtocol?
@@ -108,6 +115,7 @@ class Settings: ObservableObject {
         self.useInfiniteScroll = db.getBoolSetting("useInfiniteScroll", defaultValue: true)
         self.pageSize = db.getIntSetting("pageSize", defaultValue: 50)
         self.debugLogging = db.getBoolSetting("debugLogging", defaultValue: false)
+        self.shellEnvironment = Self.loadShellEnvironment(db: db)
 
         // 저장된 창 프레임 로드
         let x = db.getDoubleSetting("windowX", defaultValue: -1)
@@ -427,4 +435,35 @@ class Settings: ObservableObject {
         }
     }
 
+    // MARK: - Shell Environment
+
+    private static func loadShellEnvironment(db: Database) -> [String: String] {
+        guard let jsonStr = db.getSetting("shellEnvironment"),
+              let data = jsonStr.data(using: .utf8),
+              let dict = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return [:]
+        }
+        return dict
+    }
+
+    private func saveShellEnvironment() {
+        if let data = try? JSONEncoder().encode(shellEnvironment),
+           let jsonStr = String(data: data, encoding: .utf8) {
+            db.setSetting("shellEnvironment", value: jsonStr)
+        }
+    }
+
+    /// 쉘 실행용 환경변수 (기존 환경 + 사용자 설정 병합)
+    func mergedShellEnvironment() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        for (key, value) in shellEnvironment {
+            if key == "PATH" && !value.isEmpty {
+                // PATH는 앞에 추가
+                env["PATH"] = value + ":" + (env["PATH"] ?? "")
+            } else if !value.isEmpty {
+                env[key] = value
+            }
+        }
+        return env
+    }
 }

@@ -959,6 +959,7 @@ class CommandStore: ObservableObject {
 
             process.executableURL = URL(fileURLWithPath: "/bin/zsh")
             process.arguments = ["-c", resolvedCommand]
+            process.environment = Settings.shared.mergedShellEnvironment()
             process.standardOutput = pipe
             process.standardError = pipe
 
@@ -1540,6 +1541,7 @@ class CommandStore: ObservableObject {
 
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.arguments = ["-c", command]
+        process.environment = Settings.shared.mergedShellEnvironment()
         process.standardOutput = pipe
         process.standardError = pipe
 

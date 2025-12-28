@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var showImportChoice = false
     @State private var pendingImportData: Data?
 
+    @State private var showShellEnvEditor = false
     @State private var showPasswordSheet = false
     @State private var passwordSheetMode: PasswordSheetMode = .setup
     @State private var currentPassword = ""
@@ -131,6 +132,18 @@ struct SettingsView: View {
                             .labelsHidden()
                     }
                     SettingDivider()
+                    // 쉘 환경변수
+                    SettingRow(label: "쉘 환경변수") {
+                        HStack(spacing: 8) {
+                            Button("편집") {
+                                showShellEnvEditor = true
+                            }
+                            Text("\(settings.shellEnvironment.count)개")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    SettingDivider()
                     // 패스워드 설정
                     SettingRow(label: "암호화 패스워드") {
                         HStack(spacing: 8) {
@@ -226,6 +239,9 @@ struct SettingsView: View {
             Button(L.buttonCancel, role: .cancel) {
                 pendingImportData = nil
             }
+        }
+        .sheet(isPresented: $showShellEnvEditor) {
+            ShellEnvEditorView(environment: $settings.shellEnvironment)
         }
         .sheet(isPresented: $showPasswordSheet) {
             PasswordSheet(
@@ -791,5 +807,108 @@ struct PasswordSheet: View {
             .padding()
         }
         .frame(width: 350)
+    }
+}
+
+// MARK: - 쉘 환경변수 편집
+
+struct ShellEnvEditorView: View {
+    @Binding var environment: [String: String]
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var entries: [(key: String, value: String)] = []
+    @State private var newKey = ""
+    @State private var newValue = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("쉘 환경변수")
+                .font(.headline)
+                .padding()
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("쉘 명령어 실행 시 적용되는 환경변수입니다.\nPATH는 기존 PATH 앞에 추가됩니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                // 기존 환경변수 목록
+                ForEach(entries.indices, id: \.self) { index in
+                    HStack(spacing: 8) {
+                        TextField("KEY", text: $entries[index].key)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
+
+                        TextField("VALUE", text: $entries[index].value)
+                            .textFieldStyle(.roundedBorder)
+
+                        Button(action: {
+                            entries.remove(at: index)
+                        }) {
+                            Image(systemName: "minus.circle.fill")
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                // 새 환경변수 추가
+                HStack(spacing: 8) {
+                    TextField("KEY", text: $newKey)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 100)
+
+                    TextField("VALUE", text: $newValue)
+                        .textFieldStyle(.roundedBorder)
+
+                    Button(action: {
+                        if !newKey.isEmpty {
+                            entries.append((key: newKey, value: newValue))
+                            newKey = ""
+                            newValue = ""
+                        }
+                    }) {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundStyle(.green)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(newKey.isEmpty)
+                }
+
+                // 예시
+                Text("예: PATH = /opt/homebrew/opt/mysql-client/bin")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding()
+
+            Divider()
+
+            HStack {
+                Button("취소") {
+                    dismiss()
+                }
+                .buttonStyle(HoverTextButtonStyle())
+
+                Spacer()
+
+                Button("저장") {
+                    // entries를 dictionary로 변환
+                    var dict: [String: String] = [:]
+                    for entry in entries where !entry.key.isEmpty {
+                        dict[entry.key] = entry.value
+                    }
+                    environment = dict
+                    dismiss()
+                }
+                .buttonStyle(HoverTextButtonStyle())
+            }
+            .padding()
+        }
+        .frame(width: 450)
+        .onAppear {
+            entries = environment.map { (key: $0.key, value: $0.value) }.sorted { $0.key < $1.key }
+        }
     }
 }

@@ -25,6 +25,7 @@ class ScriptRunner: ObservableObject {
 
         proc.executableURL = URL(fileURLWithPath: "/bin/zsh")
         proc.arguments = ["-c", command]
+        proc.environment = Settings.shared.mergedShellEnvironment()
         proc.standardOutput = pipe
         proc.standardError = pipe
 
