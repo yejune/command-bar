@@ -7,6 +7,7 @@ struct APIParameterInputView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var values: [String: String] = [:]
+    @State private var editingBadge: BadgeEditInfo?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -32,7 +33,8 @@ struct APIParameterInputView: View {
                             ),
                             suggestions: store.allEnvironmentVariableNames,
                             idSuggestions: store.allIdSuggestions,
-                            singleLine: true
+                            singleLine: true,
+                            onBadgeEdit: { editingBadge = $0 }
                         )
                         .frame(height: 24)
                     } else {
@@ -70,5 +72,15 @@ struct APIParameterInputView: View {
         }
         .padding()
         .frame(width: 450)
+        .sheet(item: $editingBadge) { info in
+            BadgeEditSheet(badgeInfo: $editingBadge) { updatedInfo in
+                // 값 업데이트
+                for (name, value) in values {
+                    if value.contains(info.originalText) {
+                        values[name] = value.replacingOccurrences(of: info.originalText, with: updatedInfo.originalText)
+                    }
+                }
+            }
+        }
     }
 }

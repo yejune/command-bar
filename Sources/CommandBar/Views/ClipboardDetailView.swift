@@ -9,6 +9,7 @@ struct ClipboardDetailView: View {
     @State private var showRegisterSheet = false
     @State private var editableContent: String = ""
     @State private var isEdited: Bool = false
+    @State private var editingBadge: BadgeEditInfo?
 
     var shortId: String {
         item.id
@@ -50,15 +51,20 @@ struct ClipboardDetailView: View {
 
             Divider()
 
-            AutocompleteTextEditor(text: $editableContent, suggestions: [])
-                .padding(8)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(6)
-                .padding()
-                .onChange(of: editableContent) { _, newValue in
-                    isEdited = newValue != item.content
-                }
+            AutocompleteTextEditor(
+                text: $editableContent,
+                suggestions: store.allEnvironmentVariableNames,
+                idSuggestions: store.allIdSuggestions,
+                onBadgeEdit: { editingBadge = $0 }
+            )
+            .padding(8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.gray.opacity(0.1))
+            .cornerRadius(6)
+            .padding()
+            .onChange(of: editableContent) { _, newValue in
+                isEdited = newValue != item.content
+            }
 
             Divider()
 
@@ -95,6 +101,13 @@ struct ClipboardDetailView: View {
         .frame(minWidth: 400, minHeight: 300)
         .sheet(isPresented: $showRegisterSheet) {
             RegisterClipboardSheet(store: store, item: item, onComplete: onClose)
+        }
+        .sheet(item: $editingBadge) { info in
+            BadgeEditSheet(badgeInfo: $editingBadge) { updatedInfo in
+                if editableContent.contains(info.originalText) {
+                    editableContent = editableContent.replacingOccurrences(of: info.originalText, with: updatedInfo.originalText)
+                }
+            }
         }
         .onAppear {
             editableContent = item.content

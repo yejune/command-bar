@@ -9,6 +9,7 @@ struct ScriptExecutionView: View {
 
     @State private var values: [String: String] = [:]
     @State private var executedCommand: String?
+    @State private var editingBadge: BadgeEditInfo?
     @StateObject private var runner = ScriptRunner()
 
     var isValid: Bool {
@@ -68,7 +69,8 @@ struct ScriptExecutionView: View {
                                     ),
                                     suggestions: store.allEnvironmentVariableNames,
                                     idSuggestions: store.allIdSuggestions,
-                                    singleLine: true
+                                    singleLine: true,
+                                    onBadgeEdit: { editingBadge = $0 }
                                 )
                                 .frame(height: 24)
                             } else {
@@ -139,6 +141,15 @@ struct ScriptExecutionView: View {
             .padding()
         }
         .frame(minWidth: 400, minHeight: 250)
+        .sheet(item: $editingBadge) { info in
+            BadgeEditSheet(badgeInfo: $editingBadge) { updatedInfo in
+                for (name, value) in values {
+                    if value.contains(info.originalText) {
+                        values[name] = value.replacingOccurrences(of: info.originalText, with: updatedInfo.originalText)
+                    }
+                }
+            }
+        }
     }
 
     func executeScript() async {

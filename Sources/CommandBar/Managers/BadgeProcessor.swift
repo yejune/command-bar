@@ -547,21 +547,29 @@ class BadgeProcessor {
     }
 
     /// 제안 선택 시 대체 텍스트 생성
+    /// 모든 타입을 `type@id` 형식으로 반환하여 즉시 배지로 표시
     func buildReplacement(for triggerInfo: TriggerInfo, suggestion: String, commandId: String? = nil) -> String {
         let type = triggerInfo.type
 
-        // command는 항상 `command@id` 형식으로 저장
+        // command는 항상 `command@id` 형식
         if type == .command {
             guard let id = commandId else { return "" }
             return "`command@\(id)`"
         }
 
-        // var/secure: 입력 형식 유지
-        let isIdTrigger = triggerInfo.isIdHint
-        let closingBracket = triggerInfo.trigger.hasPrefix("{") ? "}" : "]"
-        let openingBracket = triggerInfo.trigger.hasPrefix("{") ? "{" : "["
-        let separator = isIdTrigger ? "@" : "#"
-
-        return "\(openingBracket)\(type.rawValue)\(separator)\(suggestion)\(closingBracket)"
+        // var/secure: ID 조회 후 `type@id` 형식 반환
+        if triggerInfo.isIdHint {
+            // @로 ID 직접 입력한 경우
+            return "`\(type.rawValue)@\(suggestion)`"
+        } else {
+            // #으로 라벨 입력한 경우 → ID 조회
+            if let id = lookupIdByLabel(type: type, label: suggestion) {
+                return "`\(type.rawValue)@\(id)`"
+            }
+            // ID 없으면 괄호 형식 유지 (저장 시 convertToStorageFormat에서 변환됨)
+            let closingBracket = triggerInfo.trigger.hasPrefix("{") ? "}" : "]"
+            let openingBracket = triggerInfo.trigger.hasPrefix("{") ? "{" : "["
+            return "\(openingBracket)\(type.rawValue)#\(suggestion)\(closingBracket)"
+        }
     }
 }
