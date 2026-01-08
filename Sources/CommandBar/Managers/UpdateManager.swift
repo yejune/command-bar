@@ -4,7 +4,7 @@ import AppKit
 // MARK: - App Info
 
 struct AppInfo {
-    static let version = "0.0.19"  // tobrew.lock과 동기화
+    static let version = "0.0.20"  // tobrew.lock과 동기화
     static let bundleId = "com.yejune.CommandBar"
     static let repoOwner = "yejune"
     static let repoName = "command-bar"
