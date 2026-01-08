@@ -167,6 +167,9 @@ struct SettingsView: View {
                             }
                         }
                     }
+                    SettingDivider()
+                    // 버전 및 업데이트
+                    UpdateSection()
                 } else if selectedTab == 1 {
                     // 클립보드 설정
                     SettingRow(label: L.settingsNotesFolderName) {
@@ -948,6 +951,73 @@ struct ShellEnvEditorView: View {
         .sheet(item: $editingBadge) { info in
             BadgeEditSheet(badgeInfo: $editingBadge) { updated in
                 // 배지 편집 후 값 업데이트는 BadgeEditSheet에서 DB에 직접 저장
+            }
+        }
+    }
+}
+
+// MARK: - 업데이트 섹션
+
+struct UpdateSection: View {
+    @ObservedObject private var updateManager = UpdateManager.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SettingRow(label: "버전") {
+                HStack(spacing: 8) {
+                    Text("v\(AppInfo.version)")
+                        .font(.system(.body, design: .monospaced))
+
+                    Text("(\(updateManager.installationType))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if updateManager.updateAvailable, let latest = updateManager.latestVersion {
+                        Text("→ v\(latest)")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
+                }
+            }
+
+            SettingRow(label: "업데이트") {
+                HStack(spacing: 8) {
+                    if updateManager.isChecking {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                        Text("확인 중...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if updateManager.isUpdating {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                        Text("업데이트 중...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Button("업데이트 확인") {
+                            Task {
+                                await updateManager.checkForUpdates()
+                            }
+                        }
+
+                        if updateManager.updateAvailable {
+                            Button("지금 업데이트") {
+                                Task {
+                                    await updateManager.performUpdate()
+                                }
+                            }
+                            .foregroundStyle(.blue)
+                        }
+                    }
+                }
+            }
+
+            if let error = updateManager.lastError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.leading, 100)
             }
         }
     }
